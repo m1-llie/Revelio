@@ -3,19 +3,18 @@ description:
 globs:
 alwaysApply: true
 ---
-# mini-SWE-agent overview
+# vul-agent overview
 
-- mini-SWE-agent implements an AI software engineering agent that solves github issues and similar programming challenges
-- The idea of this project is to write the simplest, smallest, most readable agent.
+- vul-agent implements a trustworthy and precise vulnerability detection AI agent that discovers software vulnerabilities and validate them by testing exploitation.
 
 The project is structured as
 
 ```bash
-minisweagent/__init__  # Protocols/interfaces for all base classes
-minisweagent/agents  # Agent control flow & loop
-minisweagent/environments  # Executing agent actions
-minisweagent/models  # LM interfaces
-minisweagent/run  # Run scripts that serve as an entry point
+vulagent/__init__  # Protocols/interfaces for all base classes
+vulagent/agents  # Agent control flow & loop
+vulagent/environments  # Executing agent actions
+vulagent/models  # LM interfaces
+vulagent/run  # Run scripts that serve as an entry point
 ```
 
 - The project embraces polymorphism: Every individual class should be simple, but we offer alternatives
