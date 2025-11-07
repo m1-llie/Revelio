@@ -1,0 +1,2 @@
+- the stop sign implementation. Natural "I'm done" state.
+- the step count

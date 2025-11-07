@@ -25,7 +25,7 @@ WORKDIR /workspace
 
 # Install pip packages commonly needed for tooling (optional)
 RUN pip3 install --no-cache-dir \
-    litellm==1.75.5 \
+    litellm \
     pytest==8.2.0
 
 # Default command is overridden by DockerEnvironment (sleep ...)

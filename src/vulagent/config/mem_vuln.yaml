@@ -52,7 +52,7 @@ agent:
   format_error_template: |
     Your response must contain exactly one bash code block, found {{actions|length}}.
     Reformat your answer so there is a single command enclosed in triple backticks.
-  step_limit: 10
+  step_limit: 16
   cost_limit: 1.0
 
 environment:
