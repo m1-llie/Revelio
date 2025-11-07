@@ -5,17 +5,45 @@ alwaysApply: true
 ---
 # vul-agent overview
 
-- vul-agent implements a trustworthy and precise vulnerability detection AI agent that discovers software vulnerabilities and validate them by testing exploitation.
+## Project Goal
 
-The project is structured as
+vul-agent is a trustworthy and precise vulnerability detection AI agent that:
+- Discovers software vulnerabilities through code analysis
+- Validates vulnerabilities by testing exploitation
+- Provides detailed vulnerability reports with proof-of-concept
+
+## Architecture
+
+The project is structured as:
 
 ```bash
-vulagent/__init__  # Protocols/interfaces for all base classes
-vulagent/agents  # Agent control flow & loop
-vulagent/environments  # Executing agent actions
-vulagent/models  # LM interfaces
-vulagent/run  # Run scripts that serve as an entry point
+vulagent/__init__      # Protocols/interfaces for all base classes
+vulagent/agents        # Agent control flow & loop (DefaultAgent for vulnerability detection)
+vulagent/environments  # Executing agent actions (Local, Docker, etc.)
+vulagent/models        # LLM interfaces (LiteLLM, Anthropic, etc.)
+vulagent/run           # Run scripts that serve as an entry point
+vulagent/config        # Configuration files (YAML templates)
 ```
 
-- The project embraces polymorphism: Every individual class should be simple, but we offer alternatives
-- Every use case should start with a run script, that picks one agent, environment, and model class to run
+## Design Principles
+
+- **Polymorphism**: Every individual class should be simple, but we offer alternatives
+- **Run Scripts**: Every use case should start with a run script that picks one agent, environment, and model class
+- **Modularity**: Core components (Agent, Model, Environment) are decoupled and interchangeable
+- **Extensibility**: Easy to add new agents, models, or environments
+
+## Development Focus
+
+Current development priorities:
+1. **Vulnerability Detection Agent**: Extend DefaultAgent for vulnerability-specific tasks
+2. **Code Analysis**: Implement static (LLM code browser tool) and dynamic code analysis capabilities
+3. **Exploitation Testing**: Add automated vulnerability validation
+4. **Reporting**: Generate comprehensive, precise, and concise vulnerability reports
+
+## Key Components
+
+- **DefaultAgent**: Core agent implementation for task execution
+- **LocalEnvironment**: Execute commands in local environment
+- **DockerEnvironment**: Execute commands in isolated containers
+- **LitellmModel**: Universal LLM interface supporting multiple providers
+- **DeterministicModel**: Testing model for deterministic behavior
