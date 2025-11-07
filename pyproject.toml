@@ -19,10 +19,12 @@ dependencies = [
     "tenacity>=8.0.0",
     "requests>=2.28.0",
     "prompt_toolkit>=3.0.0",
+    "textual>=0.40.0",
 ]
 
 [project.scripts]
 vul-agent = "vulagent.run.hello_world:app"
+vul-agent-mem = "vulagent.run.memory_analysis:app"
 
 [tool.setuptools]
 include-package-data = true
@@ -33,4 +35,3 @@ include = ["vulagent*"]
 
 [tool.setuptools.package-data]
 vulagent = ["config/**/*"]
-

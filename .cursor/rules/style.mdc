@@ -19,7 +19,7 @@ alwaysApply: true
 11. In most cases, avoid initializing variables just to pass them to a function. Instead just pass the expression to the function directly.
 12. Not every exception has to be caught. Exceptions are a good way to show problems to a user.
 13. This repository rewards minimal code. Try to be as concise as possible.
-14. Use English for code comments and documents.
+14. Use American English for code comments and documents.
 
 Here's an example for rule 11:
 
