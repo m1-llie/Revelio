@@ -52,6 +52,9 @@ exit_status, result = agent.run("Analyze this code for security vulnerabilities:
 # Run with hello_world example
 python -m vulagent
 
+# Memory safety analysis (requires Docker)
+python -m vulagent.run.memory_analysis -p examples/bof -m openai/gpt-5-mini
+
 # Or use the CLI
 vul-agent -t "Your vulnerability detection task"
 ```
