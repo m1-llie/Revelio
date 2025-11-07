@@ -9,4 +9,5 @@ litellm>=1.75.5
 tenacity>=8.0.0
 requests>=2.28.0
 prompt_toolkit>=3.0.0
+textual>=0.40.0
 

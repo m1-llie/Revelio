@@ -27,8 +27,8 @@ class GlobalModelStats:
         with self._lock:
             self._cost += cost
             self._n_calls += 1
-        if 0 < self.cost_limit < self._cost or 0 < self.call_limit < self._n_calls + 1:
-            raise RuntimeError(f"Global cost/call limit exceeded: ${self._cost:.4f} / {self._n_calls + 1}")
+        if (self.cost_limit > 0 and self._cost > self.cost_limit) or (self.call_limit > 0 and self._n_calls > self.call_limit):
+            raise RuntimeError(f"Global cost/call limit exceeded: ${self._cost:.4f} / {self._n_calls}")
 
     @property
     def cost(self) -> float:
