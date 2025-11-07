@@ -1,4 +1,4 @@
-"""Basic agent class. See https://vul-agent.com/latest/advanced/control_flow/ for visual explanation."""
+"""Basic agent class. See https://mini-swe-agent.com/latest/advanced/control_flow/ for visual explanation."""
 
 import re
 import subprocess
