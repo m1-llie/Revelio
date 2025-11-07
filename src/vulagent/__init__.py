@@ -22,16 +22,34 @@ from vulagent.utils.log import logger
 
 package_dir = Path(__file__).resolve().parent
 
+# Try to load .env from project root first, then fall back to global config
+project_root = package_dir.parent.parent  # Go up from src/vulagent/ to project root
+project_env_file = project_root / ".env"
 global_config_dir = Path(os.getenv("MSWEA_GLOBAL_CONFIG_DIR") or user_config_dir("vul-agent"))
 global_config_dir.mkdir(parents=True, exist_ok=True)
 global_config_file = Path(global_config_dir) / ".env"
 
-if not os.getenv("MSWEA_SILENT_STARTUP"):
-    Console().print(
-        f"👋 This is [bold green]vul-agent[/bold green] version [bold green]{__version__}[/bold green].\n"
-        f"Loading global config from [bold green]'{global_config_file}'[/bold green]"
-    )
-dotenv.load_dotenv(dotenv_path=global_config_file)
+# Load .env files: project root first, then global config (project root takes precedence)
+if project_env_file.exists():
+    if not os.getenv("MSWEA_SILENT_STARTUP"):
+        Console().print(
+            f"👋 This is [bold green]vul-agent[/bold green] version [bold green]{__version__}[/bold green].\n"
+            f"Loading config from [bold green]'{project_env_file}'[/bold green] (project root)"
+        )
+    dotenv.load_dotenv(dotenv_path=project_env_file, override=False)
+elif global_config_file.exists():
+    if not os.getenv("MSWEA_SILENT_STARTUP"):
+        Console().print(
+            f"👋 This is [bold green]vul-agent[/bold green] version [bold green]{__version__}[/bold green].\n"
+            f"Loading global config from [bold green]'{global_config_file}'[/bold green]"
+        )
+    dotenv.load_dotenv(dotenv_path=global_config_file, override=False)
+else:
+    if not os.getenv("MSWEA_SILENT_STARTUP"):
+        Console().print(
+            f"👋 This is [bold green]vul-agent[/bold green] version [bold green]{__version__}[/bold green].\n"
+            f"No .env file found (checked: {project_env_file}, {global_config_file})"
+        )
 
 
 # === Protocols ===
