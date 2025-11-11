@@ -14,13 +14,16 @@ from textual.binding import Binding
 from textual.containers import Container, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Static
 
+ASSISTANT_DISPLAY_NAME = "assistant(Vul-Agent)"
+USER_DISPLAY_NAME = "user(Environment)"
+
 def _messages_to_steps(messages: list[dict]) -> list[list[dict]]:
-    """Convert a list of messages into steps (grouped by assistant/environment pairs)."""
+    """Convert a list of messages into steps (grouped by assistant/user pairs)."""
     steps = []
     current_step = []
     for message in messages:
         current_step.append(message)
-        if message["role"] == "environment" and len(current_step) > 1:
+        if message.get("role") == "user" and len(current_step) > 1:
             steps.append(current_step)
             current_step = []
     if current_step:
@@ -157,8 +160,16 @@ class TrajectoryInspector(App):
                 content_str = str(message["content"])
             message_container = Vertical(classes="message-container")
             container.mount(message_container)
-            role = message["role"].replace("assistant", "vul-agent")
-            message_container.mount(Static(role.upper(), classes="message-header"))
+            role = message.get("role", "")
+            if role == "assistant":
+                role_display = ASSISTANT_DISPLAY_NAME
+            elif role == "user":
+                role_display = USER_DISPLAY_NAME
+            elif role == "system":
+                role_display = "system"
+            else:
+                role_display = role or "unknown"
+            message_container.mount(Static(role_display, classes="message-header"))
             message_container.mount(Static(Text(content_str, no_wrap=False), classes="message-content"))
 
         self.title = (
