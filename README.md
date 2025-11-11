@@ -1,18 +1,18 @@
 # vul-agent
 
-A trustworthy and precise vulnerability detection AI agent that discovers software vulnerabilities and validates them through automated exploitation testing.
+A trustworthy and precise vulnerability detection AI agent that discovers software vulnerabilities and validates them through automated PoC testing.
 
 ## Overview
 
 vul-agent is an AI-powered security tool that:
 - 🔍 **Discovers vulnerabilities** through intelligent code analysis
-- ✅ **Validates findings** by testing exploitation
-- 📊 **Generates reports** with detailed proof-of-concept
+- ✅ **Validates findings** by validating PoC
+- 📊 **Generates reports** with detailed PoC
 
 ## Features
 
 - **AI-Powered Analysis**: Uses large language models to understand code and identify security issues
-- **Automated Testing**: Validates vulnerabilities through controlled exploitation
+- **Automated Testing**: Validates vulnerabilities through controlled PoC
 - **Multiple Environments**: Supports local execution and Docker containers for safe testing
 - **Extensible Architecture**: Easy to add new detection strategies and validation methods
 
@@ -22,28 +22,11 @@ vul-agent is an AI-powered security tool that:
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
+git clone <repo-url>
 cd vul-agent
 
 # Install dependencies
 pip install -e .
-```
-
-### Basic Usage
-
-```python
-from vulagent.agents.default import DefaultAgent
-from vulagent.environments.local import LocalEnvironment
-from vulagent.models.litellm_model import LitellmModel
-
-# Create agent
-agent = DefaultAgent(
-    model=LitellmModel(model_name="gpt-4"),
-    env=LocalEnvironment(),
-)
-
-# Run vulnerability detection
-exit_status, result = agent.run("Analyze this code for security vulnerabilities: ...")
 ```
 
 ### Command Line

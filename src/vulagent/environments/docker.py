@@ -1,3 +1,5 @@
+"""Launch and execute commands inside a Docker container, handling env var forwarding and cleanup."""
+
 import logging
 import os
 import shlex

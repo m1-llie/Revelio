@@ -1,3 +1,5 @@
+"""Execute commands in the local environment."""
+
 import os
 import platform
 import subprocess
