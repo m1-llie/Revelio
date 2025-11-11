@@ -75,14 +75,14 @@ class DefaultAgent:
         self.extra_template_vars |= {"task": task, **kwargs}
         self.messages = []
         self.add_message("system", self.render_template(self.config.system_template))
-        self.add_message("user", self.render_template(self.config.instance_template))
+        self.add_message("environment", self.render_template(self.config.instance_template))
         while True:
             try:
                 self.step()
             except NonTerminatingException as e:
-                self.add_message("user", str(e))
+                self.add_message("environment", str(e))
             except TerminatingException as e:
-                self.add_message("user", str(e))
+                self.add_message("environment", str(e))
                 return type(e).__name__, str(e)
 
     def step(self) -> dict:
@@ -101,7 +101,7 @@ class DefaultAgent:
         """Execute the action and return the observation."""
         output = self.execute_action(self.parse_action(response))
         observation = self.render_template(self.config.action_observation_template, output=output)
-        self.add_message("user", observation)
+        self.add_message("environment", observation)
         return output
 
     def parse_action(self, response: dict) -> dict:

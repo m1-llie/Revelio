@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 """
 Simple trajectory inspector for browsing agent conversation trajectories.
-
-[not dim]
-More information about the usage: [bold green]https://vul-agent.com/latest/usage/inspector/[/bold green]
-[/not dim]
 """
 
 import json
@@ -19,12 +15,12 @@ from textual.containers import Container, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Static
 
 def _messages_to_steps(messages: list[dict]) -> list[list[dict]]:
-    """Convert a list of messages into steps (grouped by assistant/user pairs)."""
+    """Convert a list of messages into steps (grouped by assistant/environment pairs)."""
     steps = []
     current_step = []
     for message in messages:
         current_step.append(message)
-        if message["role"] == "user" and len(current_step) > 1:
+        if message["role"] == "environment" and len(current_step) > 1:
             steps.append(current_step)
             current_step = []
     if current_step:
