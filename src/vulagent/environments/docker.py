@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import uuid
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
 
@@ -108,3 +109,23 @@ class DockerEnvironment:
     def __del__(self):
         """Cleanup container when object is destroyed."""
         self.cleanup()
+
+    def copy_from(self, source: str | Path, destination: str | Path) -> Path:
+        """Copy a file from the container to the host and return the destination path."""
+        assert self.container_id, "Container not started"
+        src = str(source)
+        dest = Path(destination)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            self.config.executable,
+            "cp",
+            f"{self.container_id}:{src}",
+            str(dest),
+        ]
+        result = subprocess.run(cmd, text=True, capture_output=True)
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip()
+            if "No such file" in message:
+                raise FileNotFoundError(src)
+            raise RuntimeError(message or "docker cp failed")
+        return dest

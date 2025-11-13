@@ -30,7 +30,7 @@ DEFAULT_CONFIG = "mem_vuln.yaml"
 DEFAULT_DOCKER_IMAGE = "vulagent/memcheck:latest"
 WORKSPACE_ROOT = Path("/workspace")
 PROJECT_ROOT = WORKSPACE_ROOT / "project"
-DEFAULT_OUTPUT = Path("memory_analysis_traj.json")
+DEFAULT_OUTPUT = None
 
 
 @app.command()
@@ -59,11 +59,11 @@ def main(
         "--docker-image",
         help="Docker image to use for the sandbox environment.",
     ),
-    output: Path = typer.Option(
-        DEFAULT_OUTPUT,
+    output: Path | None = typer.Option(
+        None,
         "--output",
         "-o",
-        help="Where to store the resulting trajectory JSON.",
+        help="Where to store the resulting trajectory JSON (defaults to <project-name>_traj.json).",
     ),
     keep_container: bool = typer.Option(
         False,
@@ -91,6 +91,9 @@ def main(
     console.print(f"[bold green]Model:[/bold green] {model_name}")
     console.print(f"[bold green]Docker image:[/bold green] {docker_image}")
     console.print(f"[bold green]Project path:[/bold green] {project_path}\n")
+
+    output_path = output or Path(f"{project_path.name}_traj.json")
+
 
     workspace_project = PROJECT_ROOT / project_path.name
     run_args = ["--rm"] if not keep_container else []
@@ -121,6 +124,16 @@ def main(
             task_description,
             project_path=str(workspace_project),
         )
+        copied_report: Path | None = None
+        report_source = workspace_project / "final_report.md"
+        report_destination = project_path / f"report_{project_path.name}.md"
+        try:
+            copied_report = docker_env.copy_from(report_source, report_destination)
+            console.print(f"[bold green]Final report copied to:[/bold green] {copied_report}")
+        except FileNotFoundError:
+            console.print("[bold yellow]No final_report.md generated inside the container.[/bold yellow]")
+        except RuntimeError as error:
+            console.print(f"[bold red]Failed to copy final_report.md:[/bold red] {error}")
 
         verification = None
         if "status: vulnerable" in result.lower():
@@ -142,11 +155,13 @@ def main(
             "project_path": str(project_path),
             "docker_image": docker_image,
         }
+        if copied_report:
+            info["final_report_path"] = str(copied_report)
         if verification:
             info["verification"] = verification.to_dict()
 
-        save_traj(agent, output, exit_status=exit_status, result=result, extra_info=info)
-        console.print(f"\n[bold green]Trajectory saved to:[/bold green] {output}")
+        save_traj(agent, output_path, exit_status=exit_status, result=result, extra_info=info)
+        console.print(f"\n[bold green]Trajectory saved to:[/bold green] {output_path}")
 
     finally:
         if not keep_container:
