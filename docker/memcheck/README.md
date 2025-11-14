@@ -1,6 +1,6 @@
-# Memory Analysis Docker Image
+# Software Vulnerability Analysis Docker Image
 
-Base image for running memory-safety analysis inside vul-agent.
+Base image for running software analysis (e.g., inspect memory safety issues) inside vul-agent.
 
 ## Build
 
@@ -14,6 +14,5 @@ docker build -t vulagent/memcheck:latest docker/memcheck
 - Python 3 with pip, litellm (for parity with host tooling)
 - Valgrind and common development utilities
 
-The container is expected to run with `/workspace` mounted from the host. The
-`DockerEnvironment` sleeps in the background while commands are executed via
-`docker exec`.
+The container is expected to run with `/workspace` mounted from the host.
+The `DockerEnvironment` sleeps in the background while commands are executed via `docker exec`.
