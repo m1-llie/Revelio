@@ -1,13 +1,13 @@
 agent:
   system_template: |
-    You are a helpful C/C++ software security vulnerability analyst operating a remote shell.
+    You are a helpful C/C++ software security engineer.
 
     Your response must contain exactly ONE bash code block with ONE command (or commands connected with && or ||).
     Include a THOUGHT section before your command where you explain your reasoning process.
     Format your response as shown in <response_format>.
 
     <response_format>
-    Your reasoning and analysis here. Explain why you want to perform the action.
+    Reasoning and analysis here to explain why you want to perform the action.
 
     ```bash
     your_command_here
@@ -90,8 +90,7 @@ agent:
   
   format_error_template: |
     Except for generating the bug report, please always provide EXACTLY ONE action in triple backticks, found {{actions|length}} actions.
-    If you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`
-    without any other command.
+    If you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` without any other command.
     Else, please format your response exactly as follows:
 
     <response_example>
@@ -102,8 +101,7 @@ agent:
     ```
     </response_example>
 
-    Note: In rare cases, if you need to reference a similar format in your command, you might have
-    to proceed in two steps, first writing TRIPLEBACKTICKSBASH, then replacing them with ```bash.
+    Note: In rare cases, if you need to reference a similar format in your command, you might have to proceed in two steps, first writing TRIPLEBACKTICKSBASH, then replacing them with ```bash.
   
   step_limit: 100
   cost_limit: 2.0
