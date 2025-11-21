@@ -8,6 +8,7 @@ import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 
 from jinja2 import StrictUndefined, Template
 
@@ -72,7 +73,8 @@ class DefaultAgent:
         )
 
     def add_message(self, role: str, content: str, **kwargs):
-        self.messages.append({"role": role, "content": content, **kwargs})
+        timestamp = datetime.now(timezone.utc).isoformat()
+        self.messages.append({"role": role, "content": content, "timestamp": timestamp, **kwargs})
 
     def run(self, task: str, **kwargs) -> tuple[str, str]:
         """Run step() until agent is finished. Return exit status & message"""

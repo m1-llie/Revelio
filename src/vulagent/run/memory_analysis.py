@@ -132,10 +132,12 @@ def main(
         console.print("[bold green]Starting agent...[/bold green]")
         console.print(f"[cyan]Trajectory will be written to:[/cyan] {output_path}")
         console.print(f"[cyan]Report will be written to:[/cyan] {report_path_planned}\n")
+        started_at = datetime.now(timezone.utc)
         exit_status, result = agent.run(
             task_description,
             project_path=str(workspace_project),
         )
+        finished_at = datetime.now(timezone.utc)
         copied_report: Path | None = None
         report_source = workspace_project / "final_report.md"
         report_destination = report_path_planned
@@ -167,6 +169,9 @@ def main(
             "exit_status": exit_status,
             "project_path": str(project_path),
             "docker_image": docker_image,
+            "started_at_utc": started_at.isoformat(),
+            "finished_at_utc": finished_at.isoformat(),
+            "duration_seconds": (finished_at - started_at).total_seconds(),
         }
         if copied_report:
             info["final_report_path"] = str(copied_report)
