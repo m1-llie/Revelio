@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -63,7 +64,7 @@ def main(
         None,
         "--output",
         "-o",
-        help="Where to store the resulting trajectory JSON (defaults to <project-name>_traj.json).",
+        help="Where to store the resulting trajectory JSON (defaults to output/trajectory/<project>_traj_<timestamp>.json).",
     ),
     keep_container: bool = typer.Option(
         False,
@@ -92,7 +93,15 @@ def main(
     console.print(f"[bold green]Docker image:[/bold green] {docker_image}")
     console.print(f"[bold green]Project path:[/bold green] {project_path}\n")
 
-    output_path = output or Path(f"{project_path.name}_traj.json")
+    # Prepare timestamped output paths
+    # Use UTC to keep timestamps consistent across hosts
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    default_traj_dir = Path("output/trajectory")
+    default_report_dir = Path("output/report")
+    default_traj_dir.mkdir(parents=True, exist_ok=True)
+    default_report_dir.mkdir(parents=True, exist_ok=True)
+
+    output_path = output or default_traj_dir / f"{project_path.name}_traj_{timestamp}.json"
 
 
     workspace_project = PROJECT_ROOT / project_path.name
@@ -119,15 +128,19 @@ def main(
             "if a vulnerability is detected."
         )
 
-        console.print("[bold green]Starting agent...[/bold green]\n")
+        report_path_planned = default_report_dir / f"{project_path.name}_report_{timestamp}.md"
+        console.print("[bold green]Starting agent...[/bold green]")
+        console.print(f"[cyan]Trajectory will be written to:[/cyan] {output_path}")
+        console.print(f"[cyan]Report will be written to:[/cyan] {report_path_planned}\n")
         exit_status, result = agent.run(
             task_description,
             project_path=str(workspace_project),
         )
         copied_report: Path | None = None
         report_source = workspace_project / "final_report.md"
-        report_destination = project_path / f"report_{project_path.name}.md"
+        report_destination = report_path_planned
         try:
+            report_destination.parent.mkdir(parents=True, exist_ok=True)
             copied_report = docker_env.copy_from(report_source, report_destination)
             console.print(f"[bold green]Final report copied to:[/bold green] {copied_report}")
         except FileNotFoundError:
@@ -160,6 +173,7 @@ def main(
         if verification:
             info["verification"] = verification.to_dict()
 
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         save_traj(agent, output_path, exit_status=exit_status, result=result, extra_info=info)
         console.print(f"\n[bold green]Trajectory saved to:[/bold green] {output_path}")
 
