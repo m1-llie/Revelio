@@ -122,6 +122,16 @@ def main(
             docker_env,
             **agent_config,
         )
+        # Add lightweight step logging so users see progress
+        step_counter = {"n": 0}
+        real_step = agent.step
+
+        def step_with_progress():
+            step_counter["n"] += 1
+            console.print(f"[dim]Step {step_counter['n']}: querying/executing...[/dim]")
+            return real_step()
+
+        agent.step = step_with_progress
 
         task_description = (
             "Analyze the project for potential memory-safety issues and provide a reproduction command "
