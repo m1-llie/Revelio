@@ -99,9 +99,17 @@ class DefaultAgent:
         """Query the model and return the response."""
         if 0 < self.config.step_limit <= self.model.n_calls or 0 < self.config.cost_limit <= self.model.cost:
             raise LimitsExceeded()
-        response = self.model.query(self.messages)
+        messages = [self._strip_metadata(m) for m in self.messages]
+        response = self.model.query(messages)
         self.add_message("assistant", **response)
         return response
+    
+    @staticmethod
+    def _strip_metadata(message: dict) -> dict:
+        """Remove local-only metadata fields before sending messages to the model."""
+        filtered = dict(message)
+        filtered.pop("timestamp", None)
+        return filtered
 
     def get_observation(self, response: dict) -> dict:
         """Execute the action and return the observation."""
