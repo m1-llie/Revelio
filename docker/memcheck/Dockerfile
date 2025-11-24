@@ -8,12 +8,14 @@ RUN apt-get update && \
         clang \
         gdb \
         cmake \
+        meson \
         git \
         python3 \
         python3-pip \
         python3-venv \
         ninja-build \
         pkg-config \
+        zlib1g-dev \
         valgrind \
         curl \
         vim \

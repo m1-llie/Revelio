@@ -10,8 +10,9 @@ docker build -t vulagent/memcheck:latest docker/memcheck
 
 ## Contents
 - Ubuntu 22.04
-- build-essential, clang, gdb, cmake, ninja
+- build-essential, clang, gdb, cmake, ninja, meson
 - Python 3 with pip, litellm (for parity with host tooling)
+- zlib1g-dev for common C deps
 - Valgrind and common development utilities
 
 The container is expected to run with `/workspace` mounted from the host.
