@@ -52,8 +52,8 @@ def main(
         None,
         "--model",
         "-m",
-        help="Model name (defaults to MSWEA_MODEL_NAME env var or config).",
-        prompt="Model name (leave blank to use default):",
+        envvar="MSWEA_MODEL_NAME",
+        help="Model name (set via --model or MSWEA_MODEL_NAME env var).",
     ),
     docker_image: str = typer.Option(
         DEFAULT_DOCKER_IMAGE,
