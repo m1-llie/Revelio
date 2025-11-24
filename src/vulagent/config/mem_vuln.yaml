@@ -21,20 +21,19 @@ agent:
   instance_template: |
     The C/C++ project to inspect is located at {{project_path}}.
 
-    You can execute bash commands and edit files to implement the necessary changes. You can also use other tools or scripts if necessary.
+    You can execute bash commands to do anything needed for finding and validating the vulnerabilities, for example, preparing the environment, editing files, using tools, writing/running scripts to implement necessary operations.
 
     ## Recommended Workflow
-
-    This workflows should be done step-by-step so that you can iterate on your actions and any possible problems.
 
     1. Understand the build system and available source files.
     2. Build the program with suitable hardening/sanitizer flags (e.g., -fsanitize=address, -g, -O0).
     3. Design inputs that exercise potential software vulnerability issues (buffer overflows, use-after-free, etc.).
-    4. If you suspect a vulnerability, craft a reproduction command. Capture the sanitizer/crash output if possible.
-    5. Create the final report as a Markdown document using the headings in <bug_report_format>. Save it as `final_report.md`, then display it to the user (for example, with `cat final_report.md`) before finishing.
-    6. Continue to inspect the project until you find no more vulnerabilities. After you have shown the final report for each vulnerability, finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+    4. Find whether there's already a test harness for the project. If so, use it to test the vulnerability.
+    5. If you suspect a vulnerability, craft a reproduction command. Capture the sanitizer/crash output if possible.
+    6. Create the final report as a Markdown document using the headings in <bug_report_format>. Save it as `final_report.md`, then display it to the user (for example, with `cat final_report.md`) before finishing.
+    7. Continue to inspect the project until you find no more vulnerabilities. After you have shown the final report for each vulnerability, finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
       Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
-    7. If you cannot find any issue after inspecting the project, create `final_report.md` stating that explicitly, describe what checks you performed, show it to the user, and then finish your work.
+    8. If you cannot find any issue after inspecting the project, create `final_report.md` stating that explicitly, describe what checks you performed, show it to the user, and then finish your work.
 
     ## Final bug report format
 
