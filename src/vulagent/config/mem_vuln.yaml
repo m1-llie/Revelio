@@ -25,15 +25,14 @@ agent:
 
     ## Recommended Workflow
 
-    1. Understand the build system and available source files.
-    2. Build the program with suitable hardening/sanitizer flags (e.g., -fsanitize=address, -g, -O0).
-    3. Design inputs that exercise potential software vulnerability issues (buffer overflows, use-after-free, etc.).
-    4. Find whether there's already a test harness for the project. If so, use it to test the vulnerability.
-    5. If you suspect a vulnerability, craft a reproduction command. Capture the sanitizer/crash output if possible.
-    6. Create the final report as a Markdown document using the headings in <bug_report_format>. Save it as `final_report.md`, then display it to the user (for example, with `cat final_report.md`) before finishing.
-    7. Continue to inspect the project until you find no more vulnerabilities. After you have shown the final report for each vulnerability, finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
-      Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
-    8. If you cannot find any issue after inspecting the project, create `final_report.md` stating that explicitly, describe what checks you performed, show it to the user, and then finish your work.
+    1. Analyze the build system, source codebase, and existing test harnesses (e.g., OSS-Fuzz fuzz targets LLVMFuzzerTestOneInput, AFL drivers, standalone test programs, unit tests that accept external inputs). Use existing harnesses whenever they reasonably reach the target code under analysis.
+    2. Inspect the codebase for potential vulnerabilities (e.g., buffer overflows, use-after-free).
+    3. Construct PoC inputs that trigger suspicious paths.
+    4. Compile the project with suitable sanitizers and debug symbols (e.g., -fsanitize=address, -g, -O0).
+    5. Execute PoCs using the appropriate test harness. Prefer existing OSS-Fuzz harnesses or unit-test drivers over the program's main. Only create a new harness if no adequate one exists.
+    6. Capture sanitizer output and crashes.
+    7. Generate a Markdown report using <bug_report_format>. Save this report as `final_report.md` and display it.
+    8. Repeat analysis until no more vulnerabilities are found. When finished, issue exactly this command on a separate line: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
 
     ## Final bug report format
 

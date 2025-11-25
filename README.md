@@ -39,7 +39,7 @@ python -m vulagent
 python -m vulagent.run.memory_analysis -p examples/bof -m openai/gpt-5-mini
 
 # Use Inspector to check trajectories
-python3 -m vulagent.run.inspector memory_analysis_traj.json
+python -m vulagent.run.inspector memory_analysis_traj.json
 
 # Or use the CLI
 vul-agent -t "Your vulnerability detection task"
