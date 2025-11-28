@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +27,35 @@ from vulagent.run.utils import save_traj, run_verification
 
 console = Console()
 app = typer.Typer(rich_markup_mode="rich")
+
+
+class LoggingConsole:
+    """Wrapper that logs console output to both terminal and file."""
+
+    def __init__(self, console: Console, log_path: Path | None = None):
+        self.console = console
+        self.log_file: Path | None = None
+        self._file_handle = None
+        if log_path:
+            self.set_log_file(log_path)
+
+    def set_log_file(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.log_file = path
+        self._file_handle = open(path, "a", encoding="utf-8")
+
+    def print(self, message: str, **kwargs) -> None:
+        self.console.print(message, **kwargs)
+        if self._file_handle:
+            clean_msg = re.sub(r"\[/?[^\]]+\]", "", message)
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            self._file_handle.write(f"{ts} | {clean_msg}\n")
+            self._file_handle.flush()
+
+    def close(self) -> None:
+        if self._file_handle:
+            self._file_handle.close()
+            self._file_handle = None
 
 DEFAULT_CONFIG = "mem_vuln.yaml"
 DEFAULT_DOCKER_IMAGE = "vulagent/memcheck:latest"
@@ -99,19 +129,24 @@ def main(
     default_traj_dir = Path("output/trajectory")
     default_report_dir = Path("output/report")
     default_poc_dir = Path("output/poc")
+    default_log_dir = Path("output/log")
     default_traj_dir.mkdir(parents=True, exist_ok=True)
     default_report_dir.mkdir(parents=True, exist_ok=True)
     default_poc_dir.mkdir(parents=True, exist_ok=True)
+    default_log_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = output or default_traj_dir / f"{project_path.name}_traj_{timestamp}.json"
+    log_path = default_log_dir / f"{project_path.name}_log_{timestamp}.txt"
 
+    log_console = LoggingConsole(console, log_path)
+    console.print(f"[cyan]Log will be written to:[/cyan] {log_path}")
 
     workspace_project = PROJECT_ROOT / project_path.name
     run_args = ["--rm"] if not keep_container else []
     docker_env = DockerEnvironment(image=docker_image, cwd=str(workspace_project), run_args=run_args)
 
     try:
-        copy_project_into_container(docker_env, project_path, workspace_project)
+        copy_project_into_container(docker_env, project_path, workspace_project, log_console)
 
         env_config = config_data.get("environment", {})
         docker_env.config.env.update(env_config.get("env", {}))
@@ -130,7 +165,7 @@ def main(
 
         def step_with_progress():
             step_counter["n"] += 1
-            console.print(f"[dim]Step {step_counter['n']}: querying/executing...[/dim]")
+            log_console.print(f"[dim]Step {step_counter['n']}: querying/executing...[/dim]")
             return real_step()
 
         agent.step = step_with_progress
@@ -142,10 +177,10 @@ def main(
 
         report_path_planned = default_report_dir / f"{project_path.name}_report_{timestamp}.md"
         poc_path_planned = default_poc_dir / f"{project_path.name}_poc_{timestamp}"
-        console.print("[bold green]Starting agent...[/bold green]")
-        console.print(f"[cyan]Trajectory will be written to:[/cyan] {output_path}")
-        console.print(f"[cyan]Report will be written to:[/cyan] {report_path_planned}")
-        console.print(f"[cyan]PoC will be written to:[/cyan] {poc_path_planned}\n")
+        log_console.print("[bold green]Starting agent...[/bold green]")
+        log_console.print(f"[cyan]Trajectory will be written to:[/cyan] {output_path}")
+        log_console.print(f"[cyan]Report will be written to:[/cyan] {report_path_planned}")
+        log_console.print(f"[cyan]PoC will be written to:[/cyan] {poc_path_planned}\n")
         started_at = datetime.now(timezone.utc)
         exit_status, result = agent.run(
             task_description,
@@ -158,26 +193,26 @@ def main(
         try:
             report_destination.parent.mkdir(parents=True, exist_ok=True)
             copied_report = docker_env.copy_from(report_source, report_destination)
-            console.print(f"[bold green]Final report copied to:[/bold green] {copied_report}")
+            log_console.print(f"[bold green]Final report copied to:[/bold green] {copied_report}")
         except FileNotFoundError:
-            console.print("[bold yellow]No final_report.md generated inside the container.[/bold yellow]")
+            log_console.print("[bold yellow]No final_report.md generated inside the container.[/bold yellow]")
         except RuntimeError as error:
-            console.print(f"[bold red]Failed to copy final_report.md:[/bold red] {error}")
+            log_console.print(f"[bold red]Failed to copy final_report.md:[/bold red] {error}")
 
         copied_poc: Path | None = None
         poc_source = workspace_project / "poc"
         try:
             poc_path_planned.parent.mkdir(parents=True, exist_ok=True)
             copied_poc = docker_env.copy_from(poc_source, poc_path_planned)
-            console.print(f"[bold green]PoC file copied to:[/bold green] {copied_poc}")
+            log_console.print(f"[bold green]PoC file copied to:[/bold green] {copied_poc}")
         except FileNotFoundError:
-            console.print("[bold yellow]No poc file generated inside the container.[/bold yellow]")
+            log_console.print("[bold yellow]No poc file generated inside the container.[/bold yellow]")
         except RuntimeError as error:
-            console.print(f"[bold red]Failed to copy poc file:[/bold red] {error}")
+            log_console.print(f"[bold red]Failed to copy poc file:[/bold red] {error}")
 
         verification = None
         if "status: vulnerable" in result.lower():
-            console.print("\n[bold cyan]Attempting automatic verification...[/bold cyan]")
+            log_console.print("\n[bold cyan]Attempting automatic verification...[/bold cyan]")
             reproduction_cmd = extract_reproduction_command(result)
             if reproduction_cmd:
                 verification = run_verification(
@@ -186,9 +221,9 @@ def main(
                     cwd=str(workspace_project),
                 )
                 status = "successful" if verification.crash_detected else "failed"
-                console.print(f"[bold cyan]Verification {status}.[/bold cyan]")
+                log_console.print(f"[bold cyan]Verification {status}.[/bold cyan]")
             else:
-                console.print("[bold yellow]No reproduction command detected in final report.[/bold yellow]")
+                log_console.print("[bold yellow]No reproduction command detected in final report.[/bold yellow]")
 
         info = {
             "exit_status": exit_status,
@@ -197,6 +232,7 @@ def main(
             "started_at_utc": started_at.isoformat(),
             "finished_at_utc": finished_at.isoformat(),
             "duration_seconds": (finished_at - started_at).total_seconds(),
+            "log_path": str(log_path),
         }
         if copied_report:
             info["final_report_path"] = str(copied_report)
@@ -207,15 +243,16 @@ def main(
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         save_traj(agent, output_path, exit_status=exit_status, result=result, extra_info=info)
-        console.print(f"\n[bold green]Trajectory saved to:[/bold green] {output_path}")
+        log_console.print(f"\n[bold green]Trajectory saved to:[/bold green] {output_path}")
 
     finally:
+        log_console.close()
         if not keep_container:
             docker_env.cleanup()
 
 
-def copy_project_into_container(env: DockerEnvironment, project_path: Path, destination: Path) -> None:
-    console.print("[yellow]Copying project into Docker workspace...[/yellow]")
+def copy_project_into_container(env: DockerEnvironment, project_path: Path, destination: Path, log_console: LoggingConsole) -> None:
+    log_console.print("[yellow]Copying project into Docker workspace...[/yellow]")
 
     archive_cmd = [
         "tar",
