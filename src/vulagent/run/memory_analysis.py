@@ -94,7 +94,7 @@ def main(
         None,
         "--output",
         "-o",
-        help="Where to store the resulting trajectory JSON (defaults to output/trajectory/<project>_traj_<timestamp>.json).",
+        help="Where to store the trajectory JSON (defaults to output/<project>_<timestamp>/trajectory.json).",
     ),
     keep_container: bool = typer.Option(
         False,
@@ -126,20 +126,14 @@ def main(
     # Prepare timestamped output paths
     # Use UTC to keep timestamps consistent across hosts
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    default_traj_dir = Path("output/trajectory")
-    default_report_dir = Path("output/report")
-    default_poc_dir = Path("output/poc")
-    default_log_dir = Path("output/log")
-    default_traj_dir.mkdir(parents=True, exist_ok=True)
-    default_report_dir.mkdir(parents=True, exist_ok=True)
-    default_poc_dir.mkdir(parents=True, exist_ok=True)
-    default_log_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = Path("output") / f"{project_path.name}_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = output or default_traj_dir / f"{project_path.name}_traj_{timestamp}.json"
-    log_path = default_log_dir / f"{project_path.name}_log_{timestamp}.txt"
+    output_path = output or run_dir / "trajectory.json"
+    log_path = run_dir / "log.txt"
 
     log_console = LoggingConsole(console, log_path)
-    console.print(f"[cyan]Log will be written to:[/cyan] {log_path}")
+    console.print(f"[cyan]Run output directory:[/cyan] {run_dir}")
 
     workspace_project = PROJECT_ROOT / project_path.name
     run_args = ["--rm"] if not keep_container else []
@@ -175,12 +169,9 @@ def main(
             "if a vulnerability is detected."
         )
 
-        report_path_planned = default_report_dir / f"{project_path.name}_report_{timestamp}.md"
-        poc_path_planned = default_poc_dir / f"{project_path.name}_poc_{timestamp}"
-        log_console.print("[bold green]Starting agent...[/bold green]")
-        log_console.print(f"[cyan]Trajectory will be written to:[/cyan] {output_path}")
-        log_console.print(f"[cyan]Report will be written to:[/cyan] {report_path_planned}")
-        log_console.print(f"[cyan]PoC will be written to:[/cyan] {poc_path_planned}\n")
+        report_path_planned = run_dir / "report.md"
+        poc_path_planned = run_dir / "poc"
+        log_console.print("[bold green]Starting agent...[/bold green]\n")
         started_at = datetime.now(timezone.utc)
         exit_status, result = agent.run(
             task_description,
@@ -232,10 +223,10 @@ def main(
             "started_at_utc": started_at.isoformat(),
             "finished_at_utc": finished_at.isoformat(),
             "duration_seconds": (finished_at - started_at).total_seconds(),
-            "log_path": str(log_path),
+            "run_dir": str(run_dir),
         }
         if copied_report:
-            info["final_report_path"] = str(copied_report)
+            info["report_path"] = str(copied_report)
         if copied_poc:
             info["poc_path"] = str(copied_poc)
         if verification:
