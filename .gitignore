@@ -1,4 +1,7 @@
 PROJECT_STRUCTURE.md
+examples/
+output/
+*_traj.json
 
 patch.txt
 exit_statuses*.yaml
