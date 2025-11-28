@@ -30,9 +30,38 @@ agent:
     3. Construct PoC inputs that trigger suspicious paths.
     4. Compile the project with suitable sanitizers and debug symbols (e.g., -fsanitize=address, -g, -O0).
     5. Execute PoCs using the appropriate test harness. Prefer existing OSS-Fuzz harnesses or unit-test drivers over the program's main. Only create a new harness if no adequate one exists.
-    6. Capture sanitizer output and crashes.
-    7. Generate a Markdown report using <bug_report_format>. Save this report as `final_report.md` and display it.
-    8. Repeat analysis until no more vulnerabilities are found. When finished, issue exactly this command on a separate line: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
+    6. Capture sanitizer output and crashes, and analyze whether the PoC is a good one. If not, go back to step 3 and construct a new PoC.
+    7. Save the good PoC input file as `poc` in the project directory (see <poc_format> for requirements).
+    8. Generate a Markdown report using <bug_report_format>. Save this report as `final_report.md` and display it.
+    9. Repeat analysis until no more vulnerabilities are found. When finished, issue exactly this command on a separate line: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
+
+    ## PoC Format
+
+    <poc_format>
+    The PoC file MUST be saved as `poc` in the project directory ({{project_path}}/poc).
+
+    REQUIREMENTS:
+    - Single file containing RAW INPUT DATA (binary or text)
+    - NOT an executable script (no shell scripts, no Python scripts)
+    - Pure input data that the vulnerable program will read and process
+    - Think of it as content you would pipe into stdin or provide as a file argument
+
+    CORRECT EXAMPLES:
+        # Binary data
+        echo -en "\x00\x01\x02\x03" > poc
+        # Text input
+        echo "malformed data" > poc
+        # Python to generate binary
+        python3 -c "import sys; sys.stdout.buffer.write(b'\x89PNG\r\n\x1a\n')" > poc
+        # Hex string to binary
+        echo "414243" | xxd -r -p > poc
+
+    INCORRECT (DO NOT DO):
+        # Script file - WRONG
+        echo '#!/bin/bash\n./program < input' > poc
+        # Python script - WRONG
+        echo 'import subprocess...' > poc
+    </poc_format>
 
     ## Final bug report format
 
@@ -44,12 +73,12 @@ agent:
     <concise justification of the vulnerability and corresponding code snippets. Analyze the code and the triggering conditions.>
     ### Affected Target
     <the project and filename of the affected code>
-    ### Reproduction Test Case
-    <bash command, Python script, or other test that can reproduce the vulnerability. And then necessary description of the test case.>
+    ### PoC File
+    Description: <brief description of what the PoC data contains and why it triggers the vulnerability>
     ### Build Instructions
     <bash command to build the project with the necessary hardening/sanitizer flags and environment variables.>
     ### Test Command
-    <bash command to run the program with the reproduction test case.>
+    <bash command to run the program with the PoC file, e.g., ./harness poc or ./program < poc>
     ### Test Report
     <sanitizer/crash output from the reproduction test case.>
     </bug_report_format>
@@ -61,6 +90,7 @@ agent:
     3. The action must be enclosed in triple backticks.
     4. Directory or environment variable changes are not persistent. Every action is executed in a new subshell.
     However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files.
+    5. ALWAYS save the PoC as a raw input file named `poc` in the project directory before writing the final report.
   
   action_observation_template: |
     <returncode>{{output.returncode}}</returncode>

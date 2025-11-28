@@ -98,8 +98,10 @@ def main(
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     default_traj_dir = Path("output/trajectory")
     default_report_dir = Path("output/report")
+    default_poc_dir = Path("output/poc")
     default_traj_dir.mkdir(parents=True, exist_ok=True)
     default_report_dir.mkdir(parents=True, exist_ok=True)
+    default_poc_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = output or default_traj_dir / f"{project_path.name}_traj_{timestamp}.json"
 
@@ -139,9 +141,11 @@ def main(
         )
 
         report_path_planned = default_report_dir / f"{project_path.name}_report_{timestamp}.md"
+        poc_path_planned = default_poc_dir / f"{project_path.name}_poc_{timestamp}"
         console.print("[bold green]Starting agent...[/bold green]")
         console.print(f"[cyan]Trajectory will be written to:[/cyan] {output_path}")
-        console.print(f"[cyan]Report will be written to:[/cyan] {report_path_planned}\n")
+        console.print(f"[cyan]Report will be written to:[/cyan] {report_path_planned}")
+        console.print(f"[cyan]PoC will be written to:[/cyan] {poc_path_planned}\n")
         started_at = datetime.now(timezone.utc)
         exit_status, result = agent.run(
             task_description,
@@ -159,6 +163,17 @@ def main(
             console.print("[bold yellow]No final_report.md generated inside the container.[/bold yellow]")
         except RuntimeError as error:
             console.print(f"[bold red]Failed to copy final_report.md:[/bold red] {error}")
+
+        copied_poc: Path | None = None
+        poc_source = workspace_project / "poc"
+        try:
+            poc_path_planned.parent.mkdir(parents=True, exist_ok=True)
+            copied_poc = docker_env.copy_from(poc_source, poc_path_planned)
+            console.print(f"[bold green]PoC file copied to:[/bold green] {copied_poc}")
+        except FileNotFoundError:
+            console.print("[bold yellow]No poc file generated inside the container.[/bold yellow]")
+        except RuntimeError as error:
+            console.print(f"[bold red]Failed to copy poc file:[/bold red] {error}")
 
         verification = None
         if "status: vulnerable" in result.lower():
@@ -185,6 +200,8 @@ def main(
         }
         if copied_report:
             info["final_report_path"] = str(copied_report)
+        if copied_poc:
+            info["poc_path"] = str(copied_poc)
         if verification:
             info["verification"] = verification.to_dict()
 
