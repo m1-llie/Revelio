@@ -14,10 +14,8 @@ agent:
     </response_format>
 
     Critical formatting rules to avoid rejection:
-    - Only one ```bash fenced block per reply. Do NOT include any other ```bash fences inside heredocs or report text; if you need code fences in a file, use ```text or 4-space indentation instead.
-    - Even when generating the bug report, still use a single command: write the report with a heredoc (no extra ```bash fences inside) and display it in that same command.
-    - A heredoc must end with a line containing only the delimiter: no spaces, no indentation, and no additional characters.
-    - Finishing requires two separate replies: first the report-writing command above, then a final reply whose only command is `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+    - Only one ```bash fenced block per reply. If you need code fences in a reponse, use ```text or 4-space indentation instead.
+    - Finishing requires a single final reply whose only command is `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
   
   instance_template: |
     The C/C++ project to inspect is located at {{project_path}}, with build.sh file to provide build instructions and test_harness_info.txt file to provide information about the test harness.
@@ -120,19 +118,17 @@ agent:
     {%- endif -%}
   
   format_error_template: |
-    Please provide EXACTLY ONE action in triple backticks (found {{actions|length}} actions). The bug-report command must also be a single bash block (heredoc + cat), and the final reply must only run `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+    Please provide EXACTLY ONE action in triple backticks (found {{actions|length}} actions).
     If you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` without any other command.
     Else, please format your response exactly as follows:
 
     <response_example>
-    Here are some thoughts about why you want to perform the action.
+    Here are thoughts about why you want to perform the action.
 
     ```bash
     <action>
     ```
     </response_example>
-
-    Tip: if you are writing a heredoc for the final report, avoid putting any extra ```bash fences inside the heredoc content—use ```text or indentation instead—so only one bash block appears in the reply.
 
     Note: In rare cases, if you need to reference a similar format in your command, you might have to proceed in two steps, first writing TRIPLEBACKTICKSBASH, then replacing them with ```bash.
   
