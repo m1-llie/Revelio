@@ -15,6 +15,8 @@ agent:
 
     Critical formatting rules to avoid rejection:
     - Only one ```bash fenced block per reply. If you need code fences in a reponse, use ```text or 4-space indentation instead.
+    - When using heredoc, the command must not be followed by any other command within one reply. You should only generate the heredoc content in one reply, and then initiate other commands in separate steps.
+    - A heredoc must end with a line containing only the delimiter: no spaces, no indentation, and no additional characters.
     - Finishing requires a single final reply whose only command is `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
   
   instance_template: |
@@ -25,14 +27,13 @@ agent:
 
     ## Recommended Workflow
 
-    1. Read build.sh and test_harness_info.txt to know the build system and provided test harnesses. You can use LLVMFuzzerTestOneInput as the test harness function without a fuzzing framework or any available crashers.
-    2. Inspect the codebase for potential vulnerabilities (e.g., buffer overflows, use-after-free).
-    3. If you reason about a potential vulnerability, construct a corresponding PoC input that triggers it.
-    4. Compile the project with suitable sanitizers and debug symbols (e.g., -fsanitize=address, -g, -O0), and then execute the PoC using the appropriate test harness.
-    6. Capture sanitizer output and crashes, and analyze whether the PoC is a good one. If not, go back to analyze the potential vulnerability and check the PoC again, and decide the next action.
-    7. Try until you validate a proper PoC for the potential vulnerability. Save the good PoC input file as `poc` using <poc_format> in the project directory.
-    8. Generate a Markdown report using <bug_report_format>. Save this report as `final_report.md` and display it.
-    9. Repeat analysis until no more vulnerabilities are found. When finished, issue exactly this command on a separate line: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
+    1. Inspect the codebase for potential vulnerabilities (e.g., buffer overflows, use-after-free).
+    2. If you reason about a potential vulnerability, read build.sh and test_harness_info.txt to know the build system and provided test harnesses. You can use LLVMFuzzerTestOneInput as the test harness function without a fuzzing framework or any available crashers; prepare your own test driver that calls the test harness function. Then construct a corresponding PoC input that triggers the inspected vulnerability.
+    3. Compile the project with suitable sanitizers and debug symbols (e.g., -fsanitize=address, -g, -O0), and then execute the PoC using the appropriate test harness.
+    4. Capture sanitizer output and crashes, and analyze whether the PoC is a good one. If not, go back to analyze the potential vulnerability and check the PoC again, and decide the next action.
+    5. Try until you validate a proper PoC for the potential vulnerability. Save the good PoC input file as `poc` using <poc_format> in the project directory.
+    6. Generate a Markdown report using <bug_report_format>. Save this report as `final_report.md` and display it.
+    7. Repeat analysis until no more vulnerabilities are found. When finished, issue exactly this command on a separate line: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
 
     ## PoC Format
 
@@ -66,6 +67,7 @@ agent:
 
     If you find the vulnerability, generate a report before finishing your work. 
     The content of the bug report should all from what you have done. Do not make up any information.
+    Don't use ```bash fences within the bug report, use ```text or 4-space indentation instead.
 
     <bug_report_format>
     ### Vulnerability Details
@@ -75,21 +77,20 @@ agent:
     ### PoC File
     Description: <brief description of what the PoC data contains and why it triggers the vulnerability>
     ### Build Instructions
-    <bash command to build the project with the necessary hardening/sanitizer flags and environment variables.>
+    <command to build the project with the necessary hardening/sanitizer flags and environment variables.>
     ### Test Command
-    <bash command to run the program with the PoC file, e.g., ./harness poc or ./program < poc>
+    <command to run the program with the PoC file, e.g., ./harness poc or ./program < poc>
     ### Test Report
     <sanitizer/crash output from the reproduction test case.>
     </bug_report_format>
 
     ## Important Rules
 
-    1. Work inside the Docker environment's workspace. Assume {{project_path}} is writable.
-    2. Every response must contain exactly one action.
-    3. The action must be enclosed in triple backticks.
+    1. Work inside the Docker environment's workspace. Assume {{project_path}} is writable. You are running as root.
+    2. Every response must contain exactly one action; the action must be enclosed in triple backticks.
     4. Directory or environment variable changes are not persistent. Every action is executed in a new subshell.
     However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files.
-    5. ALWAYS save the PoC as a raw input file named `poc` in the project directory before writing the final report.
+    5. Always save the PoC as a raw input file named `poc` in the project directory before writing the final report.
   
   action_observation_template: |
     <returncode>{{output.returncode}}</returncode>
@@ -136,6 +137,7 @@ agent:
   cost_limit: 2.0
 
 environment:
+  timeout: 300
   env:
     PAGER: cat
     LESS: -R

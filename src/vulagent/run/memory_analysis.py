@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the memory vulnerability detection workflow inside Docker.
 
-- Builds a Docker sandbox (vulagent/memcheck) and copies the target project into /workspace/project/<name>.
+- Builds a Docker sandbox (vulagent/memcheck) and copies the target project into /workspace/src/.
 - Loads the new mem_vuln.yaml config, instantiates DefaultAgent and model, and runs the analysis task.
 - If the final report claims a vulnerability, automatically runs the reproduction command via run_verification.
 - Saves everything (including verification metadata) with save_traj.
@@ -59,8 +59,8 @@ class LoggingConsole:
 
 DEFAULT_CONFIG = "mem_vuln.yaml"
 DEFAULT_DOCKER_IMAGE = "vulagent/memcheck:latest"
-WORKSPACE_ROOT = Path("/workspace")
-PROJECT_ROOT = WORKSPACE_ROOT / "project"
+WORKSPACE_ROOT = Path("/")
+PROJECT_ROOT = WORKSPACE_ROOT / "src"
 DEFAULT_OUTPUT = None
 
 
@@ -135,14 +135,18 @@ def main(
     log_console = LoggingConsole(console, log_path)
     console.print(f"[cyan]Run output directory:[/cyan] {run_dir}")
 
-    workspace_project = PROJECT_ROOT / project_path.name
+    workspace_project = PROJECT_ROOT
     run_args = ["--rm"] if not keep_container else []
-    docker_env = DockerEnvironment(image=docker_image, cwd=str(workspace_project), run_args=run_args)
+    env_config = config_data.get("environment", {})
+    docker_env = DockerEnvironment(
+        image=docker_image,
+        cwd=str(workspace_project),
+        run_args=run_args,
+        timeout=env_config.get("timeout", 120),
+    )
 
     try:
         copy_project_into_container(docker_env, project_path, workspace_project, log_console)
-
-        env_config = config_data.get("environment", {})
         docker_env.config.env.update(env_config.get("env", {}))
 
         agent_config = config_data.get("agent", {})
@@ -255,8 +259,8 @@ def copy_project_into_container(env: DockerEnvironment, project_path: Path, dest
     ]
 
     extract_cmd = (
-        f"mkdir -p {destination.parent} && rm -rf {destination} && "
-        f"tar -C {destination.parent} -xf -"
+        f"mkdir -p {destination} && rm -rf {destination}/* && "
+        f"tar -C {destination} --strip-components=1 -xf -"
     )
 
     with subprocess.Popen(archive_cmd, stdout=subprocess.PIPE) as tar_proc:

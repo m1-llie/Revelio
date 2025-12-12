@@ -19,6 +19,7 @@ RUN apt-get update && \
         valgrind \
         curl \
         vim \
+        sudo \
     && rm -rf /var/lib/apt/lists/*
 
 # Create workspace and set default working directory
