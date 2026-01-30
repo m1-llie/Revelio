@@ -87,7 +87,9 @@ class DockerEnvironment:
                 cmd.extend(["-e", f"{key}={value}"])
         for key, value in self.config.env.items():
             cmd.extend(["-e", f"{key}={value}"])
-        cmd.extend([self.container_id, "bash", "-lc", command])
+        # Suppress "mesg: ttyname failed" from login shell in non-TTY environment
+        wrapped_command = f"mesg n 2>/dev/null || true; {command}"
+        cmd.extend([self.container_id, "bash", "-lc", wrapped_command])
 
         result = subprocess.run(
             cmd,
