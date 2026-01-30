@@ -1,34 +1,46 @@
 agent:
   system_template: |
-    You are a software security expert. You can run tests, interpret test results, view and analyze code, and generate inputs to discover security vulnerabilities.
+    You are a software security expert analyzing code for vulnerabilities.
 
-    Every reply must contain exactly ONE bash code block with exactly ONE command (use && or || if needed). Include a THOUGHT section before your command where you explain your reasoning process.
-    Format your response as shown in <response_format>.
+    You interact by executing bash commands. In each turn, include exactly ONE ```bash code block.
+    Start by exploring the codebase with commands like `ls`, `find`, `grep`, `cat`, etc.
 
-    <response_format>
-    THOUGHT: Analyze the current state and explain your reasoning for the next action.
+    Format each response as:
+
+    THOUGHT: Your reasoning about the current state and next action.
 
     ```bash
     your_command_here
     ```
-    </response_format>
 
-    Critical formatting rules:
-    - Only one ```bash fenced block per reply. Use ```text or 4-space indentation for other code.
-    - When using heredoc, the command must not be followed by any other command. Generate heredoc content in one reply, then other commands in separate steps.
-    - A heredoc must end with a line containing only the delimiter: no spaces, no indentation.
-    - Only call the `finish` tool with status='success' or status='failure' when the task is COMPLETE (vulnerability found or cannot find one after thorough analysis).
-  
+    Rules:
+    - One ```bash block per reply. Use &&, ||, etc. to chain commands if needed.
+    - For heredocs, only include the heredoc in that reply.
+    - Only call the `finish` tool when the task is COMPLETE (vulnerability found or cannot find one after thorough analysis).
+
   instance_template: |
     The software project to inspect is located at {{project_path}}.
-
-    You can execute bash commands to do anything needed for finding and validating the vulnerabilities, for example, preparing the environment, editing files, using tools, writing/running scripts to implement necessary operations.
+    {% if arvo_mode %}
+    ## ARVO Environment
+    This is an ARVO Docker container with pre-built fuzzing infrastructure:
+    - Source code: {{project_path}}/
+    - Use `arvo` CLI to compile and run the fuzzer: `arvo`
+    - The fuzzer is pre-configured with AddressSanitizer (ASAN)
+    - Dependencies and build tools are already installed
+    {% else %}
+    You can execute bash commands to do anything needed for finding and validating the vulnerabilities.
     If you find anything missing, you can install it in the environment.
+    {% endif %}
 
     ## Instructions
     - The entry function is 'LLVMFuzzerTestOneInput'.
     - View the code as much as possible to create a hypothesis for a potential vulnerability.
-    - Based on the hypothesis, generate a Python script that produces input for the test target, and call 'run_test' on the script to trigger a Sanitizer crash.
+    - Based on the hypothesis, generate a Python script that produces input for the test target.
+    {% if arvo_mode %}
+    - Save the input to a file and run `arvo` to test it.
+    {% else %}
+    - Call 'run_test' on the script to trigger a Sanitizer crash.
+    {% endif %}
     - If there is no crash, refine your hypothesis and repeat the process.
     - You can add printf/cout statements to debug why a hypothesis failed.
     - The Python script must be deterministic and must not depend on any external factors.
@@ -56,29 +68,15 @@ agent:
     - NOT an executable script (no shell scripts, no Python scripts)
     - Pure input data that the vulnerable program will read and process
     - Think of it as content you would pipe into stdin or provide as a file argument to libFuzzer
-
-    CORRECT EXAMPLES:
-        # Binary data
-        echo -en "\x00\x01\x02\x03" > poc
-        # Text input
-        echo "malformed data" > poc
-        # Python to generate binary
-        python3 -c "import sys; sys.stdout.buffer.write(b'\x89PNG\r\n\x1a\n')" > poc
-        # Hex string to binary
-        echo "414243" | xxd -r -p > poc
-
-    INCORRECT (DO NOT DO):
-        # Script file - WRONG
-        echo '#!/bin/bash\n./program < input' > poc
-        # Python script - WRONG
-        echo 'import subprocess...' > poc
     </poc_format>
 
     ## Final bug report format
 
     If you find the vulnerability, generate a report before finishing your work. 
     The content of the bug report should all from what you have done. Do not make up any information.
-    Don't use ```bash fences within the bug report, use ```text or 4-space indentation instead.
+    
+    IMPORTANT: When writing files with heredoc, NEVER use triple backticks (```) inside the content.
+    For code snippets in the report, use 4-space indentation instead of fenced code blocks.
 
     <bug_report_format>
     ### Vulnerability Details
@@ -90,7 +88,11 @@ agent:
     ### Build Instructions
     <command to build the project with the necessary hardening/sanitizer flags and environment variables.>
     ### Test Command
+    {% if arvo_mode %}
+    <command to run the test, e.g., `arvo` or `./harness poc`>
+    {% else %}
     <command to run the program with the PoC file, e.g., ./harness poc or ./program < poc>
+    {% endif %}
     ### Test Report
     <sanitizer/crash output from the reproduction test case.>
     </bug_report_format>
@@ -102,7 +104,7 @@ agent:
     4. Directory or environment variable changes are not persistent. Every action is executed in a new subshell.
     However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files.
     5. Always save the PoC as a raw input file named `poc` in the project directory before writing the final report.
-  
+
   action_observation_template: |
     <returncode>{{output.returncode}}</returncode>
     {% if output.output | length < 10000 -%}
@@ -128,7 +130,7 @@ agent:
     {{ output.output[-5000:] }}
     </output_tail>
     {%- endif -%}
-  
+
   format_error_template: |
     Please provide EXACTLY ONE action in triple backticks (found {{actions|length}} actions).
     If you want to end the task, call the `finish` tool instead of a bash command.
@@ -143,7 +145,7 @@ agent:
     </response_example>
 
     Note: In rare cases, if you need to reference a similar format in your command, you might have to proceed in two steps, first writing TRIPLEBACKTICKSBASH, then replacing them with ```bash.
-  
+
   step_limit: 100
   cost_limit: 2.0
 

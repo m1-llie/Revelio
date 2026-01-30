@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-"""Run the memory vulnerability detection workflow inside Docker.
+"""Run the vulnerability detection workflow inside Docker.
 
-- Builds a Docker sandbox (vulagent/memcheck) and copies the target project into /workspace/src/.
-- Loads the new mem_vuln.yaml config, instantiates DefaultAgent and model, and runs the analysis task.
-- If the final report claims a vulnerability, automatically runs the reproduction command via run_verification.
-- Saves everything (including verification metadata) with save_traj.
+Supports multiple target sources:
+- ARVO: Pre-built Docker images with fuzzing infrastructure (--arvo)
+- Custom projects: Local projects copied into container (--project)
+
+Examples:
+    # ARVO target
+    python -m vulagent.run.detect --arvo n132/arvo:42470801-vul
+
+    # Custom project
+    python -m vulagent.run.detect --project ./examples/bof
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -57,20 +64,45 @@ class LoggingConsole:
             self._file_handle.close()
             self._file_handle = None
 
-DEFAULT_CONFIG = "mem_vuln.yaml"
-DEFAULT_DOCKER_IMAGE = "vulagent/memcheck:latest"
+
+DEFAULT_CONFIG = "vuln.yaml"
+ARVO_TARGETS_FILE = "arvo_targets.json"
 WORKSPACE_ROOT = Path("/")
 PROJECT_ROOT = WORKSPACE_ROOT / "src"
-DEFAULT_OUTPUT = None
+
+
+def load_arvo_targets() -> list[str]:
+    """Load the list of valid ARVO target images."""
+    targets_path = get_config_path(ARVO_TARGETS_FILE)
+    if targets_path.exists():
+        return json.loads(targets_path.read_text())
+    return []
+
+
+def get_run_name(arvo_image: str | None, project_path: Path | None) -> str:
+    """Generate a run name based on the target source."""
+    if arvo_image:
+        # Extract tag from image name: n132/arvo:42470801-vul -> arvo-42470801-vul
+        tag = arvo_image.split(":")[-1] if ":" in arvo_image else arvo_image
+        return f"arvo-{tag}"
+    elif project_path:
+        return project_path.name
+    return "unknown"
 
 
 @app.command()
 def main(
-    project_path: Path = typer.Option(
-        Path("examples/bof"),
-        "--project-path",
+    arvo: Optional[str] = typer.Option(
+        None,
+        "--arvo",
+        "-a",
+        help="ARVO Docker image (e.g., n132/arvo:42470801-vul).",
+    ),
+    project_path: Optional[Path] = typer.Option(
+        None,
+        "--project",
         "-p",
-        help="Path to the C/C++ project to analyse.",
+        help="Path to a local software project to analyse.",
     ),
     config: str = typer.Option(
         DEFAULT_CONFIG,
@@ -85,16 +117,16 @@ def main(
         envvar="MSWEA_MODEL_NAME",
         help="Model name (set via --model or MSWEA_MODEL_NAME env var).",
     ),
-    docker_image: str = typer.Option(
-        DEFAULT_DOCKER_IMAGE,
+    docker_image: Optional[str] = typer.Option(
+        None,
         "--docker-image",
-        help="Docker image to use for the sandbox environment.",
+        help="Docker image for custom projects (ignored when using --arvo).",
     ),
     output: Path | None = typer.Option(
         None,
         "--output",
         "-o",
-        help="Where to store the trajectory JSON (defaults to output/<project>_<timestamp>/trajectory.json).",
+        help="Where to store the trajectory JSON (defaults to output/<target>_<timestamp>/trajectory.json).",
     ),
     keep_container: bool = typer.Option(
         False,
@@ -102,12 +134,40 @@ def main(
         help="Do not auto-remove container on exit (useful for debugging).",
     ),
 ) -> None:
-    """Analyze *project_path* for memory-safety issues inside Docker."""
+    """Analyze a target for software vulnerabilities inside Docker.
 
-    project_path = project_path.resolve()
-    if not project_path.exists():
-        console.print(f"[bold red]Project path does not exist:[/bold red] {project_path}")
+    Use --arvo for ARVO targets or --project for custom local projects.
+    """
+    # Validate mutually exclusive options
+    if arvo and project_path:
+        console.print("[bold red]Cannot specify both --arvo and --project.[/bold red]")
         raise typer.Exit(1)
+
+    if not arvo and not project_path:
+        console.print("[bold red]Must specify either --arvo or --project.[/bold red]")
+        console.print("Examples:")
+        console.print("  python -m vulagent.run.detect --arvo n132/arvo:42470801-vul")
+        console.print("  python -m vulagent.run.detect --project ./examples/bof")
+        raise typer.Exit(1)
+
+    # Determine mode and validate
+    arvo_mode = arvo is not None
+
+    if arvo_mode:
+        # Validate ARVO image format
+        if ":" not in arvo:
+            console.print(f"[bold red]Invalid ARVO image format:[/bold red] {arvo}")
+            console.print("Expected format: n132/arvo:<tag> (e.g., n132/arvo:42470801-vul)")
+            raise typer.Exit(1)
+        image = arvo
+        run_name = get_run_name(arvo, None)
+    else:
+        project_path = project_path.resolve()
+        if not project_path.exists():
+            console.print(f"[bold red]Project path does not exist:[/bold red] {project_path}")
+            raise typer.Exit(1)
+        image = docker_image or "vulagent/memcheck:latest"
+        run_name = get_run_name(None, project_path)
 
     config_path = get_config_path(config)
     config_data = load_yaml(config_path)
@@ -120,13 +180,16 @@ def main(
         raise typer.Exit(1)
 
     console.print(f"[bold green]Model:[/bold green] {model_name}")
-    console.print(f"[bold green]Docker image:[/bold green] {docker_image}")
-    console.print(f"[bold green]Project path:[/bold green] {project_path}\n")
+    console.print(f"[bold green]Docker image:[/bold green] {image}")
+    if arvo_mode:
+        console.print("[bold green]Mode:[/bold green] ARVO")
+    else:
+        console.print(f"[bold green]Project path:[/bold green] {project_path}")
+    console.print()
 
     # Prepare timestamped output paths
-    # Use UTC to keep timestamps consistent across hosts
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    run_dir = Path("output") / f"{project_path.name}_{timestamp}"
+    run_dir = Path("output") / f"{run_name}_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = output or run_dir / "trajectory.json"
@@ -138,15 +201,20 @@ def main(
     workspace_project = PROJECT_ROOT
     run_args = ["--rm"] if not keep_container else []
     env_config = config_data.get("environment", {})
+
     docker_env = DockerEnvironment(
-        image=docker_image,
+        image=image,
         cwd=str(workspace_project),
         run_args=run_args,
         timeout=env_config.get("timeout", 120),
     )
 
     try:
-        copy_project_into_container(docker_env, project_path, workspace_project, log_console)
+        # For custom projects, copy files into container
+        # For ARVO, source code is already in the image
+        if not arvo_mode:
+            copy_project_into_container(docker_env, project_path, workspace_project, log_console)
+
         docker_env.config.env.update(env_config.get("env", {}))
 
         agent_config = config_data.get("agent", {})
@@ -157,7 +225,8 @@ def main(
             docker_env,
             **agent_config,
         )
-        # Add lightweight step logging so users see progress
+
+        # Add lightweight step logging
         step_counter = {"n": 0}
         real_step = agent.step
 
@@ -180,6 +249,7 @@ def main(
         exit_status, result = agent.run(
             task_description,
             project_path=str(workspace_project),
+            arvo_mode=arvo_mode,
         )
         finished_at = datetime.now(timezone.utc)
 
@@ -226,8 +296,10 @@ def main(
         info = {
             "exit_status": exit_status,
             "task_status": task_result.get("status", "unknown"),
-            "project_path": str(project_path),
-            "docker_image": docker_image,
+            "arvo_image": arvo if arvo_mode else None,
+            "project_path": str(project_path) if project_path else None,
+            "docker_image": image,
+            "arvo_mode": arvo_mode,
             "started_at_utc": started_at.isoformat(),
             "finished_at_utc": finished_at.isoformat(),
             "duration_seconds": (finished_at - started_at).total_seconds(),

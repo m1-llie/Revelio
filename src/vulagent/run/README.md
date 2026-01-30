@@ -4,9 +4,11 @@
 
 * `hello_world.py` - Extremely simple example of how to use the `default.py` agent.
 
-## Memory Safety Analysis
+## Vulnerability Detection
 
-* `memory_analysis.py` - Detect memory-safety vulnerabilities in C/C++ projects using Docker sandbox.
+* `detect.py` - Detect memory-safety vulnerabilities using Docker sandbox. Supports:
+  - `--arvo <image>` - ARVO targets with pre-built fuzzing infrastructure
+  - `--project <path>` - Custom local C/C++ projects
 
 ## Extras
 

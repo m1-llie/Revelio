@@ -35,11 +35,14 @@ pip install -e .
 # Run with hello_world example
 python -m vulagent
 
-# Memory safety analysis (requires Docker)
-python -m vulagent.run.memory_analysis -p examples/bof -m openai/gpt-5-mini
+# Vulnerability detection with ARVO targets (pre-built Docker images)
+python -m vulagent.run.detect --arvo n132/arvo:42470801-vul -m openai/gpt-5-mini
+
+# Vulnerability detection with custom projects (requires Docker)
+python -m vulagent.run.detect --project examples/bof -m openai/gpt-5-mini
 
 # Use Inspector to check trajectories
-python -m vulagent.run.inspector memory_analysis_traj.json
+python -m vulagent.run.inspector output/arvo-42470801-vul_*/trajectory.json
 
 # Or use the CLI
 vul-agent -t "Your vulnerability detection task"
