@@ -16,6 +16,12 @@
   - Passes if: crashes on vul AND no crash on fix
   - Usage: `python -m vulagent.run.validate --run-dir output/arvo-xxx/`
 
+* `clean_arvo.py` - Prepare ARVO images for zero-day detection:
+  - Removes pre-existing PoCs, crashers, and seed corpus
+  - Creates new image tagged with `-clean` suffix
+  - No rebuild needed (harness binaries preserved)
+  - Usage: `python -m vulagent.run.clean_arvo --image n132/arvo:14935-vul`
+
 ## Extras
 
 * `inspector.py` - Browse agent conversation trajectories.

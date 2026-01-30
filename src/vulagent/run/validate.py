@@ -65,9 +65,15 @@ def is_crash_detected(output: str, returncode: int | None) -> bool:
 
 
 def get_fix_image(vul_image: str) -> str:
-    """Convert a -vul image tag to -fix."""
-    if "-vul" in vul_image:
-        return vul_image.replace("-vul", "-fix")
+    """Convert a -vul image tag to -fix.
+    
+    Handles cleaned images: n132/arvo:14935-vul-clean -> n132/arvo:14935-fix
+    (fix images don't need cleaning since we're testing if PoC crashes)
+    """
+    # Strip -clean suffix first (fix images use original, not cleaned)
+    base_image = vul_image.replace("-clean", "")
+    if "-vul" in base_image:
+        return base_image.replace("-vul", "-fix")
     raise ValueError(f"Cannot determine fix image from: {vul_image}")
 
 
