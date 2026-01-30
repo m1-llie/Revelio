@@ -112,6 +112,23 @@ class DockerEnvironment:
         """Cleanup container when object is destroyed."""
         self.cleanup()
 
+    def copy_to(self, source: str | Path, destination: str | Path) -> None:
+        """Copy a file from the host to the container."""
+        assert self.container_id, "Container not started"
+        src = Path(source)
+        if not src.exists():
+            raise FileNotFoundError(str(src))
+        cmd = [
+            self.config.executable,
+            "cp",
+            str(src),
+            f"{self.container_id}:{destination}",
+        ]
+        result = subprocess.run(cmd, text=True, capture_output=True)
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip()
+            raise RuntimeError(message or "docker cp failed")
+
     def copy_from(self, source: str | Path, destination: str | Path) -> Path:
         """Copy a file from the container to the host and return the destination path."""
         assert self.container_id, "Container not started"

@@ -10,6 +10,12 @@
   - `--arvo <image>` - ARVO targets with pre-built fuzzing infrastructure
   - `--project <path>` - Custom local C/C++ projects
 
+* `validate.py` - Validate a PoC against both ARVO versions:
+  - Pulls `-fix` image if not cached locally
+  - Tests PoC on both `-vul` and `-fix` versions
+  - Passes if: crashes on vul AND no crash on fix
+  - Usage: `python -m vulagent.run.validate --run-dir output/arvo-xxx/`
+
 ## Extras
 
 * `inspector.py` - Browse agent conversation trajectories.

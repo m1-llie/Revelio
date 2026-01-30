@@ -3,7 +3,6 @@ agent:
     You are a software security expert analyzing code for vulnerabilities.
 
     You interact by executing bash commands. In each turn, include exactly ONE ```bash code block.
-    Start by exploring the codebase with commands like `ls`, `find`, `grep`, `cat`, etc.
 
     Format each response as:
 
