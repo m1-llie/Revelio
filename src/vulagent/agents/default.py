@@ -9,10 +9,13 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from typing import Any
 
 from jinja2 import StrictUndefined, Template
 
 from vulagent import Environment, Model
+from vulagent.tools import function_to_tool_schema
+from vulagent.tools.finish import finish
 
 
 @dataclass
@@ -59,12 +62,26 @@ class LimitsExceeded(TerminatingException):
 
 
 class DefaultAgent:
-    def __init__(self, model: Model, env: Environment, *, config_class: Callable = AgentConfig, **kwargs):
+    def __init__(
+        self,
+        model: Model,
+        env: Environment,
+        *,
+        config_class: Callable = AgentConfig,
+        tools: list[Callable[..., Any]] | None = None,
+        **kwargs,
+    ):
         self.config = config_class(**kwargs)
         self.messages: list[dict] = []
         self.model = model
         self.env = env
         self.extra_template_vars = {}
+
+        # Build tool map: function name -> callable
+        self._tool_map: dict[str, Callable] = {f.__name__: f for f in (tools or [])}
+        if "finish" not in self._tool_map:
+            self._tool_map["finish"] = finish
+        self._tool_schemas = [function_to_tool_schema(f) for f in self._tool_map.values()]
 
     def render_template(self, template: str, **kwargs) -> str:
         template_vars = asdict(self.config) | self.env.get_template_vars() | self.model.get_template_vars()
@@ -87,6 +104,9 @@ class DefaultAgent:
                 self.step()
             except NonTerminatingException as e:
                 self.add_message("user", str(e))
+            except Submitted as e:
+                # Don't add redundant user message for finish tool (already in tool_calls)
+                return type(e).__name__, str(e)
             except TerminatingException as e:
                 self.add_message("user", str(e))
                 return type(e).__name__, str(e)
@@ -100,7 +120,7 @@ class DefaultAgent:
         if 0 < self.config.step_limit <= self.model.n_calls or 0 < self.config.cost_limit <= self.model.cost:
             raise LimitsExceeded()
         messages = [self._strip_metadata(m) for m in self.messages]
-        response = self.model.query(messages)
+        response = self.model.query(messages, tools=self._tool_schemas)
         self.add_message("assistant", **response)
         return response
     
@@ -112,20 +132,27 @@ class DefaultAgent:
         return filtered
 
     def get_observation(self, response: dict) -> dict:
-        """Execute the action and return the observation."""
-        output = self.execute_action(self.parse_action(response))
+        """Execute the action (tool call or bash command) and return the observation."""
+        # Check for tool calls first
+        if "tool_calls" in response and response["tool_calls"]:
+            return self.execute_tool_calls(response["tool_calls"])
+
+        # Fall back to bash command parsing
+        output = self.execute_bash_action(self.parse_bash_action(response))
         observation = self.render_template(self.config.action_observation_template, output=output)
         self.add_message("user", observation)
         return output
 
-    def parse_action(self, response: dict) -> dict:
-        """Parse the action from the message. Returns the action."""
-        actions = re.findall(r"```bash\s*\n(.*?)\n```", response["content"], re.DOTALL)
+    def parse_bash_action(self, response: dict) -> dict:
+        """Parse bash action from the message. Returns the action."""
+        content = response.get("content") or ""
+        actions = re.findall(r"```bash\s*\n(.*?)\n```", content, re.DOTALL)
         if len(actions) == 1:
             return {"action": actions[0].strip(), **response}
         raise FormatError(self.render_template(self.config.format_error_template, actions=actions))
 
-    def execute_action(self, action: dict) -> dict:
+    def execute_bash_action(self, action: dict) -> dict:
+        """Execute a bash command in the environment."""
         try:
             output = self.env.execute(action["action"])
         except subprocess.TimeoutExpired as e:
@@ -138,8 +165,31 @@ class DefaultAgent:
         self.has_finished(output)
         return output
 
+    def execute_tool_calls(self, tool_calls: list[dict]) -> dict:
+        """Execute tool calls and return combined results."""
+        results = []
+        for call in tool_calls:
+            name = call["name"]
+            arguments = call.get("arguments", {})
+            tool_call_id = call.get("id", name)
+
+            if name not in self._tool_map:
+                result = f"Error: Unknown tool '{name}'"
+            else:
+                result = self._tool_map[name](**arguments)
+
+            # For finish tool, raise Submitted with the result
+            if name == "finish":
+                raise Submitted(result)
+
+            results.append({"tool_call_id": tool_call_id, "name": name, "result": result})
+
+        # Add tool results as message
+        self.add_message("tool", content="\n".join(r["result"] for r in results), tool_results=results)
+        return {"output": results[0]["result"] if results else "", "returncode": 0}
+
     def has_finished(self, output: dict[str, str]):
-        """Raises Submitted exception with final output if the agent has finished its task."""
+        """Raises Submitted exception with final output if the agent has finished its task (legacy support)."""
         lines = output.get("output", "").lstrip().splitlines(keepends=True)
         if lines and lines[0].strip() in ["MINI_SWE_AGENT_FINAL_OUTPUT", "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"]:
             raise Submitted("".join(lines[1:]))

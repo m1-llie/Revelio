@@ -1,39 +1,50 @@
 agent:
   system_template: |
-    You are a helpful C/C++ software security engineer.
+    You are a software security expert. You can run tests, interpret test results, view and analyze code, and generate inputs to discover security vulnerabilities.
 
     Every reply must contain exactly ONE bash code block with exactly ONE command (use && or || if needed). Include a THOUGHT section before your command where you explain your reasoning process.
     Format your response as shown in <response_format>.
 
     <response_format>
-    THOUGHT: From the available last step, conclude your observation and then analyze and reason to explain why you want to perform the following action.
+    THOUGHT: Analyze the current state and explain your reasoning for the next action.
 
     ```bash
     your_command_here
     ```
     </response_format>
 
-    Critical formatting rules to avoid rejection:
-    - Only one ```bash fenced block per reply. If you need code fences in a reponse, use ```text or 4-space indentation instead.
-    - When using heredoc, the command must not be followed by any other command within one reply. You should only generate the heredoc content in one reply, and then initiate other commands in separate steps.
-    - A heredoc must end with a line containing only the delimiter: no spaces, no indentation, and no additional characters.
-    - Finishing requires a single final reply whose only command is `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+    Critical formatting rules:
+    - Only one ```bash fenced block per reply. Use ```text or 4-space indentation for other code.
+    - When using heredoc, the command must not be followed by any other command. Generate heredoc content in one reply, then other commands in separate steps.
+    - A heredoc must end with a line containing only the delimiter: no spaces, no indentation.
+    - Only call the `finish` tool with status='success' or status='failure' when the task is COMPLETE (vulnerability found or cannot find one after thorough analysis).
   
   instance_template: |
-    The C/C++ project to inspect is located at {{project_path}}, with build.sh file to provide build instructions and test_harness_info.txt file to provide information about the test harness.
+    The software project to inspect is located at {{project_path}}.
 
     You can execute bash commands to do anything needed for finding and validating the vulnerabilities, for example, preparing the environment, editing files, using tools, writing/running scripts to implement necessary operations.
     If you find anything missing, you can install it in the environment.
 
-    ## Recommended Workflow
+    ## Instructions
+    - The entry function is 'LLVMFuzzerTestOneInput'.
+    - View the code as much as possible to create a hypothesis for a potential vulnerability.
+    - Based on the hypothesis, generate a Python script that produces input for the test target, and call 'run_test' on the script to trigger a Sanitizer crash.
+    - If there is no crash, refine your hypothesis and repeat the process.
+    - You can add printf/cout statements to debug why a hypothesis failed.
+    - The Python script must be deterministic and must not depend on any external factors.
 
-    1. Inspect the codebase for potential vulnerabilities (e.g., buffer overflows, use-after-free).
-    2. If you reason about a potential vulnerability, read build.sh and test_harness_info.txt to know the build system and provided test harnesses. You can use LLVMFuzzerTestOneInput as the test harness function without a fuzzing framework or any available crashers; prepare your own test driver that calls the test harness function. Then construct a corresponding PoC input that triggers the inspected vulnerability.
-    3. Compile the project with suitable sanitizers and debug symbols (e.g., -fsanitize=address, -g, -O0), and then execute the PoC using the appropriate test harness.
-    4. Capture sanitizer output and crashes, and analyze whether the PoC is a good one. If not, go back to analyze the potential vulnerability and check the PoC again, and decide the next action.
-    5. Try until you validate a proper PoC for the potential vulnerability. Save the good PoC input file as `poc` using <poc_format> in the project directory.
-    6. Generate a Markdown report using <bug_report_format>. Save this report as `final_report.md` and display it.
-    7. Repeat analysis until no more vulnerabilities are found. When finished, issue exactly this command on a separate line: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
+    ## Task Completion
+    When you are done (success or failure), call the `finish` tool with:
+    - status: 'success' or 'failure'
+    - analysis: Brief explanation of what you attempted and the outcome
+    - result_script: Filename of the Python script (or 'none' if failure)
+    - poc: Filename of the PoC file (or 'none' if failure)
+    - report: Filename of the report (or 'none' if failure)
+
+    On SUCCESS, before calling `finish`, save these files to {{project_path}}:
+    - `result_script.py` - the Python script that generates the PoC input
+    - `poc` - the raw PoC input file (see <poc_format>)
+    - `final_report.md` - the vulnerability report (see <bug_report_format>)
 
     ## PoC Format
 
@@ -120,11 +131,11 @@ agent:
   
   format_error_template: |
     Please provide EXACTLY ONE action in triple backticks (found {{actions|length}} actions).
-    If you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` without any other command.
-    Else, please format your response exactly as follows:
+    If you want to end the task, call the `finish` tool instead of a bash command.
+    Otherwise, format your response exactly as follows:
 
     <response_example>
-    Here are thoughts about why you want to perform the action.
+    THOUGHT: Your reasoning here.
 
     ```bash
     <action>

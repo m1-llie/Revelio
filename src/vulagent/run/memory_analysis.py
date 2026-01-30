@@ -182,31 +182,34 @@ def main(
             project_path=str(workspace_project),
         )
         finished_at = datetime.now(timezone.utc)
-        copied_report: Path | None = None
-        report_source = workspace_project / "final_report.md"
-        report_destination = report_path_planned
-        try:
-            report_destination.parent.mkdir(parents=True, exist_ok=True)
-            copied_report = docker_env.copy_from(report_source, report_destination)
-            log_console.print(f"[bold green]Final report copied to:[/bold green] {copied_report}")
-        except FileNotFoundError:
-            log_console.print("[bold yellow]No final_report.md generated inside the container.[/bold yellow]")
-        except RuntimeError as error:
-            log_console.print(f"[bold red]Failed to copy final_report.md:[/bold red] {error}")
 
+        # Parse structured task result from agent output
+        task_result = parse_task_result(result)
+        log_console.print(f"[bold cyan]Task status:[/bold cyan] {task_result.get('status', 'unknown')}")
+        if task_result.get("analysis"):
+            log_console.print(f"[dim]Analysis: {task_result['analysis'][:200]}...[/dim]")
+
+        # Copy output files from container (only on success)
+        copied_report: Path | None = None
         copied_poc: Path | None = None
-        poc_source = workspace_project / "poc"
-        try:
-            poc_path_planned.parent.mkdir(parents=True, exist_ok=True)
-            copied_poc = docker_env.copy_from(poc_source, poc_path_planned)
-            log_console.print(f"[bold green]PoC file copied to:[/bold green] {copied_poc}")
-        except FileNotFoundError:
-            log_console.print("[bold yellow]No poc file generated inside the container.[/bold yellow]")
-        except RuntimeError as error:
-            log_console.print(f"[bold red]Failed to copy poc file:[/bold red] {error}")
+        copied_script: Path | None = None
+        if task_result.get("status") == "success":
+            copied_report = copy_file_from_container(
+                docker_env, workspace_project / "final_report.md",
+                report_path_planned, "final_report.md", log_console
+            )
+            copied_poc = copy_file_from_container(
+                docker_env, workspace_project / "poc",
+                poc_path_planned, "poc", log_console
+            )
+            script_path_planned = run_dir / "result_script.py"
+            copied_script = copy_file_from_container(
+                docker_env, workspace_project / "result_script.py",
+                script_path_planned, "result_script.py", log_console
+            )
 
         verification = None
-        if "status: vulnerable" in result.lower():
+        if task_result.get("status") == "success":
             log_console.print("\n[bold cyan]Attempting automatic verification...[/bold cyan]")
             reproduction_cmd = extract_reproduction_command(result)
             if reproduction_cmd:
@@ -222,6 +225,7 @@ def main(
 
         info = {
             "exit_status": exit_status,
+            "task_status": task_result.get("status", "unknown"),
             "project_path": str(project_path),
             "docker_image": docker_image,
             "started_at_utc": started_at.isoformat(),
@@ -229,10 +233,14 @@ def main(
             "duration_seconds": (finished_at - started_at).total_seconds(),
             "run_dir": str(run_dir),
         }
+        if task_result.get("analysis"):
+            info["analysis"] = task_result["analysis"]
         if copied_report:
             info["report_path"] = str(copied_report)
         if copied_poc:
             info["poc_path"] = str(copied_poc)
+        if copied_script:
+            info["result_script_path"] = str(copied_script)
         if verification:
             info["verification"] = verification.to_dict()
 
@@ -302,6 +310,48 @@ def extract_reproduction_command(result: str) -> Optional[str]:
             command = line.split(marker, 1)[1].strip()
             return None if command.lower() == "none" else command
     return None
+
+
+def parse_task_result(result: str) -> dict[str, str]:
+    """Parse structured task result from finish tool output (YAML format).
+
+    Expected format (YAML):
+        status: success
+        analysis: Brief analysis...
+        result_script: result_script.py
+        poc: poc
+        report: final_report.md
+    """
+    import yaml
+
+    try:
+        parsed = yaml.safe_load(result)
+        if isinstance(parsed, dict):
+            return {k: str(v) for k, v in parsed.items()}
+    except yaml.YAMLError:
+        pass
+    return {}
+
+
+def copy_file_from_container(
+    env: DockerEnvironment,
+    source: Path,
+    destination: Path,
+    name: str,
+    log_console: LoggingConsole,
+) -> Path | None:
+    """Copy a file from container, returning the destination path or None."""
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        copied = env.copy_from(source, destination)
+        log_console.print(f"[bold green]{name} copied to:[/bold green] {copied}")
+        return copied
+    except FileNotFoundError:
+        log_console.print(f"[bold yellow]No {name} generated inside the container.[/bold yellow]")
+        return None
+    except RuntimeError as error:
+        log_console.print(f"[bold red]Failed to copy {name}:[/bold red] {error}")
+        return None
 
 
 if __name__ == "__main__":

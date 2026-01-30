@@ -20,6 +20,20 @@ from vulagent.models.utils.cache_control import set_cache_control
 logger = logging.getLogger("litellm_model")
 
 
+def _parse_tool_calls(message) -> list[dict] | None:
+    """Parse tool calls from LLM response message."""
+    if not hasattr(message, "tool_calls") or not message.tool_calls:
+        return None
+    return [
+        {
+            "id": tc.id,
+            "name": tc.function.name,
+            "arguments": json.loads(tc.function.arguments) if tc.function.arguments else {},
+        }
+        for tc in message.tool_calls
+    ]
+
+
 @dataclass
 class LitellmModelConfig:
     model_name: str
@@ -62,9 +76,11 @@ class LitellmModel:
             e.message += " You can permanently set your API key with `mini-extra config set KEY VALUE`."
             raise e
 
-    def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
+    def query(self, messages: list[dict[str, str]], tools: list[dict] | None = None, **kwargs) -> dict:
         if self.config.set_cache_control:
             messages = set_cache_control(messages, mode=self.config.set_cache_control)
+        if tools:
+            kwargs["tools"] = tools
         response = self._query(messages, **kwargs)
         try:
             cost = litellm.cost_calculator.completion_cost(response)
@@ -79,12 +95,19 @@ class LitellmModel:
         assert cost >= 0.0, f"Cost is negative: {cost}"
         self.cost += cost
         GLOBAL_MODEL_STATS.add(cost)
-        return {
-            "content": response.choices[0].message.content or "",  # type: ignore
-            "extra": {
-                "response": response.model_dump(),
-            },
+
+        msg = response.choices[0].message
+        result: dict[str, Any] = {
+            "content": msg.content or "",
+            "extra": {"response": response.model_dump()},
         }
+
+        # Parse tool calls if present
+        tool_calls = _parse_tool_calls(msg)
+        if tool_calls:
+            result["tool_calls"] = tool_calls
+
+        return result
 
     def get_template_vars(self) -> dict[str, Any]:
         return asdict(self.config) | {"n_model_calls": self.n_calls, "model_cost": self.cost}

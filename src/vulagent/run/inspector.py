@@ -17,6 +17,31 @@ from textual.widgets import Footer, Header, Static
 ASSISTANT_DISPLAY_NAME = "assistant(Vul-Agent)"
 USER_DISPLAY_NAME = "user(Environment)"
 
+
+def _format_message_content(message: dict) -> str:
+    """Format message content, including tool calls if present."""
+    parts = []
+
+    # Regular content
+    content = message.get("content")
+    if content:
+        if isinstance(content, list):
+            parts.append("\n".join([item.get("text", str(item)) for item in content]))
+        else:
+            parts.append(str(content))
+
+    # Tool calls (for assistant messages)
+    tool_calls = message.get("tool_calls")
+    if tool_calls:
+        for tc in tool_calls:
+            name = tc.get("name", "unknown")
+            args = tc.get("arguments", {})
+            args_str = "\n".join(f"  {k}: {v}" for k, v in args.items())
+            parts.append(f"[Tool Call: {name}]\n{args_str}")
+
+    return "\n\n".join(parts) if parts else "(empty)"
+
+
 def _messages_to_steps(messages: list[dict]) -> list[list[dict]]:
     """Convert a list of messages into steps (grouped by assistant/user pairs)."""
     steps = []
@@ -154,10 +179,7 @@ class TrajectoryInspector(App):
             return
 
         for message in self.steps[self.i_step]:
-            if isinstance(message["content"], list):
-                content_str = "\n".join([item["text"] for item in message["content"]])
-            else:
-                content_str = str(message["content"])
+            content_str = _format_message_content(message)
             message_container = Vertical(classes="message-container")
             container.mount(message_container)
             role = message.get("role", "")
@@ -167,6 +189,8 @@ class TrajectoryInspector(App):
                 role_display = USER_DISPLAY_NAME
             elif role == "system":
                 role_display = "system"
+            elif role == "tool":
+                role_display = "tool(result)"
             else:
                 role_display = role or "unknown"
             message_container.mount(Static(role_display, classes="message-header"))
