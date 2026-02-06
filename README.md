@@ -17,6 +17,14 @@ vul-agent is an AI-powered security tool that:
 - **Multiple Environments**: Supports local execution and Docker containers for safe testing
 - **Extensible Architecture**: Easy to add new detection strategies and validation methods
 
+### Multi-Agent System Components
+
+- `RepoReviewerAgent`
+- `HypothesisGeneratorAgent`
+- `PoCBuilderAgent`
+- `ValidatorAgent`
+- `ReporterAgent`
+
 ## Quick Start
 
 ### Installation
