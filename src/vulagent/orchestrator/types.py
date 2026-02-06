@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -32,10 +32,10 @@ class OrchestratorResult:
     status: str
     summary: str
     run_dir: Path
-    report_path: Path | None = None
-    poc_path: Path | None = None
-    script_path: Path | None = None
-    validation_path: Path | None = None
+    report_paths: list[str] = field(default_factory=list)
+    poc_paths: list[str] = field(default_factory=list)
+    script_paths: list[str] = field(default_factory=list)
+    validation_paths: list[str] = field(default_factory=list)
 
 
 Parser = Callable[[str], Any]

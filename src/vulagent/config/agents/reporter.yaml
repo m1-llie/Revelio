@@ -36,13 +36,24 @@ agent:
     Description: {{hypothesis_description}}
 
     ## Goal
-    Write `final_report.md` inside {{project_path}} using the report format below.
+    Write `final_report_{{hypothesis_id}}.md` inside {{project_path}} using the report format below.
     Use evidence from the validation output and code references.
 
     ## Context Packet
     The orchestrator will provide `{{context_packet}}` containing merged evidence:
     hypothesis, PoC recipe, validation output, and key code references.
     Use it to fill the report accurately; don't make up information.
+
+    {% if reporter_hint %}
+    ## Important
+    {{reporter_hint}}
+    {% endif %}
+
+    IMPORTANT: Before calling `finish`, verify the file exists:
+      test -f /src/final_report_{{hypothesis_id}}.md
+    If it does not exist, write it first.
+
+    When you call `finish`, do NOT include a bash block in that reply.
 
     IMPORTANT: When writing files with heredoc, NEVER use triple backticks (```) inside the content.
     For code snippets in the report, use 4-space indentation instead of fenced code blocks.
@@ -70,11 +81,11 @@ agent:
     When done, call the `finish` tool with:
     - status: 'success'
     - analysis: brief summary
-    - report: final_report.md
+    - report: final_report_{{hypothesis_id}}.md
     - payload: a dict containing:
       report:
         hypothesis_id: {{hypothesis_id}}
-        report_path: final_report.md
+        report_path: final_report_{{hypothesis_id}}.md
         summary: short summary
         references: list of objects {file_path, line_start, line_end, function, context}
 
@@ -117,8 +128,8 @@ agent:
     ```
     </response_example>
 
-  step_limit: 80
-  cost_limit: 1.0
+  step_limit: 100
+  cost_limit: 20.0
 
 environment:
   timeout: 300

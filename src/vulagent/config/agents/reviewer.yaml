@@ -31,8 +31,22 @@ agent:
     {% endif %}
 
     ## Goal
-    Perform a rapid but thorough code review focusing on reachable paths from the harness entry (LLVMFuzzerTestOneInput).
-    Identify suspicious call chains and hotspots relevant to memory safety.
+    Perform a focused review of paths reachable from the harness entry (LLVMFuzzerTestOneInput),
+    and produce a small, high-signal set of hotspots for memory-safety risks.
+
+    ## Review Strategy (bounded)
+    1. Identify the harness entry and its immediate parsing/dispatch functions.
+    2. Build a shallow call graph (depth 2–3) from the harness.
+    3. Prioritize functions that:
+       - parse lengths/offsets
+       - allocate or resize buffers
+       - copy/memcpy/memmove
+       - do arithmetic on sizes or indexes
+    4. Extract top 5 hotspots with file/line references and call-chain context.
+
+    ## Stopping Criteria
+    - Stop once you have 5 hotspots, or
+    - Stop if 3 consecutive steps yield no new useful information.
 
     ## Context Packet
     The orchestrator will provide `{{context_packet}}` containing run info and prior artifacts (if any).
@@ -91,8 +105,8 @@ agent:
     ```
     </response_example>
 
-  step_limit: 60
-  cost_limit: 1.0
+  step_limit: 100
+  cost_limit: 20.0
 
 environment:
   timeout: 300

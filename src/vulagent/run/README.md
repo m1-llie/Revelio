@@ -17,7 +17,13 @@
   - Pulls `-fix` image if not cached locally
   - Tests PoC on both `-vul` and `-fix` versions
   - Passes if: crashes on vul AND no crash on fix
-  - Usage: `python -m vulagent.run.validate --run-dir output/arvo-xxx/`
+  - Usage: `python -m vulagent.run.validate_if_target_singleAgent --run-dir output/arvo-xxx/`
+
+* `validate_if_target_multiAgent.py` - Validate a PoC from multi-agent runs:
+  - Uses `manifest.json` to resolve the ARVO image (or `--arvo-image`)
+  - Supports per-hypothesis PoCs (e.g., `hypothesis_H01/poc_H01`)
+  - Usage:
+    - `python -m vulagent.run.validate_if_target_multiAgent --run-dir output/arvo-xxx/ --poc output/arvo-xxx/hypothesis_H01/poc_H01`
 
 * `clean_arvo.py` - Prepare ARVO images for zero-day detection:
   - Removes pre-existing PoCs, crashers, and seed corpus

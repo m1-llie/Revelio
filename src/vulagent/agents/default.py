@@ -135,6 +135,12 @@ class DefaultAgent:
         """Execute the action (tool call or bash command) and return the observation."""
         # Check for tool calls first
         if "tool_calls" in response and response["tool_calls"]:
+            content = response.get("content") or ""
+            if "```bash" in content:
+                raise FormatError(
+                    "Tool calls must not include bash blocks. Execute commands first, "
+                    "then call the tool in a separate reply."
+                )
             return self.execute_tool_calls(response["tool_calls"])
 
         # Fall back to bash command parsing

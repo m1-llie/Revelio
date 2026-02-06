@@ -64,9 +64,9 @@ class ArtifactStore:
     """Append-only-ish artifact store with JSON index and event log."""
 
     def __init__(self, root: Path | str, run_id: str | None = None):
-        self.root = Path(root)
+        self.root = Path(root).resolve()
         self.run_id = run_id or new_run_id("run")
-        self.run_dir = self.root / self.run_id
+        self.run_dir = (self.root / self.run_id).resolve()
         self.layout = self._init_layout(self.run_dir)
         self._index_path = self.run_dir / "index.json"
         self._events_path = self.run_dir / "events.jsonl"

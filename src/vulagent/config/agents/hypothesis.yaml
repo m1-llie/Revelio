@@ -31,7 +31,7 @@ agent:
     {% endif %}
 
     ## Goal
-    Generate a ranked list of top-10 vulnerability hypotheses based on reachable paths from the harness.
+    Generate a ranked list of top-2 vulnerability hypotheses based on reachable paths from the harness.
     Each hypothesis should be actionable and reference specific files/functions.
 
     ## Context Packet
@@ -39,11 +39,15 @@ agent:
     Use it to ground your hypotheses and avoid re-reviewing the whole repo.
 
     ## Output (structured payload)
+    You MUST call the `finish` tool and include a `payload` with a `hypotheses` list.
+    Do NOT return free-form text only. If you cannot propose 2, return as many as you can.
+    If you truly cannot propose any, set status to 'failure' and return an empty list.
+
     When done, call the `finish` tool with:
     - status: 'success'
     - analysis: brief summary
     - payload: a dict containing:
-      hypotheses: list of 10 objects with:
+      hypotheses: list of 2 objects with:
         hypothesis_id: e.g., H01..H10
         title: short name
         description: concise explanation
@@ -54,6 +58,24 @@ agent:
         expected_crash: e.g., heap-buffer-overflow
         confidence: float 0.0-1.0
         references: list of objects {file_path, line_start, line_end, function, context}
+
+    Example (YAML payload):
+      hypotheses:
+        - hypothesis_id: H01
+          title: Length overflow in chunk parser
+          description: Crafted chunk length causes overflow in size calculation.
+          file_path: spng.c
+          function: read_chunk
+          trigger: length near UINT32_MAX
+          preconditions: ["chunk type tEXt", "length > buffer size"]
+          expected_crash: heap-buffer-overflow
+          confidence: 0.62
+          references:
+            - file_path: spng.c
+              line_start: 1020
+              line_end: 1045
+              function: read_chunk
+              context: size_t size = chunk_len + 1; ...
 
   action_observation_template: |
     <returncode>{{output.returncode}}</returncode>
@@ -94,8 +116,8 @@ agent:
     ```
     </response_example>
 
-  step_limit: 80
-  cost_limit: 1.0
+  step_limit: 100
+  cost_limit: 20.0
 
 environment:
   timeout: 300

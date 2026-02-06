@@ -37,9 +37,19 @@ agent:
 
     ## Goal
     Produce a deterministic Python script that generates a raw input PoC file
-    and save both into the project directory:
-    - `result_script.py` (the generator)
-    - `poc` (raw input data)
+    and save both into the project directory with hypothesis-specific names:
+    - `result_script_{{hypothesis_id}}.py` (the generator)
+    - `poc_{{hypothesis_id}}` (raw input data)
+
+    ## Scope
+    - Do NOT compile or run the target, fuzzer, or `arvo`.
+    - Do NOT modify the harness or project source code.
+    - Focus on generating the PoC input only; validation is handled by ValidatorAgent.
+
+    ## Stopping Criteria
+    - Stop as soon as the script and PoC file are written.
+    - You have at most {{max_poc_attempts}} attempt(s) total for this hypothesis.
+    - If you cannot make progress in this attempt, call `finish` with status 'failure' and explain why.
 
     ## Context Packet
     The orchestrator will provide `{{context_packet}}` containing the selected hypothesis and relevant hotspots.
@@ -49,20 +59,23 @@ agent:
     When done, call the `finish` tool with:
     - status: 'success' (or 'failure' if you cannot produce a PoC)
     - analysis: brief summary
-    - result_script: result_script.py (or 'none' if failure)
-    - poc: poc (or 'none' if failure)
+    - result_script: result_script_{{hypothesis_id}}.py (or 'none' if failure)
+    - poc: poc_{{hypothesis_id}} (or 'none' if failure)
     - payload: a dict containing:
       poc:
         hypothesis_id: {{hypothesis_id}}
-        script_path: result_script.py
-        input_path: poc
+        script_path: result_script_{{hypothesis_id}}.py
+        input_path: poc_{{hypothesis_id}}
         expected_signal: e.g., heap-buffer-overflow
         generation_steps: list of strings
         reproduction_command: command to run the target with `poc`
 
     ## PoC Format
-    The PoC file MUST be saved as `poc` in the project directory ({{project_path}}/poc).
+    The PoC file MUST be saved as `poc_{{hypothesis_id}}` in the project directory.
     It must be raw input data, not a script.
+
+    If you run `arvo`, copy it to `/tmp/poc` first:
+      cp {{project_path}}/poc_{{hypothesis_id}} /tmp/poc
 
   action_observation_template: |
     <returncode>{{output.returncode}}</returncode>
@@ -103,8 +116,8 @@ agent:
     ```
     </response_example>
 
-  step_limit: 120
-  cost_limit: 1.5
+  step_limit: 100
+  cost_limit: 20.0
 
 environment:
   timeout: 300

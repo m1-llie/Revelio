@@ -50,6 +50,10 @@ python -m vulagent.run.inspector output/arvo-42470801-vul_*/trajectory.json
 
 # Or use the CLI
 vul-agent -t "Your vulnerability detection task"
+
+# Validate PoCs against ARVO -fix images
+python -m vulagent.run.validate_if_target_singleAgent --run-dir output/arvo-14935-vul_20260130-103945
+python -m vulagent.run.validate_if_target_multiAgent --run-dir output/arvo-14935-vul-clean_20260206-114947 --poc output/arvo-14935-vul-clean_20260206-114947/hypothesis_H01/poc_H01
 ```
 
 ### Outputs
@@ -59,6 +63,15 @@ Each run writes to `output/<run_id>/`:
 - `artifacts/trajectories/` (per-agent trajectories)
 - `artifacts/logs/run.log`
 - `poc`, `result_script.py`, `final_report.md` (if produced)
+
+### Validators
+
+- Single-agent validator: `python -m vulagent.run.validate_if_target_singleAgent --run-dir <run_dir>`
+- Multi-agent validator: `python -m vulagent.run.validate_if_target_multiAgent --run-dir <run_dir> --poc <poc_path>`
+
+Convenience CLI scripts:
+- `vul-agent-validate-single`
+- `vul-agent-validate-multi`
 
 ## Project Structure
 

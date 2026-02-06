@@ -53,11 +53,15 @@ class AgentRunner:
         model_config: dict[str, Any] | None,
         env: Any,
         store: ArtifactStore,
+        log_fn: Any | None = None,
+        checkpoint_every: int = 5,
     ):
         self.model_name = model_name
         self.model_config = model_config or {}
         self.env = env
         self.store = store
+        self.log_fn = log_fn
+        self.checkpoint_every = checkpoint_every
 
     def run(self, spec: AgentSpec, *, extra_vars: dict[str, Any]) -> AgentRunResult:
         config_data = _load_yaml(spec.config_path)
@@ -67,11 +71,32 @@ class AgentRunner:
 
         agent = DefaultAgent(model, self.env, **agent_config)
 
+        step_counter = {"n": 0}
+        real_step = agent.step
+
+        def step_with_progress():
+            step_counter["n"] += 1
+            if self.log_fn:
+                self.log_fn(f"{spec.name}: step {step_counter['n']} running...")
+            result = real_step()
+            if self.checkpoint_every > 0 and step_counter["n"] % self.checkpoint_every == 0:
+                self._checkpoint(spec.name, agent, step_counter["n"])
+            return result
+
+        agent.step = step_with_progress
+
         self.store.append_log_line("starting agent run", agent=spec.name, event="agent_start")
+        if self.log_fn:
+            self.log_fn(f"{spec.name}: started")
         exit_status, result = agent.run(spec.task, **extra_vars)
         self.store.append_log_line(
             f"agent finished with {exit_status}", agent=spec.name, event="agent_end"
         )
+        if self.log_fn:
+            self.log_fn(
+                f"{spec.name}: finished with {exit_status} "
+                f"(steps={step_counter['n']}, calls={agent.model.n_calls}, cost=${agent.model.cost:.4f})"
+            )
 
         trajectory = {
             "info": {
@@ -107,6 +132,24 @@ class AgentRunner:
             model_calls=agent.model.n_calls,
         )
 
+    def _checkpoint(self, agent_name: str, agent: DefaultAgent, steps: int) -> None:
+        trajectory = {
+            "info": {
+                "exit_status": "IN_PROGRESS",
+                "submission": "",
+                "model_stats": {
+                    "instance_cost": agent.model.cost,
+                    "api_calls": agent.model.n_calls,
+                },
+                "mini_version": __version__,
+                "agent_name": agent_name,
+            },
+            "messages": agent.messages,
+            "trajectory_format": "vul-agent-1",
+            "checkpoint_step": steps,
+        }
+        self.store.append_trajectory(agent_name, trajectory)
+
 
 class MultiAgentOrchestrator:
     def __init__(
@@ -119,6 +162,8 @@ class MultiAgentOrchestrator:
         project_path: str,
         arvo_mode: bool,
         max_poc_attempts: int = 2,
+        log_fn: Any | None = None,
+        on_success: Any | None = None,
     ):
         self.store = store
         self.env = env
@@ -130,10 +175,40 @@ class MultiAgentOrchestrator:
         self._aggregate_trajectories: dict[str, Any] = {"agents": {}}
         self._context_builder = ContextPacketBuilder()
         self._artifacts: dict[str, Any] = {}
+        self._log_fn = log_fn
+        self._on_success = on_success
+
+    def _log(self, message: str) -> None:
+        if self._log_fn:
+            self._log_fn(message)
+
+    def _report_path(self, hypothesis_id: str) -> str:
+        return f"{self.project_path}/final_report_{hypothesis_id}.md"
+
+    def _report_exists(self, hypothesis_id: str) -> bool:
+        try:
+            report_path = self._report_path(hypothesis_id)
+            result = self.env.execute(f"test -f {report_path} && echo OK || echo MISSING")
+            return "OK" in (result.get("output") or "")
+        except Exception:
+            return False
 
     def _record_trajectory(self, run_result: AgentRunResult) -> None:
         self._aggregate_trajectories["agents"][run_result.agent_name] = run_result.trajectory
         self.store.write_aggregated_trajectory(self._aggregate_trajectories)
+
+    def _check_run_status(self, run_result: AgentRunResult, stage: str) -> OrchestratorResult | None:
+        if run_result.exit_status != "Submitted":
+            self.store.append_event(
+                "agent_failure",
+                {"agent": run_result.agent_name, "stage": stage, "exit_status": run_result.exit_status},
+            )
+            return OrchestratorResult(
+                status="failure",
+                summary=f"{run_result.agent_name} failed with {run_result.exit_status}.",
+                run_dir=self.store.run_dir,
+            )
+        return None
 
     def run(
         self,
@@ -149,11 +224,13 @@ class MultiAgentOrchestrator:
             model_config=self.model_config,
             env=self.env,
             store=self.store,
+            log_fn=self._log_fn,
         )
 
         self.store.append_event("run_start", {"arvo_mode": self.arvo_mode})
         common_vars = {"project_path": self.project_path, "arvo_mode": self.arvo_mode}
 
+        self._log("Running RepoReviewerAgent...")
         reviewer_context = self._context_builder.build(
             reviewer.name, run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode}
         )
@@ -162,6 +239,8 @@ class MultiAgentOrchestrator:
             extra_vars={**common_vars, "context_packet": render_context_packet(reviewer_context)},
         )
         self._record_trajectory(review_run)
+        if failure := self._check_run_status(review_run, "reviewer"):
+            return failure
         code_review = parse_code_review(review_run.result)
         self._artifacts["code_review"] = code_review
         self.store.append_json_artifact(
@@ -170,6 +249,7 @@ class MultiAgentOrchestrator:
             meta=ArtifactMeta(artifact_type="CodeReviewNotes", agent_name=reviewer.name),
         )
 
+        self._log("Running HypothesisGeneratorAgent...")
         hypothesis_context = self._context_builder.build(
             hypothesis.name,
             run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
@@ -180,7 +260,26 @@ class MultiAgentOrchestrator:
             extra_vars={**common_vars, "context_packet": render_context_packet(hypothesis_context)},
         )
         self._record_trajectory(hypothesis_run)
-        hypotheses = parse_hypotheses(hypothesis_run.result)
+        if failure := self._check_run_status(hypothesis_run, "hypothesis"):
+            return failure
+        try:
+            hypotheses = parse_hypotheses(hypothesis_run.result)
+        except ValueError as exc:
+            self.store.append_event(
+                "parse_failure",
+                {"stage": "hypothesis", "error": str(exc)},
+            )
+            self.store.append_text_artifact(
+                "hypotheses",
+                hypothesis_run.result,
+                name="raw_hypothesis_output.txt",
+                meta=ArtifactMeta(artifact_type="HypothesisRaw", agent_name=hypothesis.name),
+            )
+            return OrchestratorResult(
+                status="failure",
+                summary=f"Hypothesis parsing failed: {exc}",
+                run_dir=self.store.run_dir,
+            )
         self._artifacts["hypotheses"] = hypotheses
         self.store.append_json_artifact(
             "hypotheses",
@@ -188,13 +287,21 @@ class MultiAgentOrchestrator:
             meta=ArtifactMeta(artifact_type="VulnHypotheses", agent_name=hypothesis.name),
         )
 
+        report_files: list[str] = []
+        poc_files: list[str] = []
+        script_files: list[str] = []
+        validation_files: list[str] = []
+        success_count = 0
+
         for item in hypotheses.hypotheses:
+            hypothesis_dict = item.to_dict()
+            hypothesis_success = False
             for attempt in range(1, self.max_poc_attempts + 1):
+                self._log(f"PoC attempt {attempt} for {item.hypothesis_id} ({item.title})...")
                 self.store.append_event(
                     "poc_attempt",
                     {"hypothesis_id": item.hypothesis_id, "attempt": attempt},
                 )
-                hypothesis_dict = item.to_dict()
                 poc_context = self._context_builder.build(
                     poc_builder.name,
                     run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
@@ -207,10 +314,28 @@ class MultiAgentOrchestrator:
                     "hypothesis_title": item.title,
                     "hypothesis_description": item.description,
                     "context_packet": render_context_packet(poc_context),
+                    "poc_attempt": attempt,
+                    "max_poc_attempts": self.max_poc_attempts,
                 }
 
                 poc_run = runner.run(poc_builder, extra_vars=extra_vars)
                 self._record_trajectory(poc_run)
+                if failure := self._check_run_status(poc_run, "poc_builder"):
+                    self.store.append_event(
+                        "poc_builder_failed",
+                        {"hypothesis_id": item.hypothesis_id, "attempt": attempt, "reason": failure.summary},
+                    )
+                    self._log(
+                        f"PoCBuilder failed for {item.hypothesis_id} "
+                        f"(attempt {attempt}/{self.max_poc_attempts}): {failure.summary}"
+                    )
+                    if attempt == self.max_poc_attempts:
+                        self.store.append_event(
+                            "hypothesis_skip",
+                            {"hypothesis_id": item.hypothesis_id, "reason": failure.summary},
+                        )
+                        self._log(f"Hypothesis {item.hypothesis_id} skipped: {failure.summary}")
+                    continue
                 poc_recipe = parse_poc_recipe(poc_run.result)
                 self._artifacts["poc"] = poc_recipe
                 self.store.append_json_artifact(
@@ -222,7 +347,12 @@ class MultiAgentOrchestrator:
                         hypothesis_id=item.hypothesis_id,
                     ),
                 )
+                if poc_recipe.input_path:
+                    poc_files.append(poc_recipe.input_path)
+                if poc_recipe.script_path:
+                    script_files.append(poc_recipe.script_path)
 
+                self._log(f"Validating PoC for {item.hypothesis_id}...")
                 validation_context = self._context_builder.build(
                     validator.name,
                     run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
@@ -234,6 +364,22 @@ class MultiAgentOrchestrator:
                     extra_vars={**extra_vars, "context_packet": render_context_packet(validation_context)},
                 )
                 self._record_trajectory(validation_run)
+                if failure := self._check_run_status(validation_run, "validator"):
+                    self.store.append_event(
+                        "validator_failed",
+                        {"hypothesis_id": item.hypothesis_id, "attempt": attempt, "reason": failure.summary},
+                    )
+                    self._log(
+                        f"Validator failed for {item.hypothesis_id} "
+                        f"(attempt {attempt}/{self.max_poc_attempts}): {failure.summary}"
+                    )
+                    if attempt == self.max_poc_attempts:
+                        self.store.append_event(
+                            "hypothesis_skip",
+                            {"hypothesis_id": item.hypothesis_id, "reason": failure.summary},
+                        )
+                        self._log(f"Hypothesis {item.hypothesis_id} skipped: {failure.summary}")
+                    continue
                 validation = parse_validation_result(validation_run.result)
                 self._artifacts["validation"] = validation
                 validation_path = self.store.append_json_artifact(
@@ -245,8 +391,33 @@ class MultiAgentOrchestrator:
                         hypothesis_id=item.hypothesis_id,
                     ),
                 )
+                validation_files.append(str(validation_path))
 
-                if validation.crash_detected:
+                if not validation.crash_detected:
+                    self.store.append_event(
+                        "validation_failed",
+                        {"hypothesis_id": item.hypothesis_id, "attempt": attempt},
+                    )
+                    self._log(
+                        f"Validation failed (no crash) for {item.hypothesis_id} "
+                        f"(attempt {attempt}/{self.max_poc_attempts})."
+                    )
+                    if attempt == self.max_poc_attempts:
+                        self.store.append_event(
+                            "hypothesis_skip",
+                            {"hypothesis_id": item.hypothesis_id, "reason": "no_crash"},
+                        )
+                        self._log(f"Hypothesis {item.hypothesis_id} skipped: no_crash")
+                    continue
+
+                self._log(
+                    f"Validation success for {item.hypothesis_id} "
+                    f"(attempt {attempt}/{self.max_poc_attempts})."
+                )
+                self._log(f"Crash confirmed for {item.hypothesis_id}. Generating report...")
+                reporter_hint = ""
+                report = None
+                for attempt in range(1, 3):
                     reporter_context = self._context_builder.build(
                         reporter.name,
                         run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
@@ -257,11 +428,21 @@ class MultiAgentOrchestrator:
                     )
                     reporter_run = runner.run(
                         reporter,
-                        extra_vars={**extra_vars, "context_packet": render_context_packet(reporter_context)},
+                        extra_vars={
+                            **extra_vars,
+                            "context_packet": render_context_packet(reporter_context),
+                            "reporter_hint": reporter_hint,
+                        },
                     )
                     self._record_trajectory(reporter_run)
+                    if failure := self._check_run_status(reporter_run, "reporter"):
+                        self.store.append_event(
+                            "reporter_failed",
+                            {"hypothesis_id": item.hypothesis_id, "reason": failure.summary},
+                        )
+                        break
                     report = parse_bug_report(reporter_run.result)
-                    report_path = self.store.append_json_artifact(
+                    self.store.append_json_artifact(
                         "reports",
                         report,
                         meta=ArtifactMeta(
@@ -270,20 +451,67 @@ class MultiAgentOrchestrator:
                             hypothesis_id=item.hypothesis_id,
                         ),
                     )
+                    if report and report.report_path:
+                        report_files.append(report.report_path)
+                    if self._report_exists(item.hypothesis_id):
+                        break
                     self.store.append_event(
-                        "run_success", {"hypothesis_id": item.hypothesis_id}
+                        "report_missing",
+                        {"hypothesis_id": item.hypothesis_id, "attempt": attempt},
                     )
-                    return OrchestratorResult(
-                        status="success",
-                        summary="Vulnerability confirmed.",
-                        run_dir=self.store.run_dir,
-                        report_path=report_path,
-                        validation_path=validation_path,
+                    reporter_hint = (
+                        f"WARNING: The previous run did not create /src/final_report_{item.hypothesis_id}.md. "
+                        "You MUST write the report file before calling finish. "
+                        f"Verify it exists with `test -f /src/final_report_{item.hypothesis_id}.md`."
                     )
+
+                if not self._report_exists(item.hypothesis_id):
+                    self.store.append_event(
+                        "hypothesis_skip",
+                        {"hypothesis_id": item.hypothesis_id, "reason": "report_missing"},
+                    )
+                    self._log(f"Hypothesis {item.hypothesis_id} skipped: report_missing")
+                    break
+                self.store.append_event("run_success", {"hypothesis_id": item.hypothesis_id})
+                self._log(f"Hypothesis {item.hypothesis_id} confirmed and reported.")
+                if self._on_success:
+                    self._on_success(
+                        hypothesis_id=item.hypothesis_id,
+                        report_path=(report.report_path if report else ""),
+                        poc_path=(poc_recipe.input_path if poc_recipe else ""),
+                        script_path=(poc_recipe.script_path if poc_recipe else ""),
+                    )
+                success_count += 1
+                hypothesis_success = True
+                break
+
+            if not hypothesis_success:
+                continue
+
+        report_files = list(dict.fromkeys(report_files))
+        poc_files = list(dict.fromkeys(poc_files))
+        script_files = list(dict.fromkeys(script_files))
+
+        if success_count > 0:
+            self.store.append_event("run_success_all", {"count": success_count})
+            self._log(f"Run finished: {success_count} hypothesis confirmed.")
+            return OrchestratorResult(
+                status="success",
+                summary=f"Confirmed {success_count} vulnerabilities.",
+                run_dir=self.store.run_dir,
+                report_paths=report_files,
+                poc_paths=poc_files,
+                script_paths=script_files,
+                validation_paths=validation_files,
+            )
 
         self.store.append_event("run_failure", {})
         return OrchestratorResult(
             status="failure",
             summary="No hypothesis yielded a confirmed crash.",
             run_dir=self.store.run_dir,
+            report_paths=report_files,
+            poc_paths=poc_files,
+            script_paths=script_files,
+            validation_paths=validation_files,
         )
