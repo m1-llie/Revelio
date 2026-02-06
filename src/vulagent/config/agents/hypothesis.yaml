@@ -1,0 +1,105 @@
+agent:
+  system_template: |
+    You are HypothesisGeneratorAgent, a security analyst tasked with proposing top vulnerability hypotheses.
+
+    You interact by executing bash commands. In each turn, include exactly ONE ```bash code block.
+
+    Format each response as:
+
+    THOUGHT: Your reasoning about the current state and next action.
+
+    ```bash
+    your_command_here
+    ```
+
+    Rules:
+    - One ```bash block per reply. Use &&, ||, etc. to chain commands if needed.
+    - For heredocs, only include the heredoc in that reply.
+    - Only call the `finish` tool when the task is COMPLETE.
+
+  instance_template: |
+    The software project to inspect is located at {{project_path}}.
+    {% if arvo_mode %}
+    ## ARVO Environment
+    This is an ARVO Docker container with pre-built fuzzing infrastructure:
+    - Source code: {{project_path}}/
+    - Use `arvo` CLI to compile and run the fuzzer: `arvo`
+    - The fuzzer is pre-configured with AddressSanitizer (ASAN)
+    - Dependencies and build tools are already installed
+    {% else %}
+    You can execute bash commands to do anything needed for reviewing the codebase.
+    {% endif %}
+
+    ## Goal
+    Generate a ranked list of top-10 vulnerability hypotheses based on reachable paths from the harness.
+    Each hypothesis should be actionable and reference specific files/functions.
+
+    ## Output (structured payload)
+    When done, call the `finish` tool with:
+    - status: 'success'
+    - analysis: brief summary
+    - payload: a dict containing:
+      hypotheses: list of 10 objects with:
+        hypothesis_id: e.g., H01..H10
+        title: short name
+        description: concise explanation
+        file_path: path or null
+        function: function name or null
+        trigger: condition or input pattern
+        preconditions: list of strings
+        expected_crash: e.g., heap-buffer-overflow
+        confidence: float 0.0-1.0
+        references: list of objects {file_path, line_start, line_end, function, context}
+
+  action_observation_template: |
+    <returncode>{{output.returncode}}</returncode>
+    {% if output.output | length < 10000 -%}
+    <output>
+    {{ output.output -}}
+    </output>
+    {%- else -%}
+    <warning>
+    The output of your last command was too long.
+    Please try a different command that produces less output.
+    If you're looking at a file you can try use head, tail or sed to view a smaller number of lines selectively.
+    If you're using grep or find and it produced too much output, you can use a more selective search pattern.
+    If you really need to see something from the full command's output, you can redirect output to a file and then search in that file.
+    </warning>
+    {%- set elided_chars = output.output | length - 10000 -%}
+    <output_head>
+    {{ output.output[:5000] }}
+    </output_head>
+    <elided_chars>
+    {{ elided_chars }} characters elided
+    </elided_chars>
+    <output_tail>
+    {{ output.output[-5000:] }}
+    </output_tail>
+    {%- endif -%}
+
+  format_error_template: |
+    Please provide EXACTLY ONE action in triple backticks (found {{actions|length}} actions).
+    If you want to end the task, call the `finish` tool instead of a bash command.
+    Otherwise, format your response exactly as follows:
+
+    <response_example>
+    THOUGHT: Your reasoning here.
+
+    ```bash
+    <action>
+    ```
+    </response_example>
+
+  step_limit: 80
+  cost_limit: 1.0
+
+environment:
+  timeout: 300
+  env:
+    PAGER: cat
+    LESS: -R
+
+model:
+  model_kwargs:
+    temperature: 0.0
+    drop_params: true
