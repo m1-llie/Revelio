@@ -24,7 +24,6 @@ dependencies = [
 
 [project.scripts]
 vul-agent = "vulagent.run.hello_world:app"
-vul-agent-mem = "vulagent.run.memory_analysis:app"
 
 [tool.setuptools]
 include-package-data = true
