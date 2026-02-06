@@ -68,6 +68,8 @@ class TrajectoryInspector(App):
         Binding("k,up", "scroll_up", "Scroll up"),
         Binding("L", "next_trajectory", "Next trajectory"),
         Binding("H", "previous_trajectory", "Previous trajectory"),
+        Binding("n", "next_agent", "Agent++"),
+        Binding("p", "previous_agent", "Agent--"),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -81,8 +83,11 @@ class TrajectoryInspector(App):
         self.trajectory_files = trajectory_files
         self._i_trajectory = 0
         self._i_step = 0
+        self._i_agent = 0
         self.messages = []
         self.steps = []
+        self.agent_names: list[str] = []
+        self._agents_map: dict[str, dict] = {}
 
         if trajectory_files:
             self._load_current_trajectory()
@@ -108,6 +113,24 @@ class TrajectoryInspector(App):
         return len(self.steps)
 
     @property
+    def i_agent(self) -> int:
+        """Current agent index."""
+        return self._i_agent
+
+    @i_agent.setter
+    def i_agent(self, value: int) -> None:
+        if value != self._i_agent and self.n_agents > 0:
+            self._i_agent = max(0, min(value, self.n_agents - 1))
+            self._load_agent()
+            self.query_one(VerticalScroll).scroll_to(y=0, animate=False)
+            self.update_content()
+
+    @property
+    def n_agents(self) -> int:
+        """Number of agents in current trajectory."""
+        return len(self.agent_names)
+
+    @property
     def i_trajectory(self) -> int:
         """Current trajectory index."""
         return self._i_trajectory
@@ -131,25 +154,51 @@ class TrajectoryInspector(App):
         if not self.trajectory_files:
             self.messages = []
             self.steps = []
+            self.agent_names = []
+            self._agents_map = {}
             return
 
         trajectory_file = self.trajectory_files[self.i_trajectory]
         try:
             data = json.loads(trajectory_file.read_text())
 
-            if isinstance(data, list):
-                self.messages = data
-            elif isinstance(data, dict) and "messages" in data:
-                self.messages = data["messages"]
-            else:
-                raise ValueError("Unrecognized trajectory format")
+            self.agent_names = []
+            self._agents_map = {}
 
-            self.steps = _messages_to_steps(self.messages)
-            self._i_step = 0
+            if isinstance(data, dict) and "agents" in data and isinstance(data["agents"], dict):
+                self._agents_map = data["agents"]
+                self.agent_names = list(self._agents_map.keys())
+            else:
+                self._agents_map = {"default": data}
+                self.agent_names = ["default"]
+
+            self._i_agent = 0
+            self._load_agent()
         except (json.JSONDecodeError, FileNotFoundError, ValueError) as e:
             self.messages = []
             self.steps = []
+            self.agent_names = []
+            self._agents_map = {}
             self.notify(f"Error loading {trajectory_file.name}: {e}", severity="error")
+
+    def _load_agent(self) -> None:
+        """Load messages and steps for the current agent."""
+        if not self.agent_names:
+            self.messages = []
+            self.steps = []
+            return
+        agent_name = self.agent_names[self.i_agent]
+        data = self._agents_map.get(agent_name, {})
+
+        if isinstance(data, list):
+            self.messages = data
+        elif isinstance(data, dict) and "messages" in data:
+            self.messages = data["messages"]
+        else:
+            self.messages = []
+
+        self.steps = _messages_to_steps(self.messages)
+        self._i_step = 0
 
     @property
     def current_trajectory_name(self) -> str:
@@ -157,6 +206,12 @@ class TrajectoryInspector(App):
         if not self.trajectory_files:
             return "No trajectories"
         return self.trajectory_files[self.i_trajectory].name
+
+    @property
+    def current_agent_name(self) -> str:
+        if not self.agent_names:
+            return "No agent"
+        return self.agent_names[self.i_agent]
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -199,6 +254,7 @@ class TrajectoryInspector(App):
         self.title = (
             f"Trajectory {self.i_trajectory + 1}/{self.n_trajectories} - "
             f"{self.current_trajectory_name} - "
+            f"Agent {self.current_agent_name} ({self.i_agent + 1}/{self.n_agents}) - "
             f"Step {self.i_step + 1}/{self.n_steps}"
         )
 
@@ -222,6 +278,12 @@ class TrajectoryInspector(App):
     def action_previous_trajectory(self) -> None:
         self.i_trajectory -= 1
 
+    def action_next_agent(self) -> None:
+        self.i_agent += 1
+
+    def action_previous_agent(self) -> None:
+        self.i_agent -= 1
+
     def action_scroll_down(self) -> None:
         vs = self.query_one(VerticalScroll)
         vs.scroll_to(y=vs.scroll_target_y + 15)
@@ -240,7 +302,9 @@ def main(
     if path_obj.is_file():
         trajectory_files = [path_obj]
     elif path_obj.is_dir():
-        trajectory_files = sorted(path_obj.rglob("*.traj.json"))
+        files = list(path_obj.rglob("trajectory.json"))
+        files += list(path_obj.rglob("*.traj.json"))
+        trajectory_files = sorted(set(files))
         if not trajectory_files:
             raise typer.BadParameter(f"No trajectory files found in '{path}'")
     else:

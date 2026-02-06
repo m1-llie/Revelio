@@ -27,4 +27,5 @@
 ## Extras
 
 * `inspector.py` - Browse agent conversation trajectories.
+  - Supports aggregated multi-agent `trajectory.json` (use `n`/`p` to switch agents).
 * `extra/config.py` - Manage the global config file.
