@@ -221,6 +221,24 @@ class ArtifactStore:
         name = f"trajectory_{agent_name}.json"
         return self.append_json_artifact("trajectories", trajectory, name=name, meta=meta)
 
+    def register_existing(
+        self,
+        category: str,
+        path: Path,
+        *,
+        artifact_type: str | None = None,
+        meta: ArtifactMeta | None = None,
+    ) -> None:
+        """Register an existing file in the index (no copying)."""
+        rel_path = path.resolve().relative_to(self.run_dir)
+        entry = IndexEntry(
+            artifact_type=artifact_type or (meta.artifact_type if meta else category),
+            path=str(rel_path),
+            created_at=_now_utc_iso(),
+            meta=meta.to_dict() if meta else {},
+        )
+        self._register(category, entry)
+
     def write_aggregated_trajectory(self, trajectories: dict[str, Any]) -> Path:
         self._trajectory_path.write_text(json.dumps(trajectories, indent=2))
         return self._trajectory_path
