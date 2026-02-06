@@ -11,6 +11,7 @@
   - `--project <path>` - Custom local C/C++ projects
   - `--multi-agent/--single-agent` - Use multi-agent pipeline (default) or legacy single-agent
   - `--agents-config-dir <path>` - Directory for per-agent prompt configs (default: config/agents)
+  - `--max-poc-attempts <n>` - Max PoC attempts per hypothesis in multi-agent mode
 
 * `validate.py` - Validate a PoC against both ARVO versions:
   - Pulls `-fix` image if not cached locally
