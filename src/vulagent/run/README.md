@@ -9,6 +9,8 @@
 * `detect.py` - Detect memory-safety vulnerabilities using Docker sandbox. Supports:
   - `--arvo <image>` - ARVO targets with pre-built fuzzing infrastructure
   - `--project <path>` - Custom local C/C++ projects
+  - `--multi-agent/--single-agent` - Use multi-agent pipeline (default) or legacy single-agent
+  - `--agents-config-dir <path>` - Directory for per-agent prompt configs (default: config/agents)
 
 * `validate.py` - Validate a PoC against both ARVO versions:
   - Pulls `-fix` image if not cached locally
