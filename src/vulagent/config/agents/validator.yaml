@@ -39,6 +39,10 @@ agent:
     Run the reproduction command (from PoC recipe or your judgment) and detect crashes.
     Capture a concise output excerpt (first ~200 lines).
 
+    ## Context Packet
+    The orchestrator will provide `{{context_packet}}` containing the hypothesis and PoC recipe.
+    Use it to choose the correct reproduction command and expected crash signal.
+
     ## Output (structured payload)
     When done, call the `finish` tool with:
     - status: 'success'

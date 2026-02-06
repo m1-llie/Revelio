@@ -41,6 +41,10 @@ agent:
     - `result_script.py` (the generator)
     - `poc` (raw input data)
 
+    ## Context Packet
+    The orchestrator will provide `{{context_packet}}` containing the selected hypothesis and relevant hotspots.
+    Use it to focus on the specific trigger conditions.
+
     ## Output (structured payload)
     When done, call the `finish` tool with:
     - status: 'success' (or 'failure' if you cannot produce a PoC)

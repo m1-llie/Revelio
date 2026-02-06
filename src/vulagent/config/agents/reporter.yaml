@@ -39,6 +39,11 @@ agent:
     Write `final_report.md` inside {{project_path}} using the report format below.
     Use evidence from the validation output and code references.
 
+    ## Context Packet
+    The orchestrator will provide `{{context_packet}}` containing merged evidence:
+    hypothesis, PoC recipe, validation output, and key code references.
+    Use it to fill the report accurately; don't make up information.
+
     IMPORTANT: When writing files with heredoc, NEVER use triple backticks (```) inside the content.
     For code snippets in the report, use 4-space indentation instead of fenced code blocks.
 

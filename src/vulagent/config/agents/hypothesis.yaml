@@ -34,6 +34,10 @@ agent:
     Generate a ranked list of top-10 vulnerability hypotheses based on reachable paths from the harness.
     Each hypothesis should be actionable and reference specific files/functions.
 
+    ## Context Packet
+    The orchestrator will provide `{{context_packet}}` containing the code review summary and hotspots.
+    Use it to ground your hypotheses and avoid re-reviewing the whole repo.
+
     ## Output (structured payload)
     When done, call the `finish` tool with:
     - status: 'success'
