@@ -31,6 +31,16 @@ CRASH_MARKERS = [
 CRASH_RETURN_CODES = {1, 134, 136, 139}  # ASAN, SIGABRT, SIGFPE, SIGSEGV
 
 
+def _summarize_output(output: str, limit: int = 2000) -> str:
+    if output is None:
+        return ""
+    if len(output) <= limit:
+        return output
+    head = output[:1000]
+    tail = output[-1000:]
+    return f"{head}\n...\n{tail}"
+
+
 def is_crash_detected(output: str, returncode: int | None) -> bool:
     has_crash_marker = any(marker in output for marker in CRASH_MARKERS)
     has_crash_returncode = False
@@ -233,6 +243,10 @@ def main(
         "vul_crash": vul_crashed,
         "fix_crash": fix_crashed,
         "validation_passed": vul_crashed and not fix_crashed,
+        "vul_returncode": vul_result.get("returncode"),
+        "fix_returncode": fix_result.get("returncode"),
+        "vul_output_excerpt": _summarize_output(vul_result.get("output", "")),
+        "fix_output_excerpt": _summarize_output(fix_result.get("output", "")),
     }
 
     result_path = poc_path.parent / "validation.json"
