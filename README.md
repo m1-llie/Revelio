@@ -45,9 +45,10 @@ pip install -e .
 python -m vulagent
 
 # Vulnerability detection with ARVO targets (pre-built Docker images)
-python -m vulagent.run.detect --arvo n132/arvo:42470801-vul -m anthropic/claude-opus-4-6
+python -m vulagent.run.detect --arvo n132/arvo:42470801-vul-clean -m anthropic/claude-opus-4-6
+Note: arvo:xxx-vul-clean is produced using src/vulagent/run/clean_arvo.py to remove pre-existing PoCs, crashers, and seed corpus from ARVO images so the agent must find vulnerabilities from scratch.
 
-# Vulnerability detection with custom projects (requires Docker)
+# Vulnerability detection with custom projects (requires default Docker)
 python -m vulagent.run.detect --project examples/bof -m anthropic/claude-opus-4-6
 
 # Use legacy single-agent mode (optional)
