@@ -89,9 +89,18 @@ vulagent/
 ├── agents/          # Agent implementations (DefaultAgent)
 ├── artifacts/       # Artifact store (typed, append-only) - see src/vulagent/artifacts/README.md
 ├── environments/    # Execution environments (Local, Docker)
-├── models/         # LLM interfaces (LiteLLM, Anthropic, etc.)
+├── models/          # LLM interfaces (LiteLLM, Anthropic, etc.)
 ├── orchestrator/    # Multi-agent pipeline + context injection - see src/vulagent/orchestrator/README.md
-├── run/            # CLI entry points and run scripts
-├── config/         # Configuration templates
-└── utils/          # Utility functions
+├── run/             # CLI entry points and run scripts
+├── config/          # Configuration templates
+├── utils/           # Utility functions
+└── website/         # Debugging website for viewing traces
 ```
+
+## Website
+To start a server on a specific port, run
+```bash
+python3 /srv/home/tony/vul-agent/website/server.py --port <PORT>
+```
+Use SSH tunneling if launching on a remote server.
+

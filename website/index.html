@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VulAgent — Trace Viewer</title>
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:        #0b0b14;
+  --bg-card:   #12121f;
+  --bg-hover:  #181830;
+  --border:    #1e1e38;
+  --text:      #c8c8d8;
+  --text-dim:  #6a6a80;
+  --text-bright:#f0f0f8;
+  --accent:    #6366f1;
+  --accent2:   #818cf8;
+  --green:     #34d399;
+  --red:       #f87171;
+  --orange:    #fb923c;
+  --yellow:    #facc15;
+  --cyan:      #22d3ee;
+  --pink:      #f472b6;
+  --radius:    10px;
+  --mono:      'SF Mono','Cascadia Code','Fira Code',monospace;
+}
+html{font-size:15px}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh}
+a{color:var(--accent2);text-decoration:none}
+a:hover{text-decoration:underline}
+code,pre{font-family:var(--mono);font-size:.85rem}
+pre{background:#0a0a12;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;overflow-x:auto;white-space:pre-wrap;word-break:break-word;line-height:1.5;color:#b0b0c8}
+
+/* ── Layout ───────────────────────────────────────────────────── */
+nav{background:rgba(11,11,20,.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:.8rem 1.5rem;position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:1.2rem}
+nav .logo{font-size:1.2rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;cursor:pointer}
+nav .breadcrumb{color:var(--text-dim);font-size:.85rem;display:flex;align-items:center;gap:.4rem}
+nav .breadcrumb span{cursor:pointer;color:var(--text-dim)}
+nav .breadcrumb span:hover{color:var(--text)}
+nav .breadcrumb .sep{color:#333}
+
+.container{max-width:1200px;margin:0 auto;padding:2rem 1.5rem}
+
+/* ── Cards ────────────────────────────────────────────────────── */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1rem;transition:border-color .15s}
+.card:hover{border-color:#2a2a4a}
+.card h3{font-size:1rem;color:var(--text-bright);margin-bottom:.5rem}
+.card p{font-size:.85rem;color:var(--text-dim);line-height:1.5}
+
+/* ── Run list ─────────────────────────────────────────────────── */
+.run-card{cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:start}
+.run-card:hover{border-color:var(--accent);background:var(--bg-hover)}
+.run-meta{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.6rem}
+.run-meta .tag{font-size:.72rem;padding:2px 8px;border-radius:4px;border:1px solid var(--border);color:var(--text-dim);white-space:nowrap}
+.run-meta .tag.success{border-color:var(--green);color:var(--green)}
+.run-meta .tag.partial{border-color:var(--orange);color:var(--orange)}
+.run-meta .tag.unknown{border-color:var(--text-dim);color:var(--text-dim)}
+.run-stats{text-align:right;white-space:nowrap}
+.run-stats .big{font-size:1.8rem;font-weight:800;color:var(--green)}
+.run-stats .label{font-size:.72rem;color:var(--text-dim)}
+
+/* ── Badge / Pill ─────────────────────────────────────────────── */
+.badge{display:inline-block;font-size:.7rem;padding:2px 8px;border-radius:999px;font-weight:600;letter-spacing:.02em}
+.badge-green{background:rgba(52,211,153,.12);color:var(--green);border:1px solid rgba(52,211,153,.25)}
+.badge-red{background:rgba(248,113,113,.12);color:var(--red);border:1px solid rgba(248,113,113,.25)}
+.badge-orange{background:rgba(251,146,60,.12);color:var(--orange);border:1px solid rgba(251,146,60,.25)}
+.badge-cyan{background:rgba(34,211,238,.12);color:var(--cyan);border:1px solid rgba(34,211,238,.25)}
+.badge-purple{background:rgba(99,102,241,.12);color:var(--accent2);border:1px solid rgba(99,102,241,.25)}
+
+/* ── Tabs ─────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:1.5rem;overflow-x:auto}
+.tab{padding:.6rem 1.2rem;font-size:.82rem;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s,border-color .15s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent2);border-bottom-color:var(--accent)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ── Overview grid ────────────────────────────────────────────── */
+.overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;text-align:center}
+.stat-card .val{font-size:1.6rem;font-weight:800;color:var(--accent2)}
+.stat-card .lbl{font-size:.72rem;color:var(--text-dim);margin-top:.2rem}
+
+/* ── Timeline ─────────────────────────────────────────────────── */
+.timeline{position:relative;padding-left:1.5rem;border-left:2px solid var(--border);margin:1rem 0 1.5rem}
+.timeline .ev{position:relative;padding:.5rem 0 .5rem .8rem;font-size:.82rem}
+.timeline .ev::before{content:'';position:absolute;left:-1.65rem;top:.75rem;width:10px;height:10px;border-radius:50%;background:var(--border);border:2px solid var(--bg)}
+.timeline .ev.success::before{background:var(--green)}
+.timeline .ev.start::before{background:var(--accent)}
+.timeline .ev.attempt::before{background:var(--orange)}
+.timeline .ev .ts{color:var(--text-dim);font-size:.72rem;margin-right:.5rem}
+
+/* ── Hypothesis card ──────────────────────────────────────────── */
+.hyp-card{border-left:3px solid var(--accent);margin-bottom:1.5rem}
+.hyp-header{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.5rem}
+.confidence-bar{width:100px;height:6px;background:#1a1a30;border-radius:3px;overflow:hidden;margin-top:.4rem}
+.confidence-bar .fill{height:100%;border-radius:3px}
+
+/* ── Hotspot ──────────────────────────────────────────────────── */
+.hotspot{background:#0d0d18;border:1px solid var(--border);border-left:3px solid var(--red);border-radius:var(--radius);padding:1rem;margin-bottom:.8rem}
+.hotspot .fn{color:var(--pink);font-family:var(--mono);font-size:.82rem}
+.hotspot .loc{color:var(--text-dim);font-size:.72rem;margin-top:.2rem}
+.hotspot .ctx{color:var(--text);font-size:.82rem;margin-top:.5rem;line-height:1.5}
+
+/* ── ASAN output ──────────────────────────────────────────────── */
+.asan-output{background:#0a0008;border:1px solid #3a1020;border-radius:var(--radius);padding:1rem;font-family:var(--mono);font-size:.78rem;line-height:1.6;color:#e88;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
+.asan-output .asan-error{color:#ff6b6b;font-weight:700}
+.asan-output .asan-frame{color:#c8c8d8}
+.asan-output .asan-summary{color:#fb923c;font-weight:600}
+
+/* ── Trajectory viewer ────────────────────────────────────────── */
+.traj-msg{margin-bottom:.8rem;border-radius:var(--radius);padding:1rem;font-size:.82rem;line-height:1.5}
+.traj-msg.system{background:#0d0d20;border:1px solid #1a1a3a;color:var(--text-dim)}
+.traj-msg.user{background:#0d1420;border:1px solid #1a2a40}
+.traj-msg.assistant{background:#0d200d;border:1px solid #1a3a1a}
+.traj-msg .role{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem}
+.traj-msg.system .role{color:var(--text-dim)}
+.traj-msg.user .role{color:var(--cyan)}
+.traj-msg.assistant .role{color:var(--green)}
+.traj-msg .content{white-space:pre-wrap;word-break:break-word;max-height:400px;overflow-y:auto}
+.traj-msg .content.collapsed{max-height:120px;overflow:hidden;position:relative}
+.traj-msg .content.collapsed::after{content:'';position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,var(--bg-card))}
+.msg-toggle{font-size:.72rem;color:var(--accent2);cursor:pointer;margin-top:.3rem;display:inline-block}
+.msg-toggle:hover{text-decoration:underline}
+
+/* ── Agent summary row ────────────────────────────────────────── */
+.agent-row{display:grid;grid-template-columns:1fr auto auto auto;gap:1rem;align-items:center;padding:.8rem 1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:.5rem;cursor:pointer;transition:border-color .15s}
+.agent-row:hover{border-color:var(--accent)}
+.agent-row .name{font-weight:600;font-size:.9rem;color:var(--text-bright)}
+.agent-row .detail{font-size:.78rem;color:var(--text-dim);text-align:right}
+
+/* ── Log viewer ───────────────────────────────────────────────── */
+.log-viewer{background:#0a0a12;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;font-family:var(--mono);font-size:.75rem;line-height:1.6;max-height:600px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+.log-line{display:block}
+.log-line .log-ts{color:var(--text-dim)}
+.log-line .log-agent{color:var(--cyan)}
+.log-line.log-finish{color:var(--green)}
+.log-line.log-start{color:var(--accent2)}
+
+/* ── Section header ───────────────────────────────────────────── */
+.section-title{font-size:1.1rem;font-weight:700;color:var(--text-bright);margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
+.section-title .count{font-size:.75rem;background:var(--accent);color:#fff;padding:1px 8px;border-radius:999px}
+
+/* ── Code reference ───────────────────────────────────────────── */
+.code-ref{font-family:var(--mono);font-size:.78rem;color:var(--cyan);display:inline-flex;align-items:center;gap:.3rem}
+.code-ref .file{color:var(--text)}
+.code-ref .lines{color:var(--text-dim)}
+
+/* ── Call chain ───────────────────────────────────────────────── */
+.call-chain{font-family:var(--mono);font-size:.78rem;color:var(--text);padding:.5rem .8rem;background:#0a0a12;border-radius:6px;margin-bottom:.4rem;border:1px solid var(--border)}
+.call-chain .arrow{color:var(--accent2)}
+
+/* ── Python script viewer ─────────────────────────────────────── */
+.script-view{position:relative}
+.copy-btn{position:absolute;top:.5rem;right:.5rem;background:var(--bg-hover);border:1px solid var(--border);color:var(--text-dim);padding:3px 10px;border-radius:4px;font-size:.7rem;cursor:pointer}
+.copy-btn:hover{color:var(--text);border-color:var(--accent)}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media(max-width:640px){
+  .run-card{grid-template-columns:1fr}
+  .run-stats{text-align:left}
+  .overview-grid{grid-template-columns:repeat(2,1fr)}
+  .agent-row{grid-template-columns:1fr;gap:.3rem}
+  nav{flex-wrap:wrap}
+}
+
+/* ── Loading ──────────────────────────────────────────────────── */
+.loading{text-align:center;padding:4rem;color:var(--text-dim)}
+.spinner{display:inline-block;width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;margin-bottom:.5rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Empty state ──────────────────────────────────────────────── */
+.empty{text-align:center;padding:4rem;color:var(--text-dim)}
+.empty .icon{font-size:2.5rem;margin-bottom:1rem;opacity:.4}
+
+/* ── Markdown rendered ────────────────────────────────────────── */
+.md-render{line-height:1.7;font-size:.88rem}
+.md-render h1,.md-render h2,.md-render h3{color:var(--text-bright);margin:1.2rem 0 .5rem}
+.md-render h1{font-size:1.3rem;border-bottom:1px solid var(--border);padding-bottom:.4rem}
+.md-render h2{font-size:1.1rem}
+.md-render h3{font-size:.95rem}
+.md-render p{margin:.5rem 0}
+.md-render code{background:#1a1a2e;padding:1px 5px;border-radius:3px;font-size:.82rem}
+.md-render pre{margin:.8rem 0}
+.md-render pre code{background:none;padding:0}
+.md-render ul,.md-render ol{padding-left:1.5rem;margin:.5rem 0}
+.md-render li{margin:.2rem 0}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo" onclick="navigate('')">VulAgent</div>
+  <div class="breadcrumb" id="breadcrumb"></div>
+</nav>
+
+<div class="container" id="app">
+  <div class="loading"><div class="spinner"></div><br>Loading runs...</div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────
+let currentView = 'list'; // list | detail
+let currentRunId = null;
+let runsData = [];
+let runDetail = null;
+
+// ── API ────────────────────────────────────────────────────────
+const API = '';
+async function api(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(`${r.status}`);
+  const ct = r.headers.get('content-type') || '';
+  return ct.includes('json') ? r.json() : r.text();
+}
+
+// ── Router ─────────────────────────────────────────────────────
+function navigate(hash) {
+  window.location.hash = hash;
+}
+
+window.addEventListener('hashchange', route);
+window.addEventListener('load', () => { route(); });
+
+async function route() {
+  const hash = window.location.hash.slice(1);
+  if (hash && hash !== '') {
+    currentRunId = decodeURIComponent(hash);
+    currentView = 'detail';
+    await loadRunDetail(currentRunId);
+  } else {
+    currentView = 'list';
+    currentRunId = null;
+    await loadRunsList();
+  }
+  updateBreadcrumb();
+}
+
+function updateBreadcrumb() {
+  const bc = document.getElementById('breadcrumb');
+  if (currentView === 'list') {
+    bc.innerHTML = '<span onclick="navigate(\'\')">All Runs</span>';
+  } else {
+    bc.innerHTML = `<span onclick="navigate('')">All Runs</span><span class="sep">/</span><span>${esc(currentRunId)}</span>`;
+  }
+}
+
+// ── Runs List ──────────────────────────────────────────────────
+async function loadRunsList() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading runs...</div>';
+  try {
+    runsData = await api('/api/runs');
+    renderRunsList();
+  } catch (e) {
+    app.innerHTML = `<div class="empty"><div class="icon">!</div><p>Failed to load runs: ${esc(e.message)}</p></div>`;
+  }
+}
+
+function renderRunsList() {
+  const app = document.getElementById('app');
+  if (!runsData.length) {
+    app.innerHTML = '<div class="empty"><div class="icon">&#128269;</div><p>No runs found in the output directories.</p></div>';
+    return;
+  }
+  let html = `<h2 style="color:var(--text-bright);margin-bottom:1.5rem">Runs <span style="font-size:.85rem;color:var(--text-dim);font-weight:400">(${runsData.length})</span></h2>`;
+  for (const r of runsData) {
+    const statusCls = r.status === 'success' ? 'success' : r.status === 'partial' ? 'partial' : 'unknown';
+    const statusLabel = r.status === 'success' ? 'All Confirmed' : r.status === 'partial' ? 'Partial' : 'Unknown';
+    const date = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
+    const model = r.model_name ? r.model_name.split('/').pop() : '—';
+    html += `
+    <div class="card run-card" onclick="navigate('${encUri(r.run_id)}')">
+      <div>
+        <h3>${esc(r.run_id)}</h3>
+        <p>${esc(r.target_ref || '—')}</p>
+        <div class="run-meta">
+          <span class="tag ${statusCls}">${statusLabel}</span>
+          <span class="tag">${esc(model)}</span>
+          <span class="tag">${esc(r.pipeline || '—')}</span>
+          <span class="tag">${date}</span>
+          ${r.total_cost ? `<span class="tag">$${r.total_cost.toFixed(2)}</span>` : ''}
+          ${r.source_dir !== 'output' ? `<span class="tag">${esc(r.source_dir)}</span>` : ''}
+        </div>
+      </div>
+      <div class="run-stats">
+        <div class="big">${r.hypotheses_confirmed || 0}</div>
+        <div class="label">confirmed</div>
+      </div>
+    </div>`;
+  }
+  app.innerHTML = html;
+}
+
+// ── Run Detail ─────────────────────────────────────────────────
+async function loadRunDetail(runId) {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading run detail...</div>';
+  try {
+    runDetail = await api(`/api/runs/${encodeURIComponent(runId)}`);
+    renderRunDetail();
+  } catch (e) {
+    app.innerHTML = `<div class="empty"><div class="icon">!</div><p>Failed to load run: ${esc(e.message)}</p></div>`;
+  }
+}
+
+function renderRunDetail() {
+  const d = runDetail;
+  const m = d.manifest;
+  const counters = d.index.counters || {};
+
+  // Compute totals
+  let totalCost = 0;
+  let totalCalls = 0;
+  for (const t of d.trajectory_summaries || []) {
+    totalCost += t.cost || 0;
+    totalCalls += t.api_calls || 0;
+  }
+
+  const tabs = ['Overview','Code Review','Hypotheses','Trajectories','Log'];
+  let html = `<div class="tabs" id="detail-tabs">`;
+  tabs.forEach((t,i) => {
+    html += `<div class="tab ${i===0?'active':''}" onclick="switchTab(${i},'detail')">${t}</div>`;
+  });
+  html += `</div>`;
+
+  // ── Tab 0: Overview
+  html += `<div class="tab-panel active" id="detail-tab-0">`;
+  html += `<div class="overview-grid">`;
+  html += statCard(m.target_ref || '—', 'Target');
+  html += statCard((m.model_name||'').split('/').pop(), 'Model');
+  html += statCard(counters.hypotheses || 0, 'Hypotheses');
+  html += statCard(counters.validation || 0, 'Validations');
+  html += statCard('$' + totalCost.toFixed(2), 'Total Cost');
+  html += statCard(totalCalls, 'API Calls');
+  html += `</div>`;
+
+  // Timeline
+  html += `<div class="section-title">Timeline</div>`;
+  html += `<div class="timeline">`;
+  for (const ev of d.events) {
+    const cls = ev.event === 'run_start' ? 'start' : ev.event.includes('success') ? 'success' : 'attempt';
+    const ts = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : '';
+    const payload = ev.payload ? Object.entries(ev.payload).map(([k,v])=>`${k}: ${v}`).join(', ') : '';
+    html += `<div class="ev ${cls}"><span class="ts">${ts}</span><strong>${esc(ev.event)}</strong> ${payload ? `<span style="color:var(--text-dim);margin-left:.5rem">${esc(payload)}</span>` : ''}</div>`;
+  }
+  html += `</div>`;
+
+  // Manifest details
+  html += `<div class="section-title">Manifest</div>`;
+  html += `<pre>${esc(JSON.stringify(m, null, 2))}</pre>`;
+  html += `</div>`;
+
+  // ── Tab 1: Code Review
+  html += `<div class="tab-panel" id="detail-tab-1">`;
+  const reviews = d.artifacts.code_review || [];
+  if (reviews.length === 0) {
+    html += `<div class="empty"><p>No code review artifacts found.</p></div>`;
+  } else {
+    for (const cr of reviews) {
+      if (cr.data) {
+        const data = cr.data;
+        html += `<div class="card"><h3>Summary</h3><p>${esc(data.summary)}</p></div>`;
+
+        // Files reviewed
+        if (data.files_reviewed && data.files_reviewed.length) {
+          html += `<div class="section-title">Files Reviewed <span class="count">${data.files_reviewed.length}</span></div>`;
+          html += `<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.5rem">`;
+          for (const f of data.files_reviewed) {
+            html += `<span class="badge badge-purple">${esc(f)}</span>`;
+          }
+          html += `</div>`;
+        }
+
+        // Harness
+        if (data.harness_entry) {
+          html += `<div class="card"><h3>Harness Entry</h3><p><code>${esc(data.harness_entry)}</code></p></div>`;
+        }
+
+        // Call chains
+        if (data.call_chains && data.call_chains.length) {
+          html += `<div class="section-title">Call Chains <span class="count">${data.call_chains.length}</span></div>`;
+          for (const chain of data.call_chains) {
+            const parts = chain.split(' -> ');
+            html += `<div class="call-chain">${parts.map(p => esc(p)).join(' <span class="arrow">-></span> ')}</div>`;
+          }
+          html += `<br>`;
+        }
+
+        // Hotspots
+        if (data.hotspots && data.hotspots.length) {
+          html += `<div class="section-title">Hotspots <span class="count">${data.hotspots.length}</span></div>`;
+          for (const h of data.hotspots) {
+            html += `<div class="hotspot">`;
+            html += `<div class="fn">${esc(h.function || '—')}</div>`;
+            html += `<div class="loc">${esc(h.file_path || '')}:${h.line_start||'?'}-${h.line_end||'?'}</div>`;
+            html += `<div class="ctx">${esc(h.context || '')}</div>`;
+            html += `</div>`;
+          }
+        }
+
+        // Warnings
+        if (data.warnings && data.warnings.length) {
+          html += `<div class="section-title">Warnings <span class="count">${data.warnings.length}</span></div>`;
+          for (const w of data.warnings) {
+            html += `<div class="card" style="border-left:3px solid var(--orange)"><p>${esc(w)}</p></div>`;
+          }
+        }
+      }
+    }
+  }
+  html += `</div>`;
+
+  // ── Tab 2: Hypotheses
+  html += `<div class="tab-panel" id="detail-tab-2">`;
+  html += renderHypotheses(d);
+  html += `</div>`;
+
+  // ── Tab 3: Trajectories
+  html += `<div class="tab-panel" id="detail-tab-3">`;
+  html += renderTrajectories(d);
+  html += `</div>`;
+
+  // ── Tab 4: Log
+  html += `<div class="tab-panel" id="detail-tab-4">`;
+  html += renderLog(d.log);
+  html += `</div>`;
+
+  document.getElementById('app').innerHTML = html;
+}
+
+function renderHypotheses(d) {
+  let html = '';
+  const hyps = d.artifacts.hypotheses || [];
+  const validations = d.artifacts.validation || [];
+  const pocs = d.artifacts.poc || [];
+  const reports = d.artifacts.reports || [];
+
+  // Build lookup by hypothesis_id
+  const valMap = {};
+  for (const v of validations) { if (v.data) valMap[v.data.hypothesis_id] = v.data; }
+  const pocMap = {};
+  for (const p of pocs) { if (p.data) pocMap[p.data.hypothesis_id] = p.data; }
+  const repMap = {};
+  for (const r of reports) { if (r.data) repMap[r.data.hypothesis_id] = r.data; }
+
+  for (const hFile of hyps) {
+    if (!hFile.data) continue;
+    const hypotheses = hFile.data.hypotheses || [];
+    html += `<div class="section-title">Vulnerability Hypotheses <span class="count">${hypotheses.length}</span></div>`;
+
+    for (const h of hypotheses) {
+      const val = valMap[h.hypothesis_id];
+      const poc = pocMap[h.hypothesis_id];
+      const rep = repMap[h.hypothesis_id];
+      const hypOut = d.hypothesis_outputs[h.hypothesis_id] || {};
+      const confirmed = val && val.crash_detected;
+
+      html += `<div class="card hyp-card" style="border-left-color:${confirmed ? 'var(--green)' : 'var(--accent)'}">`;
+
+      // Header
+      html += `<div class="hyp-header">`;
+      html += `<div>`;
+      html += `<h3 style="display:flex;align-items:center;gap:.5rem">`;
+      html += `<span class="badge ${confirmed ? 'badge-green' : 'badge-orange'}">${h.hypothesis_id}</span> `;
+      html += esc(h.title);
+      html += `</h3>`;
+      html += `</div>`;
+      html += `<div style="text-align:right">`;
+      html += `<div style="font-size:.72rem;color:var(--text-dim)">Confidence</div>`;
+      html += `<div style="font-size:1.1rem;font-weight:700;color:${h.confidence >= 0.8 ? 'var(--green)' : h.confidence >= 0.5 ? 'var(--orange)' : 'var(--red)'}">${(h.confidence * 100).toFixed(0)}%</div>`;
+      html += `<div class="confidence-bar"><div class="fill" style="width:${h.confidence*100}%;background:${h.confidence >= 0.8 ? 'var(--green)' : h.confidence >= 0.5 ? 'var(--orange)' : 'var(--red)'}"></div></div>`;
+      html += `</div></div>`;
+
+      // Description
+      html += `<p style="margin:.8rem 0;line-height:1.6;font-size:.85rem">${esc(h.description)}</p>`;
+
+      // Details grid
+      html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin:.8rem 0;font-size:.82rem">`;
+      if (h.file_path) html += `<div><span style="color:var(--text-dim)">File:</span> <code>${esc(h.file_path)}</code></div>`;
+      if (h.function) html += `<div><span style="color:var(--text-dim)">Function:</span> <code>${esc(h.function)}</code></div>`;
+      if (h.expected_crash) html += `<div><span style="color:var(--text-dim)">Expected:</span> <span class="badge badge-red">${esc(h.expected_crash)}</span></div>`;
+      if (h.trigger) html += `<div style="grid-column:1/-1"><span style="color:var(--text-dim)">Trigger:</span> ${esc(h.trigger)}</div>`;
+      html += `</div>`;
+
+      // Preconditions
+      if (h.preconditions && h.preconditions.length) {
+        html += `<div style="margin:.5rem 0"><span style="color:var(--text-dim);font-size:.78rem">Preconditions:</span><ul style="padding-left:1.2rem;margin:.3rem 0;font-size:.82rem">`;
+        for (const p of h.preconditions) html += `<li>${esc(p)}</li>`;
+        html += `</ul></div>`;
+      }
+
+      // References
+      if (h.references && h.references.length) {
+        html += `<div style="margin:.5rem 0"><span style="color:var(--text-dim);font-size:.78rem">Code References:</span>`;
+        for (const ref of h.references) {
+          html += `<div style="margin:.3rem 0;padding:.4rem .6rem;background:#0a0a12;border-radius:6px;border:1px solid var(--border);font-size:.78rem">`;
+          html += `<code class="code-ref"><span class="file">${esc(ref.file_path || '')}</span>`;
+          if (ref.line_start) html += `<span class="lines">:${ref.line_start}${ref.line_end ? '-' + ref.line_end : ''}</span>`;
+          html += `</code>`;
+          if (ref.function) html += ` <span style="color:var(--pink)">${esc(ref.function)}</span>`;
+          if (ref.context) html += `<div style="color:var(--text-dim);margin-top:.3rem;font-size:.75rem">${esc(ref.context)}</div>`;
+          html += `</div>`;
+        }
+        html += `</div>`;
+      }
+
+      // ── Sub-sections: Validation, PoC, Report ──
+      const subTabs = [];
+      if (val) subTabs.push('Validation');
+      if (poc) subTabs.push('PoC');
+      if (hypOut.report_md) subTabs.push('Report');
+      if (hypOut.script_py) subTabs.push('Script');
+
+      if (subTabs.length) {
+        const stId = 'subtab-' + h.hypothesis_id;
+        html += `<div class="tabs" style="margin-top:1rem;border-top:1px solid var(--border);padding-top:.5rem">`;
+        subTabs.forEach((st, i) => {
+          html += `<div class="tab ${i===0?'active':''}" onclick="switchTab(${i},'${stId}')">${st}</div>`;
+        });
+        html += `</div>`;
+
+        let si = 0;
+
+        // Validation panel
+        if (val) {
+          html += `<div class="tab-panel ${si===0?'active':''}" id="${stId}-tab-${si}">`;
+          html += `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.8rem">`;
+          html += `<span class="badge ${val.crash_detected ? 'badge-green' : 'badge-red'}">${val.crash_detected ? 'CRASH DETECTED' : 'NO CRASH'}</span>`;
+          if (val.returncode != null) html += `<span class="badge badge-cyan">exit code: ${val.returncode}</span>`;
+          for (const ind of (val.indicators || [])) {
+            html += `<span class="badge badge-orange">${esc(ind)}</span>`;
+          }
+          html += `</div>`;
+          if (val.reproduction_command) html += `<div style="margin-bottom:.5rem;font-size:.82rem"><span style="color:var(--text-dim)">Repro:</span> <code>${esc(val.reproduction_command)}</code></div>`;
+          if (val.output_excerpt) {
+            html += `<div class="asan-output">${formatAsan(val.output_excerpt)}</div>`;
+          }
+          html += `</div>`;
+          si++;
+        }
+
+        // PoC panel
+        if (poc) {
+          html += `<div class="tab-panel ${si===0?'active':''}" id="${stId}-tab-${si}">`;
+          if (poc.generation_steps && poc.generation_steps.length) {
+            html += `<div style="margin-bottom:1rem"><strong style="font-size:.82rem;color:var(--text-bright)">Generation Steps:</strong><ol style="padding-left:1.3rem;margin:.4rem 0;font-size:.82rem">`;
+            for (const s of poc.generation_steps) html += `<li style="margin:.3rem 0">${esc(s)}</li>`;
+            html += `</ol></div>`;
+          }
+          if (poc.expected_signal) html += `<div style="margin-bottom:.5rem;font-size:.82rem"><span style="color:var(--text-dim)">Expected Signal:</span> <span class="badge badge-red">${esc(poc.expected_signal)}</span></div>`;
+          if (poc.reproduction_command) html += `<div style="margin-bottom:.5rem;font-size:.82rem"><span style="color:var(--text-dim)">Repro:</span> <code>${esc(poc.reproduction_command)}</code></div>`;
+          if (hypOut.poc_hex) {
+            html += `<div style="margin-top:.8rem"><strong style="font-size:.82rem;color:var(--text-bright)">PoC Binary (${hypOut.poc_size} bytes):</strong>`;
+            html += `<pre style="margin-top:.4rem">${formatHex(hypOut.poc_hex)}</pre>`;
+            html += `</div>`;
+          }
+          html += `</div>`;
+          si++;
+        }
+
+        // Report panel
+        if (hypOut.report_md) {
+          html += `<div class="tab-panel ${si===0?'active':''}" id="${stId}-tab-${si}">`;
+          html += `<div class="md-render">${renderMarkdown(hypOut.report_md)}</div>`;
+          html += `</div>`;
+          si++;
+        }
+
+        // Script panel
+        if (hypOut.script_py) {
+          html += `<div class="tab-panel ${si===0?'active':''}" id="${stId}-tab-${si}">`;
+          html += `<div class="script-view"><button class="copy-btn" onclick="copyText(this)">Copy</button><pre>${esc(hypOut.script_py)}</pre></div>`;
+          html += `</div>`;
+          si++;
+        }
+      }
+
+      html += `</div>`; // close hyp-card
+    }
+  }
+
+  if (!html) html = '<div class="empty"><p>No hypotheses found.</p></div>';
+  return html;
+}
+
+function renderTrajectories(d) {
+  let html = `<div class="section-title">Agent Trajectories <span class="count">${(d.trajectory_summaries||[]).length}</span></div>`;
+  for (const t of (d.trajectory_summaries || [])) {
+    html += `<div class="agent-row" onclick="loadTrajectory('${encUri(currentRunId)}','${esc(t.path)}','${esc(t.agent_name)}')">`;
+    html += `<div class="name">${esc(t.agent_name)}</div>`;
+    html += `<div class="detail">${t.message_count || '?'} msgs</div>`;
+    html += `<div class="detail">${t.api_calls || '?'} calls</div>`;
+    html += `<div class="detail">$${(t.cost || 0).toFixed(2)}</div>`;
+    html += `</div>`;
+  }
+  html += `<div id="trajectory-viewer"></div>`;
+  return html;
+}
+
+async function loadTrajectory(runId, path, agentName) {
+  const viewer = document.getElementById('trajectory-viewer');
+  viewer.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading trajectory...</div>';
+  try {
+    const traj = await api(`/api/runs/${encodeURIComponent(runId)}/artifact/${path}`);
+    const messages = traj.data?.messages || [];
+    const info = traj.data?.info || {};
+    let html = `<div style="margin-top:1rem">`;
+    html += `<div class="section-title">${esc(agentName)} <span class="badge badge-green">${esc(info.exit_status || '—')}</span></div>`;
+
+    // Config info
+    if (info.config?.environment) {
+      const env = info.config.environment;
+      html += `<div style="font-size:.78rem;color:var(--text-dim);margin-bottom:1rem">Image: <code>${esc(env.image||'—')}</code> | CWD: <code>${esc(env.cwd||'—')}</code> | Timeout: ${env.timeout||'—'}s</div>`;
+    }
+
+    // Messages
+    html += `<div class="section-title">Messages <span class="count">${messages.length}</span></div>`;
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      const role = msg.role || 'unknown';
+      const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2);
+      const isLong = content.length > 600;
+      const msgId = `msg-${agentName}-${i}`;
+      html += `<div class="traj-msg ${role}">`;
+      html += `<div class="role">${role}${msg.timestamp ? ` <span style="font-weight:400;color:var(--text-dim)">${new Date(msg.timestamp).toLocaleTimeString()}</span>` : ''}</div>`;
+      html += `<div class="content ${isLong ? 'collapsed' : ''}" id="${msgId}">${esc(content)}</div>`;
+      if (isLong) html += `<span class="msg-toggle" onclick="toggleMsg('${msgId}',this)">Show more</span>`;
+      html += `</div>`;
+    }
+
+    // Submission
+    if (info.submission) {
+      html += `<div class="section-title" style="margin-top:1.5rem">Final Submission</div>`;
+      html += `<pre>${esc(info.submission)}</pre>`;
+    }
+
+    html += `</div>`;
+    viewer.innerHTML = html;
+  } catch (e) {
+    viewer.innerHTML = `<div class="card" style="border-color:var(--red)"><p>Failed to load trajectory: ${esc(e.message)}</p></div>`;
+  }
+}
+
+function renderLog(logText) {
+  if (!logText) return '<div class="empty"><p>No log available.</p></div>';
+  const lines = logText.split('\n');
+  let html = '<div class="log-viewer">';
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    let cls = 'log-line';
+    if (line.includes('finished with')) cls += ' log-finish';
+    else if (line.includes('Starting') || line.includes('Running')) cls += ' log-start';
+
+    // Colorize
+    const parts = line.split(' | ', 2);
+    if (parts.length === 2) {
+      const ts = parts[0];
+      let msg = parts[1];
+      // Highlight agent names
+      msg = msg.replace(/(RepoReviewerAgent|HypothesisGeneratorAgent|PoCBuilderAgent|ValidatorAgent|ReporterAgent)/g, '<span class="log-agent">$1</span>');
+      // Highlight cost
+      msg = msg.replace(/(\$[\d.]+)/g, '<span style="color:var(--yellow)">$1</span>');
+      html += `<span class="${cls}"><span class="log-ts">${esc(ts)}</span> | ${msg}\n</span>`;
+    } else {
+      html += `<span class="${cls}">${esc(line)}\n</span>`;
+    }
+  }
+  html += '</div>';
+  return html;
+}
+
+// ── Tab switching ──────────────────────────────────────────────
+function switchTab(idx, prefix) {
+  const container = prefix === 'detail' ? document.getElementById('app') : document.getElementById('app');
+  const tabs = container.querySelectorAll(`#${prefix === 'detail' ? 'detail-tabs' : prefix} .tab`);
+  tabs.forEach((t, i) => t.classList.toggle('active', i === idx));
+  // Find panels
+  let i = 0;
+  while (true) {
+    const panel = document.getElementById(`${prefix === 'detail' ? 'detail' : prefix}-tab-${i}`);
+    if (!panel) break;
+    panel.classList.toggle('active', i === idx);
+    i++;
+  }
+}
+
+function toggleMsg(id, btn) {
+  const el = document.getElementById(id);
+  const collapsed = el.classList.toggle('collapsed');
+  btn.textContent = collapsed ? 'Show more' : 'Show less';
+}
+
+function copyText(btn) {
+  const pre = btn.parentElement.querySelector('pre');
+  navigator.clipboard.writeText(pre.textContent).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
+}
+
+// ── Formatting helpers ─────────────────────────────────────────
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function encUri(s) { return encodeURIComponent(s); }
+
+function statCard(val, label) {
+  return `<div class="stat-card"><div class="val">${esc(String(val))}</div><div class="lbl">${esc(label)}</div></div>`;
+}
+
+function formatAsan(text) {
+  return esc(text)
+    .replace(/(ERROR: AddressSanitizer: \S+)/g, '<span class="asan-error">$1</span>')
+    .replace(/(SUMMARY:.*)/g, '<span class="asan-summary">$1</span>')
+    .replace(/(#\d+ 0x[0-9a-f]+ in \S+)/g, '<span class="asan-frame">$1</span>');
+}
+
+function formatHex(hexStr) {
+  let out = '';
+  const bytes = [];
+  for (let i = 0; i < hexStr.length; i += 2) {
+    bytes.push(parseInt(hexStr.substr(i, 2), 16));
+  }
+  for (let i = 0; i < bytes.length; i += 16) {
+    const chunk = bytes.slice(i, i + 16);
+    const offset = i.toString(16).padStart(8, '0');
+    const hex = chunk.map(b => b.toString(16).padStart(2, '0')).join(' ');
+    const ascii = chunk.map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
+    out += `${offset}  ${hex.padEnd(48)}  |${ascii}|\n`;
+  }
+  return esc(out);
+}
+
+function renderMarkdown(md) {
+  // Minimal markdown renderer
+  let html = esc(md);
+
+  // Code blocks (indented with 4 spaces)
+  html = html.replace(/^(    .+(\n    .+)*)/gm, (m) => {
+    return '<pre><code>' + m.replace(/^    /gm, '') + '</code></pre>';
+  });
+
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // List items
+  html = html.replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>');
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+
+  // Paragraphs (double newlines)
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+
+  // Clean up empty paragraphs
+  html = html.replace(/<p>\s*<\/p>/g, '');
+  html = html.replace(/<p>\s*(<h[1-3]>)/g, '$1');
+  html = html.replace(/(<\/h[1-3]>)\s*<\/p>/g, '$1');
+  html = html.replace(/<p>\s*(<pre>)/g, '$1');
+  html = html.replace(/(<\/pre>)\s*<\/p>/g, '$1');
+
+  return html;
+}
+</script>
+</body>
+</html>
