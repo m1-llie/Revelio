@@ -97,10 +97,25 @@ vulagent/
 └── website/         # Debugging website for viewing traces
 ```
 
-## Website
-To start a server on a specific port, run
-```bash
-python3 /srv/home/tony/vul-agent/website/server.py --port <PORT>
-```
-Use SSH tunneling if launching on a remote server.
+## Website (Trace Viewer)
 
+The trace viewer lets you browse agent run outputs in a web interface.
+
+**Start the server:**
+```bash
+python3 website/server.py [--host HOST] [--port PORT] [--output-dir DIR ...]
+```
+
+**Options:**
+- `--host`: Host to bind (default: `127.0.0.1` for security)
+- `--port`: Port number (default: `8877`)
+- `--output-dir`: Custom output directories to scan
+
+**Access via SSH tunnel (for remote servers):**
+```bash
+# On your local machine, create SSH tunnel (replace PORT with your chosen port)
+ssh -L <PORT>:127.0.0.1:<PORT> <username>@<server>
+
+# Then open in your local browser
+open http://localhost:<PORT>
+```

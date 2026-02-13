@@ -3,7 +3,15 @@
 VulAgent Trace Viewer — lightweight server.
 
 Usage:
-    python server.py [--port PORT] [--output-dir DIR ...]
+    python server.py [--host HOST] [--port PORT] [--output-dir DIR ...]
+
+Options:
+    --host HOST     Host to bind (default: 127.0.0.1 for security)
+    --port PORT     Port number (default: 8877)
+    --output-dir    Output directories to scan
+
+For remote access, use SSH tunnel:
+    ssh -L 8877:127.0.0.1:8877 user@server
 
 Serves the static frontend and a JSON API to browse run outputs.
 No external dependencies — stdlib only.
@@ -294,7 +302,8 @@ def make_handler(output_dirs):
 
 def main():
     parser = argparse.ArgumentParser(description="VulAgent Trace Viewer")
-    parser.add_argument("--port", type=int, default=8877)
+    parser.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1 for security)")
+    parser.add_argument("--port", type=int, default=8877, help="Port number (default: 8877)")
     parser.add_argument("--output-dir", nargs="*", help="Output directories to scan")
     args = parser.parse_args()
 
@@ -303,12 +312,15 @@ def main():
     else:
         output_dirs = [d for d in DEFAULT_OUTPUT_DIRS if d.exists()]
 
+    host = args.host
     print(f"VulAgent Trace Viewer")
     print(f"  Scanning: {[str(d) for d in output_dirs]}")
-    print(f"  Serving:  http://0.0.0.0:{args.port}")
+    print(f"  Serving:  http://{host}:{args.port}")
+    if host == "127.0.0.1":
+        print(f"  Use SSH tunnel: ssh -L {args.port}:127.0.0.1:{args.port} <server>")
     print()
 
-    server = HTTPServer(("0.0.0.0", args.port), make_handler(output_dirs))
+    server = HTTPServer((host, args.port), make_handler(output_dirs))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
