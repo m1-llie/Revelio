@@ -4,6 +4,7 @@ Implement the control flow:
 template-driven prompting, action parsing (bash ...), command execution, termination rules, and trajectory logging.
 """
 
+import json
 import re
 import subprocess
 from collections.abc import Callable
@@ -81,7 +82,25 @@ class DefaultAgent:
         self._tool_map: dict[str, Callable] = {f.__name__: f for f in (tools or [])}
         if "finish" not in self._tool_map:
             self._tool_map["finish"] = finish
+        if "bash" not in self._tool_map:
+            self._tool_map["bash"] = self._make_bash_tool()
         self._tool_schemas = [function_to_tool_schema(f) for f in self._tool_map.values()]
+
+    def _make_bash_tool(self) -> Callable:
+        """Create a bash tool function that executes commands in the environment."""
+        agent = self
+
+        def bash(command: str) -> str:
+            """Execute a bash command in the environment.
+
+            Args:
+                command: The bash command to execute.
+            """
+            output = agent.env.execute(command)
+            agent.has_finished(output)
+            return agent.render_template(agent.config.action_observation_template, output=output)
+
+        return bash
 
     def render_template(self, template: str, **kwargs) -> str:
         template_vars = asdict(self.config) | self.env.get_template_vars() | self.model.get_template_vars()
@@ -99,6 +118,7 @@ class DefaultAgent:
         self.messages = []
         self.add_message("system", self.render_template(self.config.system_template))
         self.add_message("user", self.render_template(self.config.instance_template))
+        print(self.messages)
         while True:
             try:
                 self.step()
@@ -120,19 +140,35 @@ class DefaultAgent:
         if 0 < self.config.step_limit <= self.model.n_calls or 0 < self.config.cost_limit <= self.model.cost:
             raise LimitsExceeded()
         messages = [self._strip_metadata(m) for m in self.messages]
+        print(messages[-1])
         response = self.model.query(messages, tools=self._tool_schemas)
         self.add_message("assistant", **response)
         return response
     
+    _metadata_keys = {"timestamp", "command", "command_output", "command_returncode", "tool_results", "extra"}
+
     @staticmethod
     def _strip_metadata(message: dict) -> dict:
         """Remove local-only metadata fields before sending messages to the model."""
-        filtered = dict(message)
-        filtered.pop("timestamp", None)
-        return filtered
+        msg = {k: v for k, v in message.items() if k not in DefaultAgent._metadata_keys}
+        # Convert simplified tool_calls back to OpenAI format for litellm
+        if "tool_calls" in msg and msg["tool_calls"]:
+            msg["tool_calls"] = [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tc["name"],
+                        "arguments": json.dumps(tc.get("arguments", {})),
+                    },
+                }
+                for tc in msg["tool_calls"]
+            ]
+        return msg
 
     def get_observation(self, response: dict) -> dict:
         """Execute the action (tool call or bash command) and return the observation."""
+        print(response)
         # Check for tool calls first
         if "tool_calls" in response and response["tool_calls"]:
             content = response.get("content") or ""
@@ -144,9 +180,16 @@ class DefaultAgent:
             return self.execute_tool_calls(response["tool_calls"])
 
         # Fall back to bash command parsing
-        output = self.execute_bash_action(self.parse_bash_action(response))
+        action = self.parse_bash_action(response)
+        output = self.execute_bash_action(action)
         observation = self.render_template(self.config.action_observation_template, output=output)
-        self.add_message("user", observation)
+        self.add_message(
+            "user",
+            observation,
+            command=action["action"],
+            command_output=output.get("output", ""),
+            command_returncode=output.get("returncode"),
+        )
         return output
 
     def parse_bash_action(self, response: dict) -> dict:
@@ -190,8 +233,9 @@ class DefaultAgent:
 
             results.append({"tool_call_id": tool_call_id, "name": name, "result": result})
 
-        # Add tool results as message
-        self.add_message("tool", content="\n".join(r["result"] for r in results), tool_results=results)
+        # Add one tool-result message per call (required by Anthropic/litellm API)
+        for r in results:
+            self.add_message("tool", content=r["result"], tool_call_id=r["tool_call_id"], tool_results=results)
         return {"output": results[0]["result"] if results else "", "returncode": 0}
 
     def has_finished(self, output: dict[str, str]):

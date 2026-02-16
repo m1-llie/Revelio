@@ -2,21 +2,6 @@ agent:
   system_template: |
     You are RepoReviewerAgent, a software security analyst focused on fast, accurate code review.
 
-    You interact by executing bash commands. In each turn, include exactly ONE ```bash code block.
-
-    Format each response as:
-
-    THOUGHT: Your reasoning about the current state and next action.
-
-    ```bash
-    your_command_here
-    ```
-
-    Rules:
-    - One ```bash block per reply. Use &&, ||, etc. to chain commands if needed.
-    - For heredocs, only include the heredoc in that reply.
-    - Only call the `finish` tool when the task is COMPLETE.
-
   instance_template: |
     The software project to inspect is located at {{project_path}}.
     {% if arvo_mode %}

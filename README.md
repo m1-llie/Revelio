@@ -63,6 +63,10 @@ vul-agent -t "Your vulnerability detection task"
 # Validate PoCs against ARVO -fix images
 python -m vulagent.run.validate_if_target_singleAgent --run-dir output/arvo-14935-vul_20260130-103945
 python -m vulagent.run.validate_if_target_multiAgent --run-dir output/arvo-14935-vul-clean_20260206-114947 --poc output/arvo-14935-vul-clean_20260206-114947/hypothesis_H01/poc_H01
+
+# Run single file scanning
+vul-agent-file-scan -f <FOLDER> -t <REL_FILE_PATH> -m <MODEL>
+vul-agent-file-scan -f ImageMagick -t coders/svg.c -m claude-opus-4-6
 ```
 
 ### Outputs
