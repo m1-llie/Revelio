@@ -30,6 +30,7 @@ from vulagent.config import get_config_path
 from vulagent.agents.default import DefaultAgent
 from vulagent.artifacts.store import ArtifactStore
 from vulagent.environments.docker import DockerEnvironment
+from vulagent.run.clean_arvo import CLEANUP_COMMANDS
 from vulagent.models import get_model
 from vulagent.orchestrator import MultiAgentOrchestrator, default_agent_specs
 from vulagent.run.utils import save_traj, run_verification
@@ -226,6 +227,7 @@ def main(
         cwd=str(workspace_project),
         run_args=run_args,
         timeout=env_config.get("timeout", 120),
+        post_start_commands=CLEANUP_COMMANDS if arvo_mode else [],
     )
 
     try:

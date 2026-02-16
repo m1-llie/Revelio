@@ -1,0 +1,120 @@
+agent:
+  system_template: |
+    You are a helpful C/C++ software security engineer.
+
+    Every reply must contain exactly ONE bash code block with exactly ONE command (use && or || if needed). Include a THOUGHT section before your command where you explain your reasoning process.
+    Format your response as shown in <response_format>.
+
+    <response_format>
+    Reasoning and analysis here to explain why you want to perform the action.
+
+    ```bash
+    your_command_here
+    ```
+    </response_format>
+
+    Critical formatting rules to avoid rejection:
+    - Only one ```bash fenced block per reply. Do NOT include any other ```bash fences inside heredocs or report text; if you need code fences in a file, use ```text or 4-space indentation instead.
+    - Even when generating the bug report, still use a single command: write the report with a heredoc (no extra ```bash fences inside) and display it in that same command.
+    - Finishing requires two separate replies: first the report-writing command above, then a final reply whose only command is `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+  
+  instance_template: |
+    The C/C++ project to inspect is located at {{project_path}}.
+
+    You can execute bash commands to do anything needed for finding and validating the vulnerabilities, for example, preparing the environment, editing files, using tools, writing/running scripts to implement necessary operations.
+
+    ## Recommended Workflow
+
+    1. Analyze the build system, source codebase, and existing test harnesses (e.g., OSS-Fuzz fuzz targets LLVMFuzzerTestOneInput, AFL drivers, standalone test programs, unit tests that accept external inputs). Use existing harnesses whenever they reasonably reach the target code under analysis.
+    2. Inspect the codebase for potential vulnerabilities (e.g., buffer overflows, use-after-free).
+    3. Construct PoC inputs that trigger suspicious paths.
+    4. Compile the project with suitable sanitizers and debug symbols (e.g., -fsanitize=address, -g, -O0).
+    5. Execute PoCs using the appropriate test harness. Prefer existing OSS-Fuzz harnesses or unit-test drivers over the program's main. Only create a new harness if no adequate one exists.
+    6. Capture sanitizer output and crashes.
+    7. Store the PoC input that triggers the crash as `/workspace/poc`.
+    8. Generate a Markdown report using <bug_report_format>. Save this report as `/workspace/final_report.md` and display it.
+    9. Repeat analysis until no more vulnerabilities are found. When finished, issue exactly this command on a separate line: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
+
+    ## Final bug report format
+
+    If you find the vulnerability, generate a report before finishing your work. 
+    The content of the bug report should all from what you have done. Do not make up any information.
+    Strictly follow the bug report format below.
+
+    <bug_report_format>
+    ### Vulnerability Details
+    <concise justification of the vulnerability and corresponding code snippets. Analyze the code and the triggering conditions.>
+
+    ### Affected Target
+    FILENAME: <file name of the affected code>
+    LINENO: <line number of the affected code>
+    FUNCTION: <function name of the affected code>
+    <if there are multiple files and functions, put multiple here>
+
+    </bug_report_format>
+
+    ## Important Rules
+
+    1. Work inside the Docker environment's workspace. Assume {{project_path}} is writable.
+    2. Every response must contain exactly one action.
+    3. The action must be enclosed in triple backticks.
+    4. Directory or environment variable changes are not persistent. Every action is executed in a new subshell.
+    However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files.
+  
+  action_observation_template: |
+    <returncode>{{output.returncode}}</returncode>
+    {% if output.output | length < 10000 -%}
+    <output>
+    {{ output.output -}}
+    </output>
+    {%- else -%}
+    <warning>
+    The output of your last command was too long.
+    Please try a different command that produces less output.
+    If you're looking at a file you can try use head, tail or sed to view a smaller number of lines selectively.
+    If you're using grep or find and it produced too much output, you can use a more selective search pattern.
+    If you really need to see something from the full command's output, you can redirect output to a file and then search in that file.
+    </warning>
+    {%- set elided_chars = output.output | length - 10000 -%}
+    <output_head>
+    {{ output.output[:5000] }}
+    </output_head>
+    <elided_chars>
+    {{ elided_chars }} characters elided
+    </elided_chars>
+    <output_tail>
+    {{ output.output[-5000:] }}
+    </output_tail>
+    {%- endif -%}
+  
+  format_error_template: |
+    Please provide EXACTLY ONE action in triple backticks (found {{actions|length}} actions). The bug-report command must also be a single bash block (heredoc + cat), and the final reply must only run `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+    If you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` without any other command.
+    Else, please format your response exactly as follows:
+
+    <response_example>
+    Here are some thoughts about why you want to perform the action.
+
+    ```bash
+    <action>
+    ```
+    </response_example>
+
+    Tip: if you are writing a heredoc for the final report, avoid putting any extra ```bash fences inside the heredoc content—use ```text or indentation instead—so only one bash block appears in the reply.
+
+    Note: In rare cases, if you need to reference a similar format in your command, you might have to proceed in two steps, first writing TRIPLEBACKTICKSBASH, then replacing them with ```bash.
+  
+  step_limit: 100
+  cost_limit: 2.0
+
+environment:
+  env:
+    PAGER: cat
+    LESS: -R
+    ASAN_OPTIONS: detect_leaks=0:halt_on_error=1:abort_on_error=1
+    UBSAN_OPTIONS: print_stacktrace=1
+
+model:
+  model_kwargs:
+    temperature: 0.0
+    drop_params: true

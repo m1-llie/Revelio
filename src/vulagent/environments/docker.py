@@ -34,6 +34,8 @@ class DockerEnvironmentConfig:
     """Max duration to keep container running. Uses the same format as the sleep command."""
     pull_timeout: int = 120
     """Timeout in seconds for pulling images."""
+    post_start_commands: list[str] = field(default_factory=list)
+    """Commands to run inside the container immediately after it starts (e.g. cleanup)."""
 
 
 class DockerEnvironment:
@@ -75,6 +77,23 @@ class DockerEnvironment:
         )
         self.logger.info(f"Started container {container_name} with ID {result.stdout.strip()}")
         self.container_id = result.stdout.strip()
+        self._run_post_start_commands()
+
+    def _run_post_start_commands(self):
+        """Run configured post-start commands inside the container."""
+        if not self.config.post_start_commands:
+            return
+        self.logger.info("Running post-start cleanup commands...")
+        for command in self.config.post_start_commands:
+            self.logger.debug(f"Post-start: {command}")
+            result = subprocess.run(
+                [self.config.executable, "exec", self.container_id, "bash", "-c", command],
+                capture_output=True,
+                text=True,
+                timeout=self.config.timeout,
+            )
+            if result.returncode != 0:
+                self.logger.warning(f"Post-start command failed (rc={result.returncode}): {command}")
 
     def execute(self, command: str, cwd: str = "", *, timeout: int | None = None) -> dict[str, Any]:
         """Execute a command in the Docker container and return the result as a dict."""
@@ -100,7 +119,7 @@ class DockerEnvironment:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        return {"output": result.stdout, "returncode": result.returncode}
+        return {"output": result.stdout, "returncode": result.returncode, "exception_info": None}
 
     def cleanup(self):
         """Stop and remove the Docker container."""

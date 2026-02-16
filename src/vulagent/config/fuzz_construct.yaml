@@ -1,0 +1,92 @@
+agent:
+  system_template: |
+    You are a helpful C/C++ software security engineer.
+
+    Every reply must contain exactly ONE bash code block with exactly ONE command (use && or || if needed). Include a THOUGHT section before your command where you explain your reasoning process.
+    Format your response as shown in <response_format>.
+
+    <response_format>
+    Reasoning and analysis here to explain why you want to perform the action.
+
+    ```bash
+    your_command_here
+    ```
+    </response_format>
+
+    Critical formatting rules to avoid rejection:
+    - Only one ```bash fenced block per reply. Do NOT include any other ```bash fences inside heredocs or report text; if you need code fences in a file, use ```text or 4-space indentation instead.
+    - Even when generating the bug report, still use a single command: write the report with a heredoc (no extra ```bash fences inside) and display it in that same command.
+    - Finishing requires two separate replies: first the report-writing command above, then a final reply whose only command is `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+  
+  instance_template: |
+    The C/C++ project to inspect is located at {{project_path}}.
+
+    You can execute bash commands to do anything needed for constructing a command and verifying that it starts the fuzzing.
+    You should construct a fuzzing command that uses AFL++ to fuzz the repository for one hour (but maybe for verification purpose only fuzz for 10 seconds).
+    The project has already been built. You can find afl-fuzz and /out/file-fuzzer.
+
+    ## Important Rules
+
+    1. Work inside the Docker environment's workspace. Assume {{project_path}} is writable.
+    2. Every response must contain exactly one action.
+    3. The action must be enclosed in triple backticks.
+    4. Directory or environment variable changes are not persistent. Every action is executed in a new subshell.
+    However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files.
+  
+  action_observation_template: |
+    <returncode>{{output.returncode}}</returncode>
+    {% if output.output | length < 10000 -%}
+    <output>
+    {{ output.output -}}
+    </output>
+    {%- else -%}
+    <warning>
+    The output of your last command was too long.
+    Please try a different command that produces less output.
+    If you're looking at a file you can try use head, tail or sed to view a smaller number of lines selectively.
+    If you're using grep or find and it produced too much output, you can use a more selective search pattern.
+    If you really need to see something from the full command's output, you can redirect output to a file and then search in that file.
+    </warning>
+    {%- set elided_chars = output.output | length - 10000 -%}
+    <output_head>
+    {{ output.output[:5000] }}
+    </output_head>
+    <elided_chars>
+    {{ elided_chars }} characters elided
+    </elided_chars>
+    <output_tail>
+    {{ output.output[-5000:] }}
+    </output_tail>
+    {%- endif -%}
+  
+  format_error_template: |
+    Please provide EXACTLY ONE action in triple backticks (found {{actions|length}} actions). The bug-report command must also be a single bash block (heredoc + cat), and the final reply must only run `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+    If you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` without any other command.
+    Else, please format your response exactly as follows:
+
+    <response_example>
+    Here are some thoughts about why you want to perform the action.
+
+    ```bash
+    <action>
+    ```
+    </response_example>
+
+    Tip: if you are writing a heredoc for the final report, avoid putting any extra ```bash fences inside the heredoc content—use ```text or indentation instead—so only one bash block appears in the reply.
+
+    Note: In rare cases, if you need to reference a similar format in your command, you might have to proceed in two steps, first writing TRIPLEBACKTICKSBASH, then replacing them with ```bash.
+  
+  step_limit: 100
+  cost_limit: 2.0
+
+environment:
+  env:
+    PAGER: cat
+    LESS: -R
+    ASAN_OPTIONS: detect_leaks=0:halt_on_error=1:abort_on_error=1
+    UBSAN_OPTIONS: print_stacktrace=1
+
+model:
+  model_kwargs:
+    temperature: 0.0
+    drop_params: true
