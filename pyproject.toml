@@ -26,6 +26,7 @@ dependencies = [
 vul-agent = "vulagent.run.hello_world:app"
 vul-agent-validate-single = "vulagent.run.validate_if_target_singleAgent:app"
 vul-agent-validate-multi = "vulagent.run.validate_if_target_multiAgent:app"
+vul-agent-file-scan = "vulagent.run.file_scan:app"
 
 [tool.setuptools]
 include-package-data = true
