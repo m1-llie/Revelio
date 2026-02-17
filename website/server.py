@@ -19,7 +19,8 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 WEBSITE_DIR = Path(__file__).resolve().parent
-SCRIPTS_DIR = WEBSITE_DIR.parent / "scripts"
+
+SCRIPT_DIR = Path("/srv/share/vulagent/")
 DEFAULT_OUTPUT_DIRS = [
     WEBSITE_DIR.parent / "output"
 ]
