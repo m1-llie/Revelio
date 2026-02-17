@@ -30,7 +30,7 @@ from rich.console import Console
 console = Console()
 app = typer.Typer(rich_markup_mode="rich", pretty_exceptions_show_locals=False)
 
-SCRIPTS_DIR = Path(__file__).resolve().parent
+SCRIPTS_DIR = Path("/srv/share/vulagent/")
 DATASET_PATH = SCRIPTS_DIR / "cve_dataset.jsonl"
 REPOS_DIR = SCRIPTS_DIR / "repos"
 

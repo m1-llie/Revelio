@@ -3,6 +3,8 @@ examples/
 output/
 *_traj.json
 
+cybergym_data
+
 patch.txt
 exit_statuses*.yaml
 preds.json
@@ -187,3 +189,4 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
+output*/

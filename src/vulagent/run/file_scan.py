@@ -177,11 +177,15 @@ def main(
     console.print()
 
     # --- Prepare output paths ---
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    run_name = f"file-scan_{folder_path.name}_{timestamp}"
-    run_dir = Path("output") / run_name
+    if output is not None:
+        output_path = output
+        run_dir = output_path.parent
+    else:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        run_name = f"file-scan_{folder_path.name}_{timestamp}"
+        run_dir = Path("output") / run_name
+        output_path = run_dir / "trajectory.json"
     run_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output or run_dir / "trajectory.json"
 
     console.print(f"[cyan]Run output directory:[/cyan] {run_dir}")
 
