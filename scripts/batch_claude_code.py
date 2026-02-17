@@ -19,13 +19,16 @@ Examples:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import typer
+import yaml
 from rich.console import Console
 
 console = Console()
@@ -93,7 +96,7 @@ def stop_container(container_id: str) -> None:
 
 
 PROMPT_TEMPLATE = """\
-You have access to a Docker container (ID: {container_id}) that contains a C/C++ \
+You have access to a Docker container (ID: {container_id}) that contains a \
 software repository at /src.
 
 Your task: analyze the file `/src/{target_file}` for security vulnerabilities.
@@ -101,25 +104,168 @@ Your task: analyze the file `/src/{target_file}` for security vulnerabilities.
 To run commands inside the container, use:
   docker exec {container_id} bash -c 'your_command'
 
-## Workflow
+## Recommended Workflow
 
-1. Read and understand the target file and its dependencies.
-2. Identify potential vulnerability sinks (buffer overflows, use-after-free, integer \
-overflows, format string bugs, null pointer dereferences, etc.).
-3. Trace data flow to determine if untrusted input can reach those sinks.
-4. For each potential vulnerability, describe:
-   - The vulnerable code location (file, function, line)
-   - The type of vulnerability
-   - How it could be triggered
-   - A suggested fix
+This workflow should be done step-by-step so that you can iterate on your analysis.
 
-## Output
+1. Identifying potential vulnerability sinks in the file
+2. Form hypotheses about how there might be a source that violates the safe precondition for the sink
+3. Inspect more functions and files to validate that the hypothesis is correct
+4. Submit the hypotheses in the EXACT JSON format described below
 
-Produce a structured vulnerability report in markdown. If no vulnerabilities are found, \
-state that clearly with your reasoning.
+## Output (CRITICAL — you MUST follow this format exactly)
+
+When you are done with your analysis, your FINAL message must contain EXACTLY ONE \
+JSON code block with your structured results. The JSON must be an array of hypothesis \
+objects with this schema:
+
+```json
+[
+  {{
+    "hypothesis": {{
+      "summary": "Brief description of the vulnerability",
+      "files_reviewed": ["path/to/file1.c", "path/to/file2.h"],
+      "harness_entry": "function_name or null",
+      "call_chains": ["caller -> middle -> vulnerable_function"],
+      "hotspots": [
+        {{
+          "file_path": "path/to/file.c",
+          "line_start": 100,
+          "line_end": 110,
+          "function": "vulnerable_function",
+          "context": "Brief description of why this location is vulnerable"
+        }}
+      ],
+      "warnings": ["Description of the security impact"]
+    }}
+  }}
+]
+```
+
+**IMPORTANT rules for the JSON output:**
+- `hotspots` is the most important field — every hypothesis MUST have at least one hotspot
+- `file_path` must be relative to `/src/` (e.g., `src/parser.c` not `/src/src/parser.c`)
+- `line_start` and `line_end` must be integers pointing to the exact vulnerable lines
+- `function` must be the name of the function containing the vulnerability
+- If no vulnerabilities are found, output an empty array: `[]`
 
 Focus on real, exploitable issues — not style or best-practice suggestions.\
 """
+
+
+def extract_payload_from_result(result_text: str) -> list[dict] | None:
+    """Extract the structured JSON payload from Claude Code's result text.
+
+    Looks for a JSON array in a code block or standalone in the text.
+    Returns the parsed list of hypothesis dicts, or None if not found.
+    """
+    if not result_text:
+        return None
+
+    # Try: ```json ... ``` code block
+    for m in re.finditer(r'```(?:json)?\s*\n(.*?)```', result_text, re.DOTALL):
+        try:
+            parsed = json.loads(m.group(1))
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+    # Try: standalone JSON array in the text
+    for m in re.finditer(r'(\[\s*\{.*?\}\s*\])', result_text, re.DOTALL):
+        try:
+            parsed = json.loads(m.group(1))
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+    return None
+
+
+def build_submission(result_text: str, payload: list[dict] | None) -> str:
+    """Build a YAML submission string matching the file_scan finish-tool format."""
+    status = "success" if payload else "failure"
+    analysis = ""
+    if result_text:
+        # Use first ~500 chars of the result as analysis summary
+        analysis = result_text[:500].split("\n\n")[0].strip()
+
+    data = {
+        "status": status,
+        "analysis": analysis,
+        "result_script": "none",
+        "poc": "none",
+        "report": "none",
+    }
+    if payload is not None:
+        data["payload"] = json.dumps(payload)
+    return yaml.dump(data, sort_keys=False)
+
+
+def build_trajectory_json(
+    result_event: dict | None,
+    raw_events: list[dict],
+    submission: str,
+    cve_id: str,
+    target_file: str,
+    docker_image: str,
+    model: str,
+    started_at: datetime,
+    finished_at: datetime,
+    run_dir: str,
+) -> dict:
+    """Build a trajectory.json matching the file_scan agent output structure."""
+    # Collect model usage stats from the result event
+    model_stats = {}
+    if result_event:
+        cost = result_event.get("total_cost_usd", 0)
+        turns = result_event.get("num_turns", 0)
+        model_stats = {
+            "instance_cost": cost,
+            "api_calls": turns,
+        }
+
+    # Convert raw stream events to a simplified messages list
+    messages = []
+    for event in raw_events:
+        etype = event.get("type")
+        if etype == "assistant":
+            messages.append({
+                "role": "assistant",
+                "content": event.get("message", {}).get("content", ""),
+            })
+        elif etype == "user":
+            messages.append({
+                "role": "user",
+                "content": event.get("message", {}).get("content", ""),
+            })
+
+    info = {
+        "exit_status": "Submitted" if submission else "Failed",
+        "submission": submission,
+        "model_stats": model_stats,
+        "mini_version": "0.0.1",
+        "config": {
+            "agent": {
+                "type": "claude_code",
+                "model": model,
+            },
+        },
+        "folder_path": None,
+        "target_file": target_file,
+        "docker_image": docker_image,
+        "started_at_utc": started_at.isoformat(),
+        "finished_at_utc": finished_at.isoformat(),
+        "duration_seconds": (finished_at - started_at).total_seconds(),
+        "run_dir": run_dir,
+    }
+
+    return {
+        "info": info,
+        "messages": messages,
+        "trajectory_format": "vul-agent-1",
+    }
 
 
 def run_one(
@@ -135,10 +281,11 @@ def run_one(
 ) -> tuple[str, bool, str]:
     """Run Claude Code for a single CVE. Returns (cve_id, success, error)."""
     log_path = log_dir / f"{cve_id}.log"
-    report_path = output_dir / cve_id / "report.json"
-    report_path.parent.mkdir(parents=True, exist_ok=True)
+    cve_dir = output_dir / cve_id
+    cve_dir.mkdir(parents=True, exist_ok=True)
 
     container_id = None
+    started_at = datetime.now(timezone.utc)
     try:
         container_id = start_container(repo_path, docker_image)
         prompt = PROMPT_TEMPLATE.format(container_id=container_id, target_file=target_file)
@@ -147,23 +294,71 @@ def run_one(
             "claude",
             "-p", prompt,
             "--model", model,
-            "--output-format", "json",
+            "--output-format", "stream-json",
+            "--verbose",
             "--max-turns", str(max_turns),
             "--allowedTools", f"Bash(docker exec {container_id}:*)",
         ]
         if max_budget > 0:
             cmd.extend(["--max-budget-usd", str(max_budget)])
 
-        with open(log_path, "w") as log_file:
+        raw_trajectory_path = cve_dir / "trajectory.jsonl"
+
+        with open(log_path, "w") as log_file, open(raw_trajectory_path, "w") as traj_file:
             result = subprocess.run(
                 cmd,
-                stdout=subprocess.PIPE,
+                stdout=traj_file,
                 stderr=log_file,
                 timeout=3600,
-                text=True,
             )
 
-        report_path.write_text(result.stdout)
+        finished_at = datetime.now(timezone.utc)
+
+        # Parse all events from the stream-json output
+        raw_events = []
+        result_event = None
+        with open(raw_trajectory_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                    raw_events.append(event)
+                    if event.get("type") == "result":
+                        result_event = event
+                except json.JSONDecodeError:
+                    pass
+
+        # Extract the final result text
+        result_text = result_event.get("result", "") if result_event else ""
+
+        # Extract structured payload from the result
+        payload = extract_payload_from_result(result_text)
+
+        # Build submission in file_scan format
+        submission = build_submission(result_text, payload)
+
+        # Save report.json (legacy format for backwards compat)
+        report_path = cve_dir / "report.json"
+        if result_event:
+            report_path.write_text(json.dumps(result_event, indent=2))
+
+        # Save trajectory.json in the file_scan agent format
+        trajectory = build_trajectory_json(
+            result_event=result_event,
+            raw_events=raw_events,
+            submission=submission,
+            cve_id=cve_id,
+            target_file=target_file,
+            docker_image=docker_image,
+            model=model,
+            started_at=started_at,
+            finished_at=finished_at,
+            run_dir=str(cve_dir),
+        )
+        trajectory_path = cve_dir / "trajectory.json"
+        trajectory_path.write_text(json.dumps(trajectory, indent=2))
 
         if result.returncode != 0:
             return (cve_id, False, f"exit code {result.returncode}")

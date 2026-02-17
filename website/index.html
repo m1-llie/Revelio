@@ -115,7 +115,8 @@ nav .breadcrumb .sep{color:#333}
 .traj-msg.system{background:#0d0d20;border:1px solid #1a1a3a;color:var(--text-dim)}
 .traj-msg.user{background:#0d1420;border:1px solid #1a2a40}
 .traj-msg.assistant{background:#0d200d;border:1px solid #1a3a1a}
-.traj-msg .role{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem}
+.traj-msg .role{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;display:flex;align-items:center;gap:.5rem}
+.traj-msg .step-num{font-size:.65rem;background:rgba(99,102,241,.2);color:var(--accent2);padding:1px 6px;border-radius:3px;font-weight:600;letter-spacing:0}
 .traj-msg.system .role{color:var(--text-dim)}
 .traj-msg.user .role{color:var(--cyan)}
 .traj-msg.assistant .role{color:var(--green)}
@@ -165,6 +166,81 @@ nav .breadcrumb .sep{color:#333}
   .agent-row{grid-template-columns:1fr;gap:.3rem}
   nav{flex-wrap:wrap}
 }
+
+/* ── Search & Filter bar ──────────────────────────────────────── */
+.filter-bar{display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
+.filter-bar input{flex:1;min-width:200px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem .8rem;color:var(--text-bright);font-size:.82rem;outline:none;transition:border-color .15s}
+.filter-bar input:focus{border-color:var(--accent)}
+.filter-bar input::placeholder{color:var(--text-dim)}
+.filter-bar select{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem .8rem;color:var(--text-bright);font-size:.82rem;outline:none;cursor:pointer;transition:border-color .15s;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236a6a80'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .6rem center;padding-right:2rem}
+.filter-bar select:focus{border-color:var(--accent)}
+.filter-bar select option{background:var(--bg-card);color:var(--text)}
+.filter-bar .filter-label{font-size:.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em}
+.filter-bar .filter-reset{background:none;border:1px solid var(--border);border-radius:var(--radius);padding:.5rem .8rem;color:var(--text-dim);font-size:.78rem;cursor:pointer;transition:all .15s}
+.filter-bar .filter-reset:hover{border-color:var(--accent);color:var(--text)}
+
+/* ── Run card (updated) ──────────────────────────────────────── */
+.run-card .run-title{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.run-card .run-title .cve-id{font-size:1rem;font-weight:700;color:var(--text-bright)}
+.run-card .run-title .batch-type{font-size:.7rem;padding:2px 8px;border-radius:4px;font-weight:600;letter-spacing:.02em}
+.batch-type.batch-file-scan{background:rgba(34,211,238,.1);color:var(--cyan);border:1px solid rgba(34,211,238,.25)}
+.batch-type.batch-claude-code{background:rgba(244,114,182,.1);color:var(--pink);border:1px solid rgba(244,114,182,.25)}
+.batch-type.batch-other{background:rgba(99,102,241,.1);color:var(--accent2);border:1px solid rgba(99,102,241,.25)}
+
+/* ── Score indicators ────────────────────────────────────────── */
+.score-indicators{display:flex;gap:.5rem;align-items:center;flex-shrink:0}
+.score-dot{display:flex;flex-direction:column;align-items:center;gap:.15rem;min-width:2.5rem}
+.score-dot .dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--border)}
+.score-dot .dot.hit{border-color:transparent}
+.score-dot .dot.hit-yes{background:var(--green)}
+.score-dot .dot.hit-no{background:var(--red);opacity:.6}
+.score-dot .dot-label{font-size:.58rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+.score-detail{font-size:.62rem;color:var(--text-dim);font-family:var(--mono)}
+
+/* ── Command block (trajectory) ──────────────────────────────── */
+.cmd-block{margin-top:.5rem;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.cmd-block .cmd-header{background:#0d0d18;padding:.4rem .8rem;font-size:.72rem;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)}
+.cmd-block .cmd-header .cmd-rc{font-weight:700}
+.cmd-block .cmd-header .cmd-rc.rc-ok{color:var(--green)}
+.cmd-block .cmd-header .cmd-rc.rc-fail{color:var(--red)}
+.cmd-block .cmd-cmd{background:#0a0a14;padding:.5rem .8rem;font-family:var(--mono);font-size:.78rem;color:var(--cyan);white-space:pre-wrap;word-break:break-all;border-bottom:1px solid var(--border)}
+.cmd-block .cmd-output{background:#08080e;padding:.5rem .8rem;font-family:var(--mono);font-size:.75rem;color:var(--text);white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto;line-height:1.5}
+.cmd-block .cmd-output.collapsed{max-height:120px;overflow:hidden;position:relative}
+.cmd-block .cmd-output.collapsed::after{content:'';position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,#08080e)}
+
+/* ── Vuln Context ────────────────────────────────────────────── */
+.vuln-context-panels{display:grid;grid-template-columns:1fr 1fr;gap:1rem;min-height:400px}
+@media(max-width:900px){.vuln-context-panels{grid-template-columns:1fr}}
+.vuln-panel{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
+.vuln-panel-header{padding:.6rem 1rem;background:#0d0d18;border-bottom:1px solid var(--border);font-size:.82rem;font-weight:600;color:var(--text-bright);display:flex;justify-content:space-between;align-items:center}
+.vuln-panel-body{overflow:auto;max-height:70vh;flex:1}
+.source-file-selector{padding:.5rem 1rem;border-bottom:1px solid var(--border);display:flex;gap:.4rem;flex-wrap:wrap}
+.source-file-selector .file-btn{font-size:.72rem;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;font-family:var(--mono);transition:all .15s}
+.source-file-selector .file-btn:hover{border-color:var(--accent);color:var(--text)}
+.source-file-selector .file-btn.active{border-color:var(--accent);background:rgba(99,102,241,.15);color:var(--accent2)}
+.source-lines{font-family:var(--mono);font-size:.75rem;line-height:1.6;padding:0}
+.source-line{display:flex;padding:0 .5rem}
+.source-line .ln{color:var(--text-dim);min-width:3.5rem;text-align:right;padding-right:.8rem;user-select:none;flex-shrink:0}
+.source-line .code{white-space:pre-wrap;word-break:break-all;flex:1}
+.source-line.hl{background:rgba(248,113,113,.1);border-left:3px solid var(--red)}
+.source-line.hl .ln{color:var(--red)}
+.hl-annotation{padding:.3rem .5rem .3rem 4.5rem;font-size:.7rem;color:var(--pink);background:rgba(248,113,113,.06);border-left:3px solid var(--red);font-style:italic}
+.diff-lines{font-family:var(--mono);font-size:.75rem;line-height:1.6;padding:.5rem}
+.diff-line{padding:0 .5rem;white-space:pre-wrap;word-break:break-all}
+.diff-line.diff-add{background:rgba(52,211,153,.1);color:var(--green)}
+.diff-line.diff-del{background:rgba(248,113,113,.1);color:var(--red)}
+.diff-line.diff-hunk{color:var(--cyan);font-weight:600;margin-top:.5rem}
+.diff-line.diff-header{color:var(--text-dim)}
+.vuln-loc-list{padding:.5rem}
+.vuln-loc-item{padding:.5rem .8rem;margin-bottom:.4rem;background:#0d0d18;border:1px solid var(--border);border-left:3px solid var(--orange);border-radius:6px;font-size:.78rem;cursor:pointer;transition:border-color .15s}
+.vuln-loc-item:hover{border-color:var(--accent)}
+.vuln-loc-item .loc-file{color:var(--cyan);font-family:var(--mono)}
+.vuln-loc-item .loc-lines{color:var(--text-dim);font-family:var(--mono);font-size:.72rem}
+.vuln-loc-item .loc-fn{color:var(--pink);font-size:.72rem;margin-top:.2rem}
+.vuln-loc-item .loc-ctx{color:var(--text-dim);font-size:.72rem;margin-top:.2rem;line-height:1.4}
+.cve-info-box{padding:.8rem 1rem;border-bottom:1px solid var(--border);font-size:.82rem;line-height:1.5}
+.cve-info-box .cve-title{color:var(--text-bright);font-weight:600;font-size:.9rem;margin-bottom:.3rem}
+.cve-info-box .cve-desc{color:var(--text-dim)}
 
 /* ── Loading ──────────────────────────────────────────────────── */
 .loading{text-align:center;padding:4rem;color:var(--text-dim)}
@@ -229,6 +305,8 @@ async function route() {
   if (hash && hash !== '') {
     currentRunId = decodeURIComponent(hash);
     currentView = 'detail';
+    vulnContextLoaded = false;
+    vulnContextData = null;
     await loadRunDetail(currentRunId);
   } else {
     currentView = 'list';
@@ -259,39 +337,168 @@ async function loadRunsList() {
   }
 }
 
+// Parse run_id into {batchType, cveId}
+function parseRunId(runId) {
+  const parts = (runId || '').split('--');
+  if (parts.length >= 2) {
+    return { batchType: parts[0], cveId: parts.slice(1).join('--') };
+  }
+  return { batchType: '', cveId: runId || '' };
+}
+
+// Friendly label for batch type
+function batchLabel(bt) {
+  if (bt === 'batch_file_scan') return 'file-scan';
+  if (bt === 'batch_claude_code') return 'claude-code';
+  return bt.replace(/^batch_/, '').replace(/_/g, '-') || '—';
+}
+
+// Batch type CSS class
+function batchCls(bt) {
+  if (bt === 'batch_file_scan') return 'batch-file-scan';
+  if (bt === 'batch_claude_code') return 'batch-claude-code';
+  return 'batch-other';
+}
+
+// Current filter state
+let listFilters = { search: '', batchType: '', status: '', model: '', score: '' };
+
 function renderRunsList() {
   const app = document.getElementById('app');
   if (!runsData.length) {
     app.innerHTML = '<div class="empty"><div class="icon">&#128269;</div><p>No runs found in the output directories.</p></div>';
     return;
   }
-  let html = `<h2 style="color:var(--text-bright);margin-bottom:1.5rem">Runs <span style="font-size:.85rem;color:var(--text-dim);font-weight:400">(${runsData.length})</span></h2>`;
+
+  // Collect unique values for dropdown filters
+  const batchTypes = new Set();
+  const statuses = new Set();
+  const models = new Set();
   for (const r of runsData) {
-    const statusCls = r.status === 'success' ? 'success' : r.status === 'partial' ? 'partial' : 'unknown';
-    const statusLabel = r.status === 'success' ? 'All Confirmed' : r.status === 'partial' ? 'Partial' : 'Unknown';
+    const { batchType } = parseRunId(r.run_id);
+    if (batchType) batchTypes.add(batchType);
+    if (r.status) statuses.add(r.status);
+    const m = r.model_name ? r.model_name.split('/').pop() : '';
+    if (m) models.add(m);
+  }
+
+  // Apply filters
+  const q = (listFilters.search || '').toLowerCase().trim();
+  const filtered = runsData.filter(r => {
+    const { batchType, cveId } = parseRunId(r.run_id);
+    if (q && !(r.run_id || '').toLowerCase().includes(q)
+        && !(cveId || '').toLowerCase().includes(q)
+        && !(r.target_ref || '').toLowerCase().includes(q)
+        && !(r.model_name || '').toLowerCase().includes(q)) return false;
+    if (listFilters.batchType && batchType !== listFilters.batchType) return false;
+    if (listFilters.status && r.status !== listFilters.status) return false;
+    if (listFilters.model) {
+      const rm = r.model_name ? r.model_name.split('/').pop() : '';
+      if (rm !== listFilters.model) return false;
+    }
+    if (listFilters.score) {
+      const sc = r.score;
+      if (!sc) return listFilters.score === 'no_score';
+      if (listFilters.score === 'no_score') return !sc;
+      if (listFilters.score === 'file_hit') return sc.file_hit;
+      if (listFilters.score === 'file_miss') return !sc.file_hit;
+      if (listFilters.score === 'func_hit') return sc.function_hit;
+      if (listFilters.score === 'func_miss') return !sc.function_hit;
+      if (listFilters.score === 'line_hit') return sc.line_hit;
+      if (listFilters.score === 'line_miss') return !sc.line_hit;
+      if (listFilters.score === 'all_hit') return sc.file_hit && sc.function_hit && sc.line_hit;
+      if (listFilters.score === 'none_hit') return !sc.file_hit && !sc.function_hit && !sc.line_hit;
+    }
+    return true;
+  });
+
+  // Build filter bar
+  let html = `<div class="filter-bar">
+    <input type="text" id="run-search" placeholder="Search CVE ID, target, model..." value="${esc(listFilters.search || '')}" onkeydown="if(event.key==='Enter')applyFilters()" oninput="applyFilters()">
+    <select id="filter-batch" onchange="applyFilters()">
+      <option value="">All Types</option>
+      ${[...batchTypes].sort().map(bt => `<option value="${esc(bt)}" ${listFilters.batchType===bt?'selected':''}>${esc(batchLabel(bt))}</option>`).join('')}
+    </select>
+    <select id="filter-status" onchange="applyFilters()">
+      <option value="">All Statuses</option>
+      ${[...statuses].sort().map(s => `<option value="${esc(s)}" ${listFilters.status===s?'selected':''}>${esc(s)}</option>`).join('')}
+    </select>
+    <select id="filter-model" onchange="applyFilters()">
+      <option value="">All Models</option>
+      ${[...models].sort().map(m => `<option value="${esc(m)}" ${listFilters.model===m?'selected':''}>${esc(m)}</option>`).join('')}
+    </select>
+    <select id="filter-score" onchange="applyFilters()">
+      <option value="">All Scores</option>
+      <option value="all_hit" ${listFilters.score==='all_hit'?'selected':''}>All Hit</option>
+      <option value="file_hit" ${listFilters.score==='file_hit'?'selected':''}>File Hit</option>
+      <option value="func_hit" ${listFilters.score==='func_hit'?'selected':''}>Func Hit</option>
+      <option value="line_hit" ${listFilters.score==='line_hit'?'selected':''}>Line Hit</option>
+      <option value="file_miss" ${listFilters.score==='file_miss'?'selected':''}>File Miss</option>
+      <option value="func_miss" ${listFilters.score==='func_miss'?'selected':''}>Func Miss</option>
+      <option value="line_miss" ${listFilters.score==='line_miss'?'selected':''}>Line Miss</option>
+      <option value="none_hit" ${listFilters.score==='none_hit'?'selected':''}>No Hits</option>
+      <option value="no_score" ${listFilters.score==='no_score'?'selected':''}>Not Scored</option>
+    </select>
+    <button class="filter-reset" onclick="resetFilters()">Reset</button>
+  </div>`;
+
+  const hasActiveFilters = q || listFilters.batchType || listFilters.status || listFilters.model || listFilters.score;
+  html += `<h2 style="color:var(--text-bright);margin-bottom:1.5rem">Runs <span style="font-size:.85rem;color:var(--text-dim);font-weight:400">(${filtered.length}${hasActiveFilters ? ' / ' + runsData.length : ''})</span></h2>`;
+
+  if (hasActiveFilters && !filtered.length) {
+    html += '<div class="empty"><p>No runs match your filters.</p></div>';
+  }
+
+  for (const r of filtered) {
+    const { batchType, cveId } = parseRunId(r.run_id);
+    const statusCls = r.status === 'success' ? 'success' : r.status === 'partial' ? 'partial' : r.status === 'Submitted' || r.status === 'completed' ? 'success' : 'unknown';
+    const statusLabel = r.status === 'success' ? 'All Confirmed' : r.status === 'partial' ? 'Partial' : r.status === 'unknown' ? 'Unknown' : r.status;
     const date = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
     const model = r.model_name ? r.model_name.split('/').pop() : '—';
+    const costStr = r.total_cost ? '$' + r.total_cost.toFixed(2) : '';
+    const durStr = r.duration_seconds ? fmtDuration(r.duration_seconds) : '';
+    const sc = r.score;
     html += `
     <div class="card run-card" onclick="navigate('${encUri(r.run_id)}')">
       <div>
-        <h3>${esc(r.run_id)}</h3>
-        <p>${esc(r.target_ref || '—')}</p>
+        <div class="run-title">
+          <span class="cve-id">${esc(cveId)}</span>
+          <span class="batch-type ${batchCls(batchType)}">${esc(batchLabel(batchType))}</span>
+        </div>
+        <p style="margin-top:.3rem">${esc(r.target_ref || '—')}</p>
         <div class="run-meta">
           <span class="tag ${statusCls}">${statusLabel}</span>
           <span class="tag">${esc(model)}</span>
-          <span class="tag">${esc(r.pipeline || '—')}</span>
+          ${costStr ? `<span class="tag">${costStr}</span>` : ''}
+          ${durStr ? `<span class="tag">${durStr}</span>` : ''}
           <span class="tag">${date}</span>
-          ${r.total_cost ? `<span class="tag">$${r.total_cost.toFixed(2)}</span>` : ''}
-          ${r.source_dir !== 'output' ? `<span class="tag">${esc(r.source_dir)}</span>` : ''}
         </div>
       </div>
-      <div class="run-stats">
+      ${sc ? `<div class="score-indicators">
+        <div class="score-dot"><div class="dot hit ${sc.file_hit?'hit-yes':'hit-no'}"></div><div class="dot-label">File</div></div>
+        <div class="score-dot"><div class="dot hit ${sc.function_hit?'hit-yes':'hit-no'}"></div><div class="dot-label">Func</div></div>
+        <div class="score-dot"><div class="dot hit ${sc.line_hit?'hit-yes':'hit-no'}"></div><div class="dot-label">Line</div></div>
+      </div>` : `<div class="run-stats">
         <div class="big">${r.hypotheses_confirmed || 0}</div>
         <div class="label">confirmed</div>
-      </div>
+      </div>`}
     </div>`;
   }
   app.innerHTML = html;
+}
+
+function applyFilters() {
+  listFilters.search = (document.getElementById('run-search') || {}).value || '';
+  listFilters.batchType = (document.getElementById('filter-batch') || {}).value || '';
+  listFilters.status = (document.getElementById('filter-status') || {}).value || '';
+  listFilters.model = (document.getElementById('filter-model') || {}).value || '';
+  listFilters.score = (document.getElementById('filter-score') || {}).value || '';
+  renderRunsList();
+}
+
+function resetFilters() {
+  listFilters = { search: '', batchType: '', status: '', model: '', score: '' };
+  renderRunsList();
 }
 
 // ── Run Detail ─────────────────────────────────────────────────
@@ -319,6 +526,59 @@ function renderRunDetail() {
     totalCalls += t.api_calls || 0;
   }
 
+  // ── Trajectory-only view (file-scan pipeline or claude-code) ──
+  if (d.trajectory_only) {
+    const hasReport = !!(d.result_text);
+    const tabs = ['Overview'];
+    if (hasReport) tabs.push('Report');
+    tabs.push('Trajectory', 'Vuln Context');
+    let html = `<div class="tabs" id="detail-tabs">`;
+    tabs.forEach((t,i) => {
+      html += `<div class="tab ${i===0?'active':''}" onclick="switchTab(${i},'detail');${t==='Vuln Context'?'loadVulnContext()':''}">${t}</div>`;
+    });
+    html += `</div>`;
+
+    // Tab 0: Overview
+    let tabIdx = 0;
+    html += `<div class="tab-panel active" id="detail-tab-${tabIdx}">`;
+    html += `<div class="overview-grid">`;
+    html += statCard(m.target_ref || '—', 'Target');
+    html += statCard((m.model_name||'').split('/').pop(), 'Model');
+    html += statCard(m.exit_status || '—', 'Exit Status');
+    html += statCard('$' + totalCost.toFixed(2), 'Total Cost');
+    html += statCard(totalCalls, 'API Calls');
+    if (m.duration_seconds) html += statCard(fmtDuration(m.duration_seconds), 'Duration');
+    if (m.num_turns) html += statCard(m.num_turns, 'Turns');
+    html += `</div>`;
+    html += `<div class="section-title">Run Info</div>`;
+    html += `<pre>${esc(JSON.stringify(m, null, 2))}</pre>`;
+    html += `</div>`;
+    tabIdx++;
+
+    // Report tab (claude-code only)
+    if (hasReport) {
+      html += `<div class="tab-panel" id="detail-tab-${tabIdx}">`;
+      html += `<div class="card" style="max-width:900px"><div class="md-render">${renderMarkdown(d.result_text)}</div></div>`;
+      html += `</div>`;
+      tabIdx++;
+    }
+
+    // Trajectory tab
+    html += `<div class="tab-panel" id="detail-tab-${tabIdx}">`;
+    html += renderInlineTrajectory(d.inline_messages || []);
+    html += `</div>`;
+    tabIdx++;
+
+    // Vuln Context tab (lazy loaded)
+    html += `<div class="tab-panel" id="detail-tab-${tabIdx}">`;
+    html += `<div id="vuln-context-container"><div class="loading"><div class="spinner"></div><br>Click to load vulnerability context...</div></div>`;
+    html += `</div>`;
+
+    document.getElementById('app').innerHTML = html;
+    return;
+  }
+
+  // ── Standard multi-agent pipeline view ──
   const tabs = ['Overview','Code Review','Hypotheses','Trajectories','Log'];
   let html = `<div class="tabs" id="detail-tabs">`;
   tabs.forEach((t,i) => {
@@ -618,16 +878,39 @@ async function loadTrajectory(runId, path, agentName) {
 
     // Messages
     html += `<div class="section-title">Messages <span class="count">${messages.length}</span></div>`;
+    let agentStepNum = 0;
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
       const role = msg.role || 'unknown';
       const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2);
-      const isLong = content.length > 600;
+      const hasCmd = msg.command != null;
       const msgId = `msg-${agentName}-${i}`;
+      const isStep = role === 'assistant' && !hasCmd;
+      if (isStep) agentStepNum++;
       html += `<div class="traj-msg ${role}">`;
-      html += `<div class="role">${role}${msg.timestamp ? ` <span style="font-weight:400;color:var(--text-dim)">${new Date(msg.timestamp).toLocaleTimeString()}</span>` : ''}</div>`;
-      html += `<div class="content ${isLong ? 'collapsed' : ''}" id="${msgId}">${esc(content)}</div>`;
-      if (isLong) html += `<span class="msg-toggle" onclick="toggleMsg('${msgId}',this)">Show more</span>`;
+      html += `<div class="role">${role}${isStep ? ` <span class="step-num">Step ${agentStepNum}</span>` : ''}${msg.timestamp ? ` <span style="font-weight:400;color:var(--text-dim)">${new Date(msg.timestamp).toLocaleTimeString()}</span>` : ''}</div>`;
+
+      if (hasCmd) {
+        // Structured command + output display
+        const rc = msg.command_returncode;
+        const rcCls = rc === 0 ? 'rc-ok' : 'rc-fail';
+        const cmdOut = msg.command_output || '';
+        const cmdOutId = `cmdout-${agentName}-${i}`;
+        const cmdOutLong = cmdOut.length > 800;
+        html += `<div class="cmd-block">`;
+        html += `<div class="cmd-header"><span>Command</span><span class="cmd-rc ${rcCls}">exit ${rc != null ? rc : '?'}</span></div>`;
+        html += `<div class="cmd-cmd">${esc(msg.command)}</div>`;
+        if (cmdOut) {
+          html += `<div class="cmd-output ${cmdOutLong ? 'collapsed' : ''}" id="${cmdOutId}">${esc(cmdOut)}</div>`;
+          if (cmdOutLong) html += `<div style="text-align:center;padding:.3rem"><span class="msg-toggle" onclick="toggleMsg('${cmdOutId}',this)">Show more</span></div>`;
+        }
+        html += `</div>`;
+      } else {
+        const isLong = content.length > 600;
+        html += `<div class="content ${isLong ? 'collapsed' : ''}" id="${msgId}">${esc(content)}</div>`;
+        if (isLong) html += `<span class="msg-toggle" onclick="toggleMsg('${msgId}',this)">Show more</span>`;
+      }
+
       html += `</div>`;
     }
 
@@ -699,6 +982,245 @@ function copyText(btn) {
     btn.textContent = 'Copied!';
     setTimeout(() => btn.textContent = 'Copy', 1500);
   });
+}
+
+// ── Inline trajectory renderer (for trajectory-only runs) ──────
+function renderInlineTrajectory(messages) {
+  if (!messages.length) return '<div class="empty"><p>No messages in trajectory.</p></div>';
+  let html = `<div class="section-title">Trajectory <span class="count">${messages.length}</span></div>`;
+
+  let stepNum = 0;
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    const role = msg.role || 'unknown';
+    const hasCmd = msg.command != null;
+    const msgId = `inline-msg-${i}`;
+
+    // Count assistant steps (text messages only, not tool calls)
+    const isStep = role === 'assistant' && !hasCmd;
+    if (isStep) stepNum++;
+
+    html += `<div class="traj-msg ${role}">`;
+    html += `<div class="role">${role}${isStep ? ` <span class="step-num">Step ${stepNum}</span>` : ''}${msg.timestamp ? ` <span style="font-weight:400;color:var(--text-dim)">${new Date(msg.timestamp).toLocaleTimeString()}</span>` : ''}</div>`;
+
+    if (hasCmd) {
+      const rc = msg.command_returncode;
+      const rcCls = rc === 0 ? 'rc-ok' : 'rc-fail';
+      const cmdOut = msg.command_output || '';
+      const cmdOutId = `inline-cmdout-${i}`;
+      const cmdOutLong = cmdOut.length > 800;
+      html += `<div class="cmd-block">`;
+      html += `<div class="cmd-header"><span>Command</span><span class="cmd-rc ${rcCls}">exit ${rc != null ? rc : '?'}</span></div>`;
+      html += `<div class="cmd-cmd">${esc(msg.command)}</div>`;
+      if (cmdOut) {
+        html += `<div class="cmd-output ${cmdOutLong ? 'collapsed' : ''}" id="${cmdOutId}">${esc(cmdOut)}</div>`;
+        if (cmdOutLong) html += `<div style="text-align:center;padding:.3rem"><span class="msg-toggle" onclick="toggleMsg('${cmdOutId}',this)">Show more</span></div>`;
+      }
+      html += `</div>`;
+    } else {
+      const content = msg.content || '';
+      if (!content.trim()) { html += `</div>`; continue; }
+      const isLong = content.length > 600;
+      html += `<div class="content ${isLong ? 'collapsed' : ''}" id="${msgId}">${esc(content)}</div>`;
+      if (isLong) html += `<span class="msg-toggle" onclick="toggleMsg('${msgId}',this)">Show more</span>`;
+    }
+
+    html += `</div>`;
+  }
+  return html;
+}
+
+// ── Vuln Context ────────────────────────────────────────────────
+let vulnContextData = null;
+let vulnContextLoaded = false;
+
+async function loadVulnContext() {
+  if (vulnContextLoaded) return;
+  vulnContextLoaded = true;
+  const container = document.getElementById('vuln-context-container');
+  if (!container) return;
+  container.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading vulnerability context...</div>';
+  try {
+    vulnContextData = await api(`/api/runs/${encodeURIComponent(currentRunId)}/vuln_context`);
+    renderVulnContext(container);
+  } catch (e) {
+    container.innerHTML = `<div class="empty"><p>No vulnerability context available: ${esc(e.message)}</p></div>`;
+  }
+}
+
+function renderVulnContext(container) {
+  const d = vulnContextData;
+  if (!d) return;
+
+  let html = '';
+
+  // CVE info header
+  if (d.cve_id) {
+    html += `<div class="cve-info-box" style="margin-bottom:1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius)">`;
+    html += `<div class="cve-title">${esc(d.cve_id)}</div>`;
+    if (d.cve_info.description) html += `<div class="cve-desc">${esc(d.cve_info.description)}</div>`;
+    if (d.cve_info.cwe_ids && d.cve_info.cwe_ids.length) {
+      html += `<div style="margin-top:.3rem">${d.cve_info.cwe_ids.map(c => `<span class="badge badge-orange">${esc(c)}</span>`).join(' ')}</div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Reported locations summary
+  if (d.reported_locations.length) {
+    html += `<div class="section-title">Reported Locations <span class="count">${d.reported_locations.length}</span></div>`;
+    html += `<div class="vuln-loc-list" style="margin-bottom:1rem">`;
+    for (let i = 0; i < d.reported_locations.length; i++) {
+      const loc = d.reported_locations[i];
+      html += `<div class="vuln-loc-item" onclick="scrollToVulnLoc(${i})">`;
+      html += `<div class="loc-file">${esc(loc.file_path)}</div>`;
+      html += `<div class="loc-lines">Lines ${loc.line_start}${loc.line_end !== loc.line_start ? '-' + loc.line_end : ''} <span class="badge badge-purple" style="margin-left:.3rem">${esc(loc.source)}</span></div>`;
+      if (loc.function) html += `<div class="loc-fn">${esc(loc.function)}</div>`;
+      if (loc.context) html += `<div class="loc-ctx">${esc(loc.context)}</div>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Side-by-side panels
+  html += `<div class="vuln-context-panels">`;
+
+  // Left panel: Source files with highlights
+  html += `<div class="vuln-panel">`;
+  html += `<div class="vuln-panel-header">Source Code</div>`;
+
+  const fileNames = Object.keys(d.source_files);
+  if (fileNames.length > 0) {
+    html += `<div class="source-file-selector" id="vuln-file-selector">`;
+    fileNames.forEach((f, i) => {
+      html += `<button class="file-btn ${i===0?'active':''}" onclick="switchVulnFile(${i})">${esc(f.split('/').pop())}</button>`;
+    });
+    html += `</div>`;
+    fileNames.forEach((fp, fi) => {
+      html += `<div class="vuln-panel-body" id="vuln-file-${fi}" style="${fi>0?'display:none':''}">`;
+      html += renderSourceWithHighlights(fp, d.source_files[fp], d.reported_locations);
+      html += `</div>`;
+    });
+  } else {
+    html += `<div class="vuln-panel-body"><div class="empty" style="padding:2rem"><p>No source files available in scripts/repos/</p></div></div>`;
+  }
+  html += `</div>`;
+
+  // Right panel: Patch diff
+  html += `<div class="vuln-panel">`;
+  html += `<div class="vuln-panel-header">Actual Patch</div>`;
+  html += `<div class="vuln-panel-body">`;
+  if (d.patch) {
+    html += renderDiff(d.patch);
+  } else {
+    html += `<div class="empty" style="padding:2rem"><p>No patch file found</p></div>`;
+  }
+  html += `</div></div>`;
+
+  html += `</div>`; // close panels
+
+  container.innerHTML = html;
+}
+
+function renderSourceWithHighlights(filePath, content, locations) {
+  const lines = content.split('\n');
+  // Build highlight ranges for this file
+  const highlights = {};
+  const annotations = {};
+  for (const loc of locations) {
+    // Match by exact path or by filename suffix
+    const locPath = loc.file_path || '';
+    if (filePath === locPath || filePath.endsWith('/' + locPath) || locPath.endsWith('/' + filePath.split('/').pop())) {
+      const start = loc.line_start || 0;
+      const end = loc.line_end || start;
+      for (let l = start; l <= end; l++) {
+        highlights[l] = true;
+      }
+      // Annotate at the start line
+      if (start && (loc.function || loc.context)) {
+        annotations[start] = { fn: loc.function || '', ctx: loc.context || '' };
+      }
+    }
+  }
+
+  let html = '<div class="source-lines">';
+  for (let i = 0; i < lines.length; i++) {
+    const lineNum = i + 1;
+    const isHL = highlights[lineNum];
+    // Annotation before the highlighted block starts
+    if (annotations[lineNum]) {
+      const ann = annotations[lineNum];
+      html += `<div class="hl-annotation">${ann.fn ? '<strong>' + esc(ann.fn) + '</strong> — ' : ''}${esc(ann.ctx)}</div>`;
+    }
+    html += `<div class="source-line ${isHL ? 'hl' : ''}" id="src-line-${lineNum}">`;
+    html += `<span class="ln">${lineNum}</span>`;
+    html += `<span class="code">${esc(lines[i])}</span>`;
+    html += `</div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderDiff(patch) {
+  const lines = patch.split('\n');
+  let html = '<div class="diff-lines">';
+  for (const line of lines) {
+    let cls = 'diff-line';
+    if (line.startsWith('+') && !line.startsWith('+++')) cls += ' diff-add';
+    else if (line.startsWith('-') && !line.startsWith('---')) cls += ' diff-del';
+    else if (line.startsWith('@@')) cls += ' diff-hunk';
+    else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) cls += ' diff-header';
+    html += `<div class="${cls}">${esc(line)}</div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function switchVulnFile(idx) {
+  // Toggle file visibility
+  let i = 0;
+  while (true) {
+    const el = document.getElementById('vuln-file-' + i);
+    if (!el) break;
+    el.style.display = i === idx ? '' : 'none';
+    i++;
+  }
+  // Toggle button active state
+  const selector = document.getElementById('vuln-file-selector');
+  if (selector) {
+    selector.querySelectorAll('.file-btn').forEach((btn, bi) => {
+      btn.classList.toggle('active', bi === idx);
+    });
+  }
+}
+
+function scrollToVulnLoc(locIdx) {
+  if (!vulnContextData) return;
+  const loc = vulnContextData.reported_locations[locIdx];
+  if (!loc) return;
+  const fp = loc.file_path;
+  // Find and activate the matching file tab
+  const fileNames = Object.keys(vulnContextData.source_files);
+  let fileIdx = -1;
+  for (let i = 0; i < fileNames.length; i++) {
+    if (fileNames[i] === fp || fileNames[i].endsWith('/' + fp) || fp.endsWith('/' + fileNames[i].split('/').pop())) {
+      fileIdx = i;
+      break;
+    }
+  }
+  if (fileIdx >= 0) {
+    switchVulnFile(fileIdx);
+    // Scroll to the line
+    setTimeout(() => {
+      const lineEl = document.getElementById('src-line-' + loc.line_start);
+      if (lineEl) lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  }
+}
+
+function fmtDuration(seconds) {
+  if (seconds < 60) return Math.round(seconds) + 's';
+  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + Math.round(seconds % 60) + 's';
+  return Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
 }
 
 // ── Formatting helpers ─────────────────────────────────────────
