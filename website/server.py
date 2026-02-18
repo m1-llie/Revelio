@@ -20,7 +20,7 @@ from urllib.parse import urlparse, parse_qs
 
 WEBSITE_DIR = Path(__file__).resolve().parent
 
-SCRIPT_DIR = Path("/srv/share/vulagent/")
+SCRIPTS_DIR = Path("/srv/share/vulagent/")
 DEFAULT_OUTPUT_DIRS = [
     WEBSITE_DIR.parent / "output"
 ]
@@ -922,6 +922,8 @@ def make_handler(output_dirs):
 
             if path == "/api/runs":
                 self._handle_runs_list()
+            elif path == "/api/failure_summary":
+                self._handle_failure_summary()
             elif path.startswith("/api/runs/"):
                 parts = path[len("/api/runs/"):].split("/", 1)
                 run_id = parts[0]
@@ -951,6 +953,14 @@ def make_handler(output_dirs):
                 if path == "/":
                     self.path = "/index.html"
                 super().do_GET()
+
+        def _handle_failure_summary(self):
+            for d in output_dirs:
+                p = d / "failure_summary.md"
+                if p.exists():
+                    _text_resp(self, p.read_text(errors="replace"))
+                    return
+            _text_resp(self, "", 404)
 
         def _handle_runs_list(self):
             runs = []

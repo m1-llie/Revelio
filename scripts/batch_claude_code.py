@@ -19,8 +19,11 @@ Examples:
 from __future__ import annotations
 
 import json
+import os
 import re
+import signal
 import subprocess
+import sys
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -401,7 +404,7 @@ def main(
         None,
         "--limit",
         "-l",
-        help="Only run this many CVEs (useful for testing).",
+        help="Total number of CVEs to process (including already-completed ones).",
     ),
     batch_id: str = typer.Option(
         "batch_claude_code",
@@ -445,19 +448,52 @@ def main(
         console.print("[bold red]No matching CVEs found.[/bold red]")
         raise typer.Exit(1)
 
-    # Skip CVEs that already have output
+    # Apply limit to total candidates (including ones already done), then skip existing
     before = len(candidates)
-    candidates = [c for c in candidates if not (resolved_output_dir / c["cve_id"]).exists()]
-    skipped = before - len(candidates)
-
     if limit is not None:
         candidates = candidates[:limit]
+
+    def _is_done(cve_id: str) -> bool:
+        """Check if a CVE run is complete: report.json exists and is_error is not true."""
+        report_path = resolved_output_dir / cve_id / "report.json"
+        if not report_path.exists():
+            return False
+        try:
+            with open(report_path) as f:
+                report = json.load(f)
+            return not report.get("is_error", False)
+        except (json.JSONDecodeError, OSError):
+            return False
+
+    already_done = [c for c in candidates if _is_done(c["cve_id"])]
+    skipped = len(already_done)
+    candidates = [c for c in candidates if not _is_done(c["cve_id"])]
+
+    # Find incomplete runs: directory exists but not successfully done
+    incomplete = [c for c in candidates if (resolved_output_dir / c["cve_id"]).exists()]
+    if incomplete and not dry_run:
+        console.print(f"[bold yellow]Found {len(incomplete)} incomplete/errored run(s):[/bold yellow]")
+        for c in incomplete:
+            console.print(f"  {c['cve_id']}: {resolved_output_dir / c['cve_id']}")
+        import shutil
+        answer = input("Remove these directories and re-run them? [y/N]: ").strip().lower()
+        if answer in ("y", "yes"):
+            for c in incomplete:
+                shutil.rmtree(resolved_output_dir / c["cve_id"])
+                console.print(f"  [dim]Removed {c['cve_id']}[/dim]")
+            console.print()
+        else:
+            # Keep them but skip them
+            incomplete_ids = {c["cve_id"] for c in incomplete}
+            candidates = [c for c in candidates if c["cve_id"] not in incomplete_ids]
+            skipped += len(incomplete_ids)
+            console.print(f"[dim]Skipping incomplete runs.[/dim]\n")
 
     console.print(f"[bold green]Batch ID:[/bold green] {batch_id}")
     console.print(f"[bold green]Output dir:[/bold green] {resolved_output_dir}")
     console.print(f"[bold green]Matched CVEs:[/bold green] {before}")
     if skipped:
-        console.print(f"[bold yellow]Skipped (already exist):[/bold yellow] {skipped}")
+        console.print(f"[bold yellow]Skipped (already done):[/bold yellow] {skipped}")
     console.print(f"[bold green]To run:[/bold green] {len(candidates)}")
     console.print(f"[bold green]Model:[/bold green] {model}")
     console.print(f"[bold green]Max turns:[/bold green] {max_turns}")
@@ -486,7 +522,8 @@ def main(
 
     console.print(f"[bold cyan]Submitting {total} tasks...[/bold cyan]\n")
 
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+    executor = ProcessPoolExecutor(max_workers=max_workers)
+    try:
         future_to_cve = {
             executor.submit(
                 run_one,
@@ -525,6 +562,17 @@ def main(
                 console.print(
                     f"[bold red]  ({completed}/{total}) {c['cve_id']}: {e}[/bold red]"
                 )
+
+    except KeyboardInterrupt:
+        console.print("\n[bold red]Interrupted! Cancelling pending tasks and killing workers...[/bold red]")
+        for future in future_to_cve:
+            future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
+        # Kill child processes in our process group
+        os.killpg(0, signal.SIGTERM)
+        sys.exit(1)
+    finally:
+        executor.shutdown(wait=True)
 
     console.print(f"\n[bold green]Batch complete.[/bold green]")
     console.print(f"  Total:      {total}")

@@ -263,6 +263,11 @@ nav .breadcrumb .sep{color:#333}
 .md-render pre code{background:none;padding:0}
 .md-render ul,.md-render ol{padding-left:1.5rem;margin:.5rem 0}
 .md-render li{margin:.2rem 0}
+.md-render table{border-collapse:collapse;width:100%;margin:.8rem 0;font-size:.82rem}
+.md-render th,.md-render td{border:1px solid var(--border);padding:.4rem .8rem;vertical-align:top}
+.md-render th{background:#0d0d20;color:var(--text-bright);font-weight:600;white-space:nowrap}
+.md-render tr:nth-child(even) td{background:#0a0a14}
+.md-render tr:hover td{background:var(--bg-hover)}
 </style>
 </head>
 <body>
@@ -270,6 +275,10 @@ nav .breadcrumb .sep{color:#333}
 <nav>
   <div class="logo" onclick="navigate('')">VulAgent</div>
   <div class="breadcrumb" id="breadcrumb"></div>
+  <div style="margin-left:auto;display:flex;gap:.5rem">
+    <button onclick="navigate('')" id="nav-runs" style="background:none;border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .9rem;color:var(--text-dim);font-size:.78rem;cursor:pointer;transition:all .15s">All Runs</button>
+    <button onclick="navigate('failure-summary')" id="nav-failure" style="background:none;border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .9rem;color:var(--text-dim);font-size:.78rem;cursor:pointer;transition:all .15s">Failure Summary</button>
+  </div>
 </nav>
 
 <div class="container" id="app">
@@ -302,7 +311,11 @@ window.addEventListener('load', () => { route(); });
 
 async function route() {
   const hash = window.location.hash.slice(1);
-  if (hash && hash !== '') {
+  if (hash === 'failure-summary') {
+    currentView = 'failure-summary';
+    currentRunId = null;
+    await loadFailureSummary();
+  } else if (hash && hash !== '') {
     currentRunId = decodeURIComponent(hash);
     currentView = 'detail';
     vulnContextLoaded = false;
@@ -314,15 +327,29 @@ async function route() {
     await loadRunsList();
   }
   updateBreadcrumb();
+  updateNavButtons();
 }
 
 function updateBreadcrumb() {
   const bc = document.getElementById('breadcrumb');
   if (currentView === 'list') {
     bc.innerHTML = '<span onclick="navigate(\'\')">All Runs</span>';
+  } else if (currentView === 'failure-summary') {
+    bc.innerHTML = `<span onclick="navigate('')">All Runs</span><span class="sep">/</span><span>Failure Summary</span>`;
   } else {
     bc.innerHTML = `<span onclick="navigate('')">All Runs</span><span class="sep">/</span><span>${esc(currentRunId)}</span>`;
   }
+}
+
+function updateNavButtons() {
+  const navRuns = document.getElementById('nav-runs');
+  const navFailure = document.getElementById('nav-failure');
+  if (!navRuns || !navFailure) return;
+  const base = 'border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .9rem;font-size:.78rem;cursor:pointer;transition:all .15s;';
+  const active = base + 'background:rgba(99,102,241,.15);border-color:var(--accent);color:var(--accent2)';
+  const inactive = base + 'background:none;color:var(--text-dim)';
+  navRuns.setAttribute('style', currentView !== 'failure-summary' ? active : inactive);
+  navFailure.setAttribute('style', currentView === 'failure-summary' ? active : inactive);
 }
 
 // ── Runs List ──────────────────────────────────────────────────
@@ -443,6 +470,41 @@ function renderRunsList() {
   </div>`;
 
   const hasActiveFilters = q || listFilters.batchType || listFilters.status || listFilters.model || listFilters.score;
+
+  // Aggregate stats for filtered runs
+  const scoredRuns = filtered.filter(r => r.score);
+  const n = scoredRuns.length;
+  const fileHits = scoredRuns.filter(r => r.score.file_hit).length;
+  const funcHits = scoredRuns.filter(r => r.score.function_hit).length;
+  const lineHits = scoredRuns.filter(r => r.score.line_hit).length;
+  const totalCostFiltered = filtered.reduce((s, r) => s + (r.total_cost || 0), 0);
+
+  const pct = (count, total) => total > 0 ? (count / total * 100).toFixed(1) + '%' : '—';
+  const hitLbl = (count, total) => total > 0 ? ` <span style="font-size:.65rem;color:var(--text-dim)">(${count}/${total})</span>` : '';
+
+  html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin-bottom:1.25rem">
+    <div class="stat-card">
+      <div class="val" style="font-size:1.35rem">${pct(fileHits, n)}</div>
+      <div class="lbl">File Hit${hitLbl(fileHits, n)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="val" style="font-size:1.35rem">${pct(funcHits, n)}</div>
+      <div class="lbl">Func Hit${hitLbl(funcHits, n)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="val" style="font-size:1.35rem">${pct(lineHits, n)}</div>
+      <div class="lbl">Line Hit${hitLbl(lineHits, n)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="val" style="font-size:1.35rem;color:var(--yellow)">$${totalCostFiltered.toFixed(2)}</div>
+      <div class="lbl">Total Cost</div>
+    </div>
+    <div class="stat-card">
+      <div class="val" style="font-size:1.35rem">${n}<span style="font-size:.9rem;color:var(--text-dim)">/${filtered.length}</span></div>
+      <div class="lbl">Scored Runs</div>
+    </div>
+  </div>`;
+
   html += `<h2 style="color:var(--text-bright);margin-bottom:1.5rem">Runs <span style="font-size:.85rem;color:var(--text-dim);font-weight:400">(${filtered.length}${hasActiveFilters ? ' / ' + runsData.length : ''})</span></h2>`;
 
   if (hasActiveFilters && !filtered.length) {
@@ -558,7 +620,7 @@ function renderRunDetail() {
     // Report tab (claude-code only)
     if (hasReport) {
       html += `<div class="tab-panel" id="detail-tab-${tabIdx}">`;
-      html += `<div class="card" style="max-width:900px"><div class="md-render">${renderMarkdown(d.result_text)}</div></div>`;
+      html += `<div class="card" style="max-width:900px"><div class="md-render">${renderMarkdown(stripJsonBlocks(d.result_text))}</div></div>`;
       html += `</div>`;
       tabIdx++;
     }
@@ -1258,14 +1320,48 @@ function formatHex(hexStr) {
   return esc(out);
 }
 
-function renderMarkdown(md) {
-  // Minimal markdown renderer
-  let html = esc(md);
+// ── Failure Summary page ───────────────────────────────────────
+async function loadFailureSummary() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading failure summary...</div>';
+  try {
+    const text = await api('/api/failure_summary');
+    if (!text || !text.trim()) {
+      app.innerHTML = '<div class="empty"><div class="icon">&#128196;</div><p>No failure_summary.md found in the output directory.</p></div>';
+      return;
+    }
+    app.innerHTML = `<div class="card" style="max-width:960px"><div class="md-render">${renderMarkdown(text)}</div></div>`;
+  } catch (e) {
+    app.innerHTML = `<div class="empty"><div class="icon">!</div><p>Failed to load failure summary: ${esc(e.message)}</p></div>`;
+  }
+}
 
-  // Code blocks (indented with 4 spaces)
+function stripJsonBlocks(md) {
+  // Remove ```json ... ``` fenced blocks used only for machine parsing
+  return md.replace(/^```json[ \t]*\r?\n[\s\S]*?^```[ \t]*$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function renderMarkdown(md) {
+  // Protect fenced code blocks before escaping
+  const fenced = [];
+  let src = md.replace(/^```[^\n]*\n([\s\S]*?)^```/gm, (_, code) => {
+    const i = fenced.length;
+    fenced.push('<pre><code>' + esc(code) + '</code></pre>');
+    return `\x00FENCE${i}\x00`;
+  });
+
+  let html = esc(src);
+
+  // Restore fenced code blocks
+  html = html.replace(/\x00FENCE(\d+)\x00/g, (_, i) => fenced[i]);
+
+  // Indented code blocks (4 spaces)
   html = html.replace(/^(    .+(\n    .+)*)/gm, (m) => {
     return '<pre><code>' + m.replace(/^    /gm, '') + '</code></pre>';
   });
+
+  // Tables (must run before paragraph wrapping)
+  html = _renderMdTables(html);
 
   // Headers
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
@@ -1282,18 +1378,69 @@ function renderMarkdown(md) {
   html = html.replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>');
   html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
 
-  // Paragraphs (double newlines)
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = '<p>' + html + '</p>';
-
-  // Clean up empty paragraphs
-  html = html.replace(/<p>\s*<\/p>/g, '');
-  html = html.replace(/<p>\s*(<h[1-3]>)/g, '$1');
-  html = html.replace(/(<\/h[1-3]>)\s*<\/p>/g, '$1');
-  html = html.replace(/<p>\s*(<pre>)/g, '$1');
-  html = html.replace(/(<\/pre>)\s*<\/p>/g, '$1');
+  // Convert newlines to <br>, but preserve whitespace inside block elements
+  const blocks = [];
+  html = html.replace(/<(pre|table)[\s\S]*?<\/\1>/g, m => {
+    const i = blocks.length;
+    blocks.push(m);
+    return `\x00BLOCK${i}\x00`;
+  });
+  html = html.replace(/\n/g, '<br>\n');
+  html = html.replace(/\x00BLOCK(\d+)\x00/g, (_, i) => blocks[i]);
 
   return html;
+}
+
+function _renderMdTables(html) {
+  const lines = html.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    // A table starts with a pipe and the next line is a separator row
+    if (line.startsWith('|') && i + 1 < lines.length) {
+      const sep = lines[i + 1].trim();
+      if (/^\|[-| :]+\|?\s*$/.test(sep)) {
+        const headerCells = _splitTableRow(lines[i]);
+        const sepCells = _splitTableRow(sep);
+        const aligns = sepCells.map(c => {
+          if (c.startsWith(':') && c.endsWith(':')) return 'center';
+          if (c.endsWith(':')) return 'right';
+          return 'left';
+        });
+
+        let t = '<table><thead><tr>';
+        headerCells.forEach((c, j) => {
+          t += `<th style="text-align:${aligns[j]||'left'}">${c}</th>`;
+        });
+        t += '</tr></thead><tbody>';
+
+        i += 2;
+        while (i < lines.length && lines[i].trim().startsWith('|')) {
+          const cells = _splitTableRow(lines[i]);
+          t += '<tr>';
+          headerCells.forEach((_, j) => {
+            t += `<td style="text-align:${aligns[j]||'left'}">${cells[j] || ''}</td>`;
+          });
+          t += '</tr>';
+          i++;
+        }
+        t += '</tbody></table>';
+        out.push(t);
+        continue;
+      }
+    }
+    out.push(lines[i]);
+    i++;
+  }
+  return out.join('\n');
+}
+
+function _splitTableRow(line) {
+  const trimmed = line.trim();
+  const inner = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
+  const body = inner.endsWith('|') ? inner.slice(0, -1) : inner;
+  return body.split('|').map(c => c.trim());
 }
 </script>
 </body>
