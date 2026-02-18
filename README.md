@@ -12,15 +12,14 @@ vul-agent is an AI-powered security tool that:
 ## Features
 
 - **AI-Powered Analysis**: Uses large language models to understand code and identify security issues
-- **Multi-Agent Pipeline**: Reviewer → Hypotheses → PoC → Validation → Report
+- **Multi-Agent Pipeline**: Hypotheses → PoC → Validation → Report
 - **Automated Testing**: Validates vulnerabilities through controlled PoC
 - **Multiple Environments**: Supports local execution and Docker containers for safe testing
 - **Extensible Architecture**: Easy to add new detection strategies and validation methods
 
 ### Multi-Agent System Components
 
-- `RepoReviewerAgent`
-- `HypothesisGeneratorAgent`
+- `HypothesisAgent` (combined repo review + hypothesis generation)
 - `PoCBuilderAgent`
 - `ValidatorAgent`
 - `ReporterAgent`

@@ -10,3 +10,7 @@ Key files:
 
 The orchestrator reads global artifacts from the store and injects a compact,
 role-specific context packet into each agent prompt to reduce information loss.
+
+Pipeline note:
+- The first stage is `HypothesisAgent` (combined repo review + top-N hypotheses).
+- PoC generation, validation, and reporting remain separate stages.

@@ -13,7 +13,6 @@ from vulagent.agents.default import DefaultAgent
 from vulagent.artifacts.schema import (
     ArtifactMeta,
     BugReport,
-    CodeReviewNotes,
     PoCRecipe,
     ValidationResult,
     VulnHypotheses,
@@ -23,7 +22,6 @@ from vulagent.models import get_model
 from vulagent.orchestrator.context import ContextPacketBuilder, render_context_packet
 from vulagent.orchestrator.parsers import (
     parse_bug_report,
-    parse_code_review,
     parse_hypotheses,
     parse_poc_recipe,
     parse_validation_result,
@@ -161,6 +159,7 @@ class MultiAgentOrchestrator:
         model_config: dict[str, Any] | None = None,
         project_path: str,
         arvo_mode: bool,
+        top_n: int = 2,
         max_poc_attempts: int = 2,
         log_fn: Any | None = None,
         on_success: Any | None = None,
@@ -171,6 +170,7 @@ class MultiAgentOrchestrator:
         self.model_config = model_config or {}
         self.project_path = project_path
         self.arvo_mode = arvo_mode
+        self.top_n = int(top_n)
         self.max_poc_attempts = max_poc_attempts
         self._aggregate_trajectories: dict[str, Any] = {"agents": {}}
         self._context_builder = ContextPacketBuilder()
@@ -213,7 +213,6 @@ class MultiAgentOrchestrator:
     def run(
         self,
         *,
-        reviewer: AgentSpec,
         hypothesis: AgentSpec,
         poc_builder: AgentSpec,
         validator: AgentSpec,
@@ -228,32 +227,11 @@ class MultiAgentOrchestrator:
         )
 
         self.store.append_event("run_start", {"arvo_mode": self.arvo_mode})
-        common_vars = {"project_path": self.project_path, "arvo_mode": self.arvo_mode}
+        common_vars = {"project_path": self.project_path, "arvo_mode": self.arvo_mode, "top_n": self.top_n}
 
-        self._log("Running RepoReviewerAgent...")
-        reviewer_context = self._context_builder.build(
-            reviewer.name, run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode}
-        )
-        review_run = runner.run(
-            reviewer,
-            extra_vars={**common_vars, "context_packet": render_context_packet(reviewer_context)},
-        )
-        self._record_trajectory(review_run)
-        if failure := self._check_run_status(review_run, "reviewer"):
-            return failure
-        code_review = parse_code_review(review_run.result)
-        self._artifacts["code_review"] = code_review
-        self.store.append_json_artifact(
-            "code_review",
-            code_review,
-            meta=ArtifactMeta(artifact_type="CodeReviewNotes", agent_name=reviewer.name),
-        )
-
-        self._log("Running HypothesisGeneratorAgent...")
+        self._log("Running HypothesisAgent (combined review+hypotheses)...")
         hypothesis_context = self._context_builder.build(
-            hypothesis.name,
-            run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
-            code_review=code_review,
+            hypothesis.name, run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode}
         )
         hypothesis_run = runner.run(
             hypothesis,
@@ -305,7 +283,6 @@ class MultiAgentOrchestrator:
                 poc_context = self._context_builder.build(
                     poc_builder.name,
                     run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
-                    code_review=code_review,
                     hypothesis=hypothesis_dict,
                 )
                 extra_vars = {
@@ -421,7 +398,6 @@ class MultiAgentOrchestrator:
                     reporter_context = self._context_builder.build(
                         reporter.name,
                         run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
-                        code_review=code_review,
                         hypothesis=hypothesis_dict,
                         poc=poc_recipe,
                         validation=validation,

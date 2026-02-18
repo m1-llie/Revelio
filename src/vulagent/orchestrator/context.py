@@ -114,10 +114,8 @@ class ContextPacketBuilder:
         if "references" in report_dict and isinstance(report_dict["references"], list):
             report_dict["references"] = self._compact_refs(report_dict["references"])
 
-        if role == "RepoReviewerAgent":
+        if role == "HypothesisAgent":
             sections["run"] = self._compact_section(run)
-        elif role == "HypothesisGeneratorAgent":
-            sections["code_review"] = self._compact_section(code_review_dict)
         elif role == "PoCBuilderAgent":
             sections["hypothesis"] = self._compact_section(hypothesis_dict)
             sections["code_review"] = self._compact_section(

@@ -152,6 +152,11 @@ def main(
         "--max-poc-attempts",
         help="Max PoC attempts per hypothesis in multi-agent mode.",
     ),
+    top_n: int = typer.Option(
+        2,
+        "--top-n",
+        help="Number of hypotheses to generate in the first (hypothesis) stage of multi-agent mode.",
+    ),
 ) -> None:
     """Analyze a target for software vulnerabilities inside Docker.
 
@@ -247,12 +252,19 @@ def main(
                 "config_path": str(config_path),
                 "model_name": model_name,
                 "pipeline": "multi-agent" if multi_agent else "single-agent",
+                "top_n": top_n if multi_agent else None,
             }
         )
 
         if multi_agent:
             agents_dir = agents_config_dir or DEFAULT_AGENTS_DIR
             specs = default_agent_specs(agents_dir)
+            if not specs["hypothesis"].config_path.exists():
+                console.print(
+                    f"[bold red]Missing hypothesis agent config:[/bold red] {specs['hypothesis'].config_path}\n"
+                    "Your agents config directory must include hypothesis.yaml (combined review+hypotheses stage)."
+                )
+                raise typer.Exit(1)
 
             log_console.print("[bold green]Starting multi-agent orchestrator...[/bold green]\n")
             started_at = datetime.now(timezone.utc)
@@ -300,12 +312,12 @@ def main(
                 model_config=config_data.get("model", {}),
                 project_path=str(workspace_project),
                 arvo_mode=arvo_mode,
+                top_n=top_n,
                 max_poc_attempts=max_poc_attempts,
                 log_fn=log_console.print,
                 on_success=copy_on_success,
             )
             result = orchestrator.run(
-                reviewer=specs["reviewer"],
                 hypothesis=specs["hypothesis"],
                 poc_builder=specs["poc_builder"],
                 validator=specs["validator"],

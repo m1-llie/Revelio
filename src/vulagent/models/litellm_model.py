@@ -58,6 +58,7 @@ class LitellmModel:
         retry=retry_if_not_exception_type(
             (
                 litellm.exceptions.UnsupportedParamsError,
+                litellm.exceptions.BadRequestError,
                 litellm.exceptions.NotFoundError,
                 litellm.exceptions.PermissionDeniedError,
                 litellm.exceptions.ContextWindowExceededError,

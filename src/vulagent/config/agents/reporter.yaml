@@ -128,8 +128,8 @@ agent:
     ```
     </response_example>
 
-  step_limit: 100
-  cost_limit: 20.0
+  step_limit: 200
+  cost_limit: 200
 
 environment:
   timeout: 300

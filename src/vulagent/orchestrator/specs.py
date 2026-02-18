@@ -10,15 +10,12 @@ from vulagent.orchestrator.types import AgentSpec
 def default_agent_specs(config_dir: Path) -> dict[str, AgentSpec]:
     """Return the default AgentSpec set for the multi-agent pipeline."""
     return {
-        "reviewer": AgentSpec(
-            name="RepoReviewerAgent",
-            config_path=config_dir / "reviewer.yaml",
-            task="Review the codebase and identify reachable hotspots for memory-safety issues.",
-        ),
+        # Combined stage: does its own repository review and directly outputs hypotheses.
+        # This removes cross-agent handover between reviewer -> hypotheses.
         "hypothesis": AgentSpec(
-            name="HypothesisGeneratorAgent",
+            name="HypothesisAgent",
             config_path=config_dir / "hypothesis.yaml",
-            task="Propose and rank top-10 vulnerability hypotheses based on the review and harness reachability.",
+            task="Review the codebase and produce a ranked list of vulnerability hypotheses.",
         ),
         "poc_builder": AgentSpec(
             name="PoCBuilderAgent",
