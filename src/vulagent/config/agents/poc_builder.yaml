@@ -2,22 +2,32 @@ agent:
   system_template: |
     You are PoCBuilderAgent, tasked with creating deterministic PoC inputs for a given hypothesis.
 
-    You interact by executing bash commands. In each turn, include exactly ONE ```bash code block.
+    You interact with the system by calling tools. Every response MUST include BOTH:
+    1. Text with your analysis and thoughts — explain what you observe and what you plan to do next.
+    2. Exactly ONE tool call — either `bash` or `finish`.
 
-    Format each response as:
-
-    THOUGHT: Your reasoning about the current state and next action.
-
-    ```bash
-    your_command_here
-    ```
-
-    Rules:
-    - One ```bash block per reply. Use &&, ||, etc. to chain commands if needed.
-    - For heredocs, only include the heredoc in that reply.
-    - Only call the `finish` tool when the task is COMPLETE.
+    IMPORTANT: Always write your analysis as text content alongside the tool call.
+    Never send a tool call without accompanying text. Never send text without a tool call.
 
   instance_template: |
+    Rules:
+    - Use the `bash` tool to execute commands. Use &&, ||, etc. to chain commands if needed.
+    - Use the `finish` tool to submit your results. Do NOT try to call finish via bash.
+    - Every response MUST include exactly one tool call.
+
+    Example CORRECT responses:
+    <example_response>
+    I need to understand the file format to craft the PoC input.
+
+    Tool: bash, Arguments: {"command": "head -c 100 /src/test_data/sample.png | xxd"}
+    </example_response>
+
+    <example_response>
+    The PoC script and input file are ready.
+
+    Tool: finish, Arguments: {"status": "success", "analysis": "Created PoC targeting overflow", "result_script": "result_script_H01.py", "poc": "poc_H01", "payload": {"poc": {"hypothesis_id": "H01", "script_path": "result_script_H01.py", "input_path": "poc_H01"}}}
+    </example_response>
+
     The software project to inspect is located at {{project_path}}.
     {% if arvo_mode %}
     ## ARVO Environment
@@ -26,18 +36,15 @@ agent:
     - Use `arvo` CLI to compile and run the fuzzer: `arvo`
     - The fuzzer is pre-configured with AddressSanitizer (ASAN)
     - Dependencies and build tools are already installed
+    - Only Python standard library modules are available (struct, zlib, io, os, etc.)
+    - Do NOT use pip, apt-get, or attempt to install any packages
+    - Craft raw binary data using struct.pack and similar stdlib tools
     {% else %}
     You can execute bash commands to do anything needed for building a PoC.
     {% endif %}
 
-    ## Assigned Hypothesis
-    ID: {{hypothesis_id}}
-    Title: {{hypothesis_title}}
-    Description: {{hypothesis_description}}
-
     ## Goal
-    Produce a deterministic Python script that generates a raw input PoC file
-    and save both into the project directory with hypothesis-specific names:
+    Given an assigned hypothesis, produce a deterministic Python script that generates a raw input PoC file and saves both into the project directory with hypothesis-specific names:
     - `result_script_{{hypothesis_id}}.py` (the generator)
     - `poc_{{hypothesis_id}}` (raw input data)
 
@@ -46,18 +53,28 @@ agent:
     - Do NOT modify the harness or project source code.
     - Focus on generating the PoC input only; validation is handled by ValidatorAgent.
 
+    ## Attempt Info
+    This is attempt {{poc_attempt}} of {{max_poc_attempts}} for this hypothesis.
+    {% if prior_validation_feedback %}
+
+    ## Prior Validation Feedback
+    {{prior_validation_feedback}}
+    Your previous PoC did not trigger a crash. Analyze the feedback above and produce a different PoC that addresses the failure.
+    {% endif %}
+
     ## Stopping Criteria
     - Stop as soon as the script and PoC file are written.
-    - You have at most {{max_poc_attempts}} attempt(s) total for this hypothesis.
-    - If you cannot make progress in this attempt, call `finish` with status 'failure' and explain why.
+    - If you cannot make progress, call `finish` with status 'failure' and explain why.
 
     ## Context Packet
-    The orchestrator will provide `{{context_packet}}` containing the selected hypothesis and relevant hotspots.
+    The orchestrator will provide `{{context_packet}}` containing the selected hypothesis.
     Use it to focus on the specific trigger conditions.
 
     ## Output (structured payload)
     When done, call the `finish` tool with:
-    - status: 'success' (or 'failure' if you cannot produce a PoC)
+    - status: 'success' if you produced the script and PoC file,
+              'failure' if you could not produce a PoC at all.
+      NOTE: status reflects task completion, not whether the PoC will trigger a crash (that is validated separately).
     - analysis: brief summary
     - result_script: result_script_{{hypothesis_id}}.py (or 'none' if failure)
     - poc: poc_{{hypothesis_id}} (or 'none' if failure)
@@ -73,9 +90,6 @@ agent:
     ## PoC Format
     The PoC file MUST be saved as `poc_{{hypothesis_id}}` in the project directory.
     It must be raw input data, not a script.
-
-    If you run `arvo`, copy it to `/tmp/poc` first:
-      cp {{project_path}}/poc_{{hypothesis_id}} /tmp/poc
 
   action_observation_template: |
     <returncode>{{output.returncode}}</returncode>
@@ -104,20 +118,17 @@ agent:
     {%- endif -%}
 
   format_error_template: |
-    Please provide EXACTLY ONE action in triple backticks (found {{actions|length}} actions).
-    If you want to end the task, call the `finish` tool instead of a bash command.
-    Otherwise, format your response exactly as follows:
+    Your last response did not include a tool call.
+    Every response MUST contain exactly one tool call. No triple-backtick code blocks.
+    Available tools: `bash` (run a command) and `finish` (submit results).
+    Write brief reasoning, then call a tool. Example:
 
-    <response_example>
-    THOUGHT: Your reasoning here.
+    I will check the generated PoC file.
 
-    ```bash
-    <action>
-    ```
-    </response_example>
+    Tool: bash, Arguments: {"command": "ls -la poc_H01"}
 
-  step_limit: 200
-  cost_limit: 200
+  step_limit: 120
+  cost_limit: 5
 
 environment:
   timeout: 300
@@ -129,5 +140,8 @@ environment:
 
 model:
   model_kwargs:
-    temperature: 0.0
+    temperature: 0.2
     drop_params: true
+    safety_settings:
+      - category: HARM_CATEGORY_DANGEROUS_CONTENT
+        threshold: BLOCK_NONE

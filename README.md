@@ -5,9 +5,9 @@ A trustworthy and precise vulnerability detection AI agent that discovers softwa
 ## Overview
 
 vul-agent is an AI-powered security tool that:
-- 🔍 **Discovers vulnerabilities** through intelligent code analysis
-- ✅ **Validates findings** by validating PoC
-- 📊 **Generates reports** with detailed PoC
+- **Discovers vulnerabilities** through intelligent code analysis
+- **Validates findings** by validating PoC
+- **Generates reports** with detailed PoC
 
 ## Features
 

@@ -2,7 +2,8 @@
 
 import inspect
 import re
-from typing import Any, Callable, get_type_hints
+import types
+from typing import Any, Callable, Union, get_args, get_origin, get_type_hints
 
 
 def function_to_tool_schema(func: Callable) -> dict[str, Any]:
@@ -59,7 +60,13 @@ def _parse_docstring_args(doc: str) -> dict[str, str]:
 
 
 def _python_type_to_json(py_type: type) -> str:
-    """Convert Python type to JSON schema type."""
+    """Convert Python type to JSON schema type, handling Optional/Union."""
+    origin = get_origin(py_type)
+    if origin is Union or isinstance(py_type, types.UnionType):
+        args = [a for a in get_args(py_type) if a is not type(None)]
+        if args:
+            return _python_type_to_json(args[0])
+
     mapping = {
         str: "string",
         int: "integer",

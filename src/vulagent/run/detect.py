@@ -272,38 +272,19 @@ def main(
             copied_during_run = True
 
             def copy_on_success(*, hypothesis_id: str, report_path: str, poc_path: str, script_path: str) -> None:
-                dest_dir = run_dir / f"hypothesis_{hypothesis_id}"
-                dest_dir.mkdir(parents=True, exist_ok=True)
-                if report_path:
-                    copied_report = copy_file_from_container(
-                        docker_env,
-                        workspace_project / report_path,
-                        dest_dir / report_path,
-                        report_path,
-                        log_console,
+                dest_dir = store.layout.deliverables_dir
+                for path, atype in [
+                    (report_path, "BugReportFile"),
+                    (poc_path, "PoCInput"),
+                    (script_path, "PoCGenerator"),
+                ]:
+                    if not path:
+                        continue
+                    copied = copy_file_from_container(
+                        docker_env, workspace_project / path, dest_dir / Path(path).name, path, log_console,
                     )
-                    if copied_report:
-                        store.register_existing("reports", copied_report, artifact_type="BugReportFile")
-                if poc_path:
-                    copied_poc = copy_file_from_container(
-                        docker_env,
-                        workspace_project / poc_path,
-                        dest_dir / poc_path,
-                        poc_path,
-                        log_console,
-                    )
-                    if copied_poc:
-                        store.register_existing("poc", copied_poc, artifact_type="PoCInput")
-                if script_path:
-                    copied_script = copy_file_from_container(
-                        docker_env,
-                        workspace_project / script_path,
-                        dest_dir / script_path,
-                        script_path,
-                        log_console,
-                    )
-                    if copied_script:
-                        store.register_existing("poc", copied_script, artifact_type="PoCGenerator")
+                    if copied:
+                        store.register_artifact(copied, artifact_type=atype)
 
             orchestrator = MultiAgentOrchestrator(
                 store=store,
@@ -327,39 +308,17 @@ def main(
             log_console.print(f"[bold cyan]Run status:[/bold cyan] {result.status}")
 
             if not copied_during_run:
-                # Copy any produced artifacts from container if present
-                for report_name in (result.report_paths or []):
-                    copied_report = copy_file_from_container(
-                        docker_env,
-                        workspace_project / report_name,
-                        run_dir / report_name,
-                        report_name,
-                        log_console,
+                dest_dir = store.layout.deliverables_dir
+                for name, atype in [
+                    *[(n, "BugReportFile") for n in (result.report_paths or [])],
+                    *[(n, "PoCInput") for n in (result.poc_paths or [])],
+                    *[(n, "PoCGenerator") for n in (result.script_paths or [])],
+                ]:
+                    copied = copy_file_from_container(
+                        docker_env, workspace_project / name, dest_dir / Path(name).name, name, log_console,
                     )
-                    if copied_report:
-                        store.register_existing("reports", copied_report, artifact_type="BugReportFile")
-
-                for poc_name in (result.poc_paths or []):
-                    copied_poc = copy_file_from_container(
-                        docker_env,
-                        workspace_project / poc_name,
-                        run_dir / poc_name,
-                        poc_name,
-                        log_console,
-                    )
-                    if copied_poc:
-                        store.register_existing("poc", copied_poc, artifact_type="PoCInput")
-
-                for script_name in (result.script_paths or []):
-                    copied_script = copy_file_from_container(
-                        docker_env,
-                        workspace_project / script_name,
-                        run_dir / script_name,
-                        script_name,
-                        log_console,
-                    )
-                    if copied_script:
-                        store.register_existing("poc", copied_script, artifact_type="PoCGenerator")
+                    if copied:
+                        store.register_artifact(copied, artifact_type=atype)
 
             log_console.print(f"\n[bold green]Trajectory saved to:[/bold green] {store.aggregated_trajectory_path}")
 

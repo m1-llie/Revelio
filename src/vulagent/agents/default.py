@@ -169,7 +169,6 @@ class DefaultAgent:
     def get_observation(self, response: dict) -> dict:
         """Execute the action (tool call or bash command) and return the observation."""
         print(response)
-        # Check for tool calls first
         if "tool_calls" in response and response["tool_calls"]:
             content = response.get("content") or ""
             if "```bash" in content:
@@ -179,7 +178,12 @@ class DefaultAgent:
                 )
             return self.execute_tool_calls(response["tool_calls"])
 
-        # Fall back to bash command parsing
+        # Fallback: parse text-format tool calls (e.g. "Tool: bash, Arguments: {...}")
+        text_call = self._parse_text_tool_call(response.get("content") or "")
+        if text_call:
+            return self.execute_tool_calls([text_call])
+
+        # Legacy: bash code blocks
         action = self.parse_bash_action(response)
         output = self.execute_bash_action(action)
         observation = self.render_template(self.config.action_observation_template, output=output)
@@ -191,6 +195,30 @@ class DefaultAgent:
             command_returncode=output.get("returncode"),
         )
         return output
+
+    @staticmethod
+    def _parse_text_tool_call(content: str) -> dict | None:
+        """Extract a tool call written as text: 'Tool: name, Arguments: {...}'."""
+        m = re.search(r"Tool:\s*(\w+)\s*,\s*Arguments:\s*", content)
+        if not m:
+            return None
+        name = m.group(1)
+        rest = content[m.end():]
+        if not rest.startswith("{"):
+            return None
+        depth = 0
+        for i, ch in enumerate(rest):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+            if depth == 0:
+                try:
+                    args = json.loads(rest[: i + 1])
+                    return {"name": name, "arguments": args, "id": f"text_{name}"}
+                except json.JSONDecodeError:
+                    return None
+        return None
 
     def parse_bash_action(self, response: dict) -> dict:
         """Parse bash action from the message. Returns the action."""

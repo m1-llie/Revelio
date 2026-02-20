@@ -83,13 +83,11 @@ class AgentRunner:
 
         agent.step = step_with_progress
 
-        self.store.append_log_line("starting agent run", agent=spec.name, event="agent_start")
+        self.store.append_event("agent_start", {"agent": spec.name})
         if self.log_fn:
             self.log_fn(f"{spec.name}: started")
         exit_status, result = agent.run(spec.task, **extra_vars)
-        self.store.append_log_line(
-            f"agent finished with {exit_status}", agent=spec.name, event="agent_end"
-        )
+        self.store.append_event("agent_end", {"agent": spec.name, "exit_status": exit_status})
         if self.log_fn:
             self.log_fn(
                 f"{spec.name}: finished with {exit_status} "
@@ -119,8 +117,6 @@ class AgentRunner:
             "trajectory_format": "vul-agent-1",
         }
 
-        self.store.append_trajectory(spec.name, trajectory)
-
         return AgentRunResult(
             agent_name=spec.name,
             exit_status=exit_status,
@@ -146,7 +142,43 @@ class AgentRunner:
             "trajectory_format": "vul-agent-1",
             "checkpoint_step": steps,
         }
-        self.store.append_trajectory(agent_name, trajectory)
+        self.store.write_aggregated_trajectory({"agents": {agent_name: trajectory}})
+
+
+CRASH_INDICATORS = frozenset({
+    "addresssanitizer",
+    "memorysanitizer",
+    "threadsanitizer",
+    "leaksanitizer",
+    "ubsan",
+    "undefined behavior",
+    "segmentation fault",
+    "sigsegv",
+    "sigabrt",
+    "sigbus",
+    "sigfpe",
+    "stack-buffer-overflow",
+    "heap-buffer-overflow",
+    "heap-use-after-free",
+    "stack-use-after-free",
+    "double-free",
+    "use-after-poison",
+    "global-buffer-overflow",
+    "stack-overflow",
+    "alloc-dealloc-mismatch",
+    "out of memory",
+    "assertion failed",
+    "runtime error:",
+})
+
+
+def verify_crash(validation: ValidationResult) -> bool:
+    """Programmatic cross-check of crash evidence, independent of LLM self-report."""
+    text = " ".join([
+        validation.output_excerpt or "",
+        " ".join(validation.indicators),
+    ]).lower()
+    return any(indicator in text for indicator in CRASH_INDICATORS)
 
 
 class MultiAgentOrchestrator:
@@ -193,8 +225,20 @@ class MultiAgentOrchestrator:
         except Exception:
             return False
 
-    def _record_trajectory(self, run_result: AgentRunResult) -> None:
-        self._aggregate_trajectories["agents"][run_result.agent_name] = run_result.trajectory
+    def _record_trajectory(
+        self,
+        run_result: AgentRunResult,
+        *,
+        hypothesis_id: str | None = None,
+        attempt: int | None = None,
+    ) -> None:
+        parts = [run_result.agent_name]
+        if hypothesis_id:
+            parts.append(hypothesis_id)
+        if attempt is not None:
+            parts.append(f"attempt{attempt}")
+        key = "_".join(parts)
+        self._aggregate_trajectories["agents"][key] = run_result.trajectory
         self.store.write_aggregated_trajectory(self._aggregate_trajectories)
 
     def _check_run_status(self, run_result: AgentRunResult, stage: str) -> OrchestratorResult | None:
@@ -247,23 +291,14 @@ class MultiAgentOrchestrator:
                 "parse_failure",
                 {"stage": "hypothesis", "error": str(exc)},
             )
-            self.store.append_text_artifact(
-                "hypotheses",
-                hypothesis_run.result,
-                name="raw_hypothesis_output.txt",
-                meta=ArtifactMeta(artifact_type="HypothesisRaw", agent_name=hypothesis.name),
-            )
+            self.store.save_raw_output(hypothesis_run.result, stage="hypothesis")
             return OrchestratorResult(
                 status="failure",
                 summary=f"Hypothesis parsing failed: {exc}",
                 run_dir=self.store.run_dir,
             )
         self._artifacts["hypotheses"] = hypotheses
-        self.store.append_json_artifact(
-            "hypotheses",
-            hypotheses,
-            meta=ArtifactMeta(artifact_type="VulnHypotheses", agent_name=hypothesis.name),
-        )
+        self.store.write_handoff("hypotheses", hypotheses)
 
         report_files: list[str] = []
         poc_files: list[str] = []
@@ -274,6 +309,8 @@ class MultiAgentOrchestrator:
         for item in hypotheses.hypotheses:
             hypothesis_dict = item.to_dict()
             hypothesis_success = False
+            prior_validation: ValidationResult | None = None
+            prior_poc_recipe: PoCRecipe | None = None
             for attempt in range(1, self.max_poc_attempts + 1):
                 self._log(f"PoC attempt {attempt} for {item.hypothesis_id} ({item.title})...")
                 self.store.append_event(
@@ -284,7 +321,19 @@ class MultiAgentOrchestrator:
                     poc_builder.name,
                     run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
                     hypothesis=hypothesis_dict,
+                    validation=prior_validation,
                 )
+                prior_feedback = ""
+                if prior_validation:
+                    lines = [
+                        "Previous attempt did NOT trigger a crash.",
+                        f"  Reproduction command: {prior_validation.reproduction_command or 'N/A'}",
+                        f"  Output excerpt: {prior_validation.output_excerpt or 'N/A'}",
+                        f"  Indicators: {', '.join(prior_validation.indicators) or 'none'}",
+                    ]
+                    if prior_poc_recipe and prior_poc_recipe.generation_steps:
+                        lines.append(f"  Prior PoC approach: {'; '.join(prior_poc_recipe.generation_steps)}")
+                    prior_feedback = "\n".join(lines)
                 extra_vars = {
                     **common_vars,
                     "hypothesis_id": item.hypothesis_id,
@@ -293,10 +342,11 @@ class MultiAgentOrchestrator:
                     "context_packet": render_context_packet(poc_context),
                     "poc_attempt": attempt,
                     "max_poc_attempts": self.max_poc_attempts,
+                    "prior_validation_feedback": prior_feedback,
                 }
 
                 poc_run = runner.run(poc_builder, extra_vars=extra_vars)
-                self._record_trajectory(poc_run)
+                self._record_trajectory(poc_run, hypothesis_id=item.hypothesis_id, attempt=attempt)
                 if failure := self._check_run_status(poc_run, "poc_builder"):
                     self.store.append_event(
                         "poc_builder_failed",
@@ -308,21 +358,15 @@ class MultiAgentOrchestrator:
                     )
                     if attempt == self.max_poc_attempts:
                         self.store.append_event(
-                            "hypothesis_skip",
-                            {"hypothesis_id": item.hypothesis_id, "reason": failure.summary},
+                            "hypothesis_exhausted",
+                            {"hypothesis_id": item.hypothesis_id, "stage": "poc_builder", "reason": failure.summary},
                         )
-                        self._log(f"Hypothesis {item.hypothesis_id} skipped: {failure.summary}")
+                        self._log(f"Hypothesis {item.hypothesis_id} exhausted all attempts (poc_builder failed): {failure.summary}")
                     continue
                 poc_recipe = parse_poc_recipe(poc_run.result)
                 self._artifacts["poc"] = poc_recipe
-                self.store.append_json_artifact(
-                    "poc",
-                    poc_recipe,
-                    meta=ArtifactMeta(
-                        artifact_type="PoCRecipe",
-                        agent_name=poc_builder.name,
-                        hypothesis_id=item.hypothesis_id,
-                    ),
+                self.store.write_handoff(
+                    "poc_recipe", poc_recipe, hypothesis_id=item.hypothesis_id, attempt=attempt
                 )
                 if poc_recipe.input_path:
                     poc_files.append(poc_recipe.input_path)
@@ -340,7 +384,7 @@ class MultiAgentOrchestrator:
                     validator,
                     extra_vars={**extra_vars, "context_packet": render_context_packet(validation_context)},
                 )
-                self._record_trajectory(validation_run)
+                self._record_trajectory(validation_run, hypothesis_id=item.hypothesis_id, attempt=attempt)
                 if failure := self._check_run_status(validation_run, "validator"):
                     self.store.append_event(
                         "validator_failed",
@@ -352,25 +396,36 @@ class MultiAgentOrchestrator:
                     )
                     if attempt == self.max_poc_attempts:
                         self.store.append_event(
-                            "hypothesis_skip",
-                            {"hypothesis_id": item.hypothesis_id, "reason": failure.summary},
+                            "hypothesis_exhausted",
+                            {"hypothesis_id": item.hypothesis_id, "stage": "validator", "reason": failure.summary},
                         )
-                        self._log(f"Hypothesis {item.hypothesis_id} skipped: {failure.summary}")
+                        self._log(f"Hypothesis {item.hypothesis_id} exhausted all attempts (validator failed): {failure.summary}")
                     continue
                 validation = parse_validation_result(validation_run.result)
+                evidence = verify_crash(validation)
+                if validation.crash_detected != evidence:
+                    self.store.append_event(
+                        "crash_override",
+                        {
+                            "hypothesis_id": item.hypothesis_id,
+                            "llm_reported": validation.crash_detected,
+                            "evidence_based": evidence,
+                        },
+                    )
+                    self._log(
+                        f"Crash override for {item.hypothesis_id}: "
+                        f"LLM said {validation.crash_detected}, evidence says {evidence}"
+                    )
+                    validation.crash_detected = evidence
                 self._artifacts["validation"] = validation
-                validation_path = self.store.append_json_artifact(
-                    "validation",
-                    validation,
-                    meta=ArtifactMeta(
-                        artifact_type="ValidationResult",
-                        agent_name=validator.name,
-                        hypothesis_id=item.hypothesis_id,
-                    ),
+                validation_path = self.store.write_handoff(
+                    "validation", validation, hypothesis_id=item.hypothesis_id, attempt=attempt
                 )
                 validation_files.append(str(validation_path))
 
                 if not validation.crash_detected:
+                    prior_validation = validation
+                    prior_poc_recipe = poc_recipe
                     self.store.append_event(
                         "validation_failed",
                         {"hypothesis_id": item.hypothesis_id, "attempt": attempt},
@@ -381,10 +436,10 @@ class MultiAgentOrchestrator:
                     )
                     if attempt == self.max_poc_attempts:
                         self.store.append_event(
-                            "hypothesis_skip",
-                            {"hypothesis_id": item.hypothesis_id, "reason": "no_crash"},
+                            "hypothesis_exhausted",
+                            {"hypothesis_id": item.hypothesis_id, "stage": "validation", "reason": "no_crash_detected"},
                         )
-                        self._log(f"Hypothesis {item.hypothesis_id} skipped: no_crash")
+                        self._log(f"Hypothesis {item.hypothesis_id} exhausted all attempts (no crash detected)")
                     continue
 
                 self._log(
@@ -410,7 +465,7 @@ class MultiAgentOrchestrator:
                             "reporter_hint": reporter_hint,
                         },
                     )
-                    self._record_trajectory(reporter_run)
+                    self._record_trajectory(reporter_run, hypothesis_id=item.hypothesis_id, attempt=attempt)
                     if failure := self._check_run_status(reporter_run, "reporter"):
                         self.store.append_event(
                             "reporter_failed",
@@ -418,15 +473,16 @@ class MultiAgentOrchestrator:
                         )
                         break
                     report = parse_bug_report(reporter_run.result)
-                    self.store.append_json_artifact(
-                        "reports",
+                    self.store.save_report_meta(
                         report,
+                        hypothesis_id=item.hypothesis_id,
                         meta=ArtifactMeta(
                             artifact_type="BugReport",
                             agent_name=reporter.name,
                             hypothesis_id=item.hypothesis_id,
                         ),
                     )
+                    self.store.write_handoff("report", report, hypothesis_id=item.hypothesis_id)
                     if report and report.report_path:
                         report_files.append(report.report_path)
                     if self._report_exists(item.hypothesis_id):
@@ -443,10 +499,10 @@ class MultiAgentOrchestrator:
 
                 if not self._report_exists(item.hypothesis_id):
                     self.store.append_event(
-                        "hypothesis_skip",
-                        {"hypothesis_id": item.hypothesis_id, "reason": "report_missing"},
+                        "hypothesis_exhausted",
+                        {"hypothesis_id": item.hypothesis_id, "stage": "reporter", "reason": "report_file_missing"},
                     )
-                    self._log(f"Hypothesis {item.hypothesis_id} skipped: report_missing")
+                    self._log(f"Hypothesis {item.hypothesis_id} exhausted all attempts (report file not written)")
                     break
                 self.store.append_event("run_success", {"hypothesis_id": item.hypothesis_id})
                 self._log(f"Hypothesis {item.hypothesis_id} confirmed and reported.")

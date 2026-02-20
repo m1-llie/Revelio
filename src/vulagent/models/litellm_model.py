@@ -97,13 +97,19 @@ class LitellmModel:
         self.cost += cost
         GLOBAL_MODEL_STATS.add(cost)
 
+        if not response.choices:
+            logger.warning(
+                "Model returned empty choices (likely safety filter). "
+                "Returning empty content so the agent loop can retry."
+            )
+            return {"content": "[Model returned no response — possibly blocked by safety filter. Please try a different approach.]"}
+
         msg = response.choices[0].message
         result: dict[str, Any] = {
             "content": msg.content or "",
             "extra": {"response": response.model_dump()},
         }
 
-        # Parse tool calls if present
         tool_calls = _parse_tool_calls(msg)
         if tool_calls:
             result["tool_calls"] = tool_calls

@@ -77,8 +77,6 @@ class ContextPacketBuilder:
                 compacted[key] = _truncate(value, self.max_str_len)
             elif isinstance(value, list):
                 compacted[key] = _trim_list(value, self.max_list_len)
-            elif isinstance(value, dict):
-                compacted[key] = value
             else:
                 compacted[key] = value
         return compacted
@@ -88,7 +86,6 @@ class ContextPacketBuilder:
         role: str,
         *,
         run_manifest: dict[str, Any] | None = None,
-        code_review: Any | None = None,
         hypotheses: Any | None = None,
         hypothesis: Any | None = None,
         poc: Any | None = None,
@@ -98,15 +95,11 @@ class ContextPacketBuilder:
         run = _maybe_dict(run_manifest)
         sections: dict[str, Any] = {}
 
-        code_review_dict = _maybe_dict(code_review)
         hypotheses_dict = _maybe_dict(hypotheses)
         hypothesis_dict = _maybe_dict(hypothesis)
         poc_dict = _maybe_dict(poc)
         validation_dict = _maybe_dict(validation)
         report_dict = _maybe_dict(report)
-
-        if "hotspots" in code_review_dict and isinstance(code_review_dict["hotspots"], list):
-            code_review_dict["hotspots"] = self._compact_refs(code_review_dict["hotspots"])
 
         if "references" in hypothesis_dict and isinstance(hypothesis_dict["references"], list):
             hypothesis_dict["references"] = self._compact_refs(hypothesis_dict["references"])
@@ -118,9 +111,13 @@ class ContextPacketBuilder:
             sections["run"] = self._compact_section(run)
         elif role == "PoCBuilderAgent":
             sections["hypothesis"] = self._compact_section(hypothesis_dict)
-            sections["code_review"] = self._compact_section(
-                {k: code_review_dict.get(k) for k in ["harness_entry", "call_chains", "hotspots"]}
-            )
+            if validation_dict:
+                sections["prior_validation"] = self._compact_section({
+                    "crash_detected": validation_dict.get("crash_detected"),
+                    "output_excerpt": validation_dict.get("output_excerpt"),
+                    "indicators": validation_dict.get("indicators"),
+                    "reproduction_command": validation_dict.get("reproduction_command"),
+                })
         elif role == "ValidatorAgent":
             sections["hypothesis"] = self._compact_section(hypothesis_dict)
             sections["poc"] = self._compact_section(poc_dict)
@@ -128,13 +125,7 @@ class ContextPacketBuilder:
             sections["hypothesis"] = self._compact_section(hypothesis_dict)
             sections["poc"] = self._compact_section(poc_dict)
             sections["validation"] = self._compact_section(validation_dict)
-            if code_review_dict:
-                sections["code_review"] = self._compact_section(
-                    {k: code_review_dict.get(k) for k in ["harness_entry", "hotspots"]}
-                )
         else:
-            if code_review_dict:
-                sections["code_review"] = self._compact_section(code_review_dict)
             if hypotheses_dict:
                 sections["hypotheses"] = self._compact_section(hypotheses_dict)
             if hypothesis_dict:
@@ -146,12 +137,10 @@ class ContextPacketBuilder:
             if report_dict:
                 sections["report"] = self._compact_section(report_dict)
 
-        hypothesis_id = hypothesis_dict.get("hypothesis_id")
-
         return ContextPacket(
             role=role,
             run=run,
-            hypothesis_id=hypothesis_id,
+            hypothesis_id=hypothesis_dict.get("hypothesis_id"),
             sections=sections,
         )
 
