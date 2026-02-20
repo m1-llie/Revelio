@@ -153,7 +153,7 @@ def main(
         help="Max PoC attempts per hypothesis in multi-agent mode.",
     ),
     top_n: int = typer.Option(
-        2,
+        5,
         "--top-n",
         help="Number of hypotheses to generate in the first (hypothesis) stage of multi-agent mode.",
     ),

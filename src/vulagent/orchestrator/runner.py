@@ -191,7 +191,7 @@ class MultiAgentOrchestrator:
         model_config: dict[str, Any] | None = None,
         project_path: str,
         arvo_mode: bool,
-        top_n: int = 2,
+        top_n: int = 5,
         max_poc_attempts: int = 2,
         log_fn: Any | None = None,
         on_success: Any | None = None,
