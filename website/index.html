@@ -242,6 +242,13 @@ nav .breadcrumb .sep{color:#333}
 .cve-info-box .cve-title{color:var(--text-bright);font-weight:600;font-size:.9rem;margin-bottom:.3rem}
 .cve-info-box .cve-desc{color:var(--text-dim)}
 
+/* ── Jump flash ───────────────────────────────────────────────── */
+@keyframes jumpFlash{
+  0%,15%{background:rgba(250,204,21,.45);outline:2px solid var(--yellow)}
+  100%  {background:transparent;outline:none}
+}
+.source-line.jump-flash{animation:jumpFlash 1.6s ease-out forwards;border-radius:2px}
+
 /* ── Loading ──────────────────────────────────────────────────── */
 .loading{text-align:center;padding:4rem;color:var(--text-dim)}
 .spinner{display:inline-block;width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;margin-bottom:.5rem}
@@ -1225,16 +1232,67 @@ function renderSourceWithHighlights(filePath, content, locations) {
 function renderDiff(patch) {
   const lines = patch.split('\n');
   let html = '<div class="diff-lines">';
+  let currentFile = null;
   for (const line of lines) {
     let cls = 'diff-line';
+    let extra = '';
     if (line.startsWith('+') && !line.startsWith('+++')) cls += ' diff-add';
     else if (line.startsWith('-') && !line.startsWith('---')) cls += ' diff-del';
-    else if (line.startsWith('@@')) cls += ' diff-hunk';
-    else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) cls += ' diff-header';
-    html += `<div class="${cls}">${esc(line)}</div>`;
+    else if (line.startsWith('@@')) {
+      cls += ' diff-hunk';
+      // Parse "+newStart" from "@@ -old,n +new,n @@"
+      const m = line.match(/\+(\d+)/);
+      if (m && currentFile) {
+        const lineNum = parseInt(m[1], 10);
+        const f = currentFile;
+        // JSON.stringify produces double-quotes which would break the onclick="" attribute;
+        // encode them as &quot; so the HTML parser sees a valid attribute value.
+        const fJson = JSON.stringify(f).replace(/"/g, '&quot;');
+        extra = ` <button onclick="jumpToPatchLine(${fJson},${lineNum})" style="float:right;background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);color:var(--accent2);padding:0 6px;border-radius:3px;font-size:.68rem;cursor:pointer;line-height:1.6">↳ jump</button>`;
+      }
+    } else if (line.startsWith('+++')) {
+      cls += ' diff-header';
+      // Extract file path from "+++ b/path"
+      const m = line.match(/^\+\+\+\s+(?:b\/)?(.+)/);
+      if (m) currentFile = m[1].trim();
+    } else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---')) {
+      cls += ' diff-header';
+    }
+    html += `<div class="${cls}">${extra}${esc(line)}</div>`;
   }
   html += '</div>';
   return html;
+}
+
+function jumpToPatchLine(filePath, lineNum) {
+  if (!vulnContextData) return;
+  const fileNames = Object.keys(vulnContextData.source_files);
+  let fileIdx = 0;
+  for (let i = 0; i < fileNames.length; i++) {
+    const fn = fileNames[i];
+    if (fn === filePath || fn.endsWith('/' + filePath) || filePath.endsWith('/' + fn) ||
+        fn.split('/').pop() === filePath.split('/').pop()) {
+      fileIdx = i;
+      break;
+    }
+  }
+  switchVulnFile(fileIdx);
+  setTimeout(() => {
+    // Query *within* the specific panel to avoid duplicate src-line-N IDs across files
+    const panel = document.getElementById('vuln-file-' + fileIdx);
+    if (!panel) return;
+    const el = panel.querySelector('[id="src-line-' + lineNum + '"]');
+    if (!el) return;
+    // Scroll the panel's own scroll container (scrollIntoView scrolls the page, not the panel)
+    const elRect = el.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    panel.scrollTop += elRect.top - panelRect.top - panel.clientHeight / 2;
+    // Flash highlight
+    el.classList.remove('jump-flash');
+    void el.offsetWidth; // force reflow to restart animation
+    el.classList.add('jump-flash');
+    el.addEventListener('animationend', () => el.classList.remove('jump-flash'), { once: true });
+  }, 50);
 }
 
 function switchVulnFile(idx) {
