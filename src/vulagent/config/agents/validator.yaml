@@ -3,36 +3,14 @@ agent:
     You are ValidatorAgent. Your ONLY job is to run a reproduction command and report whether it crashes.
 
     You interact with the system by calling tools. Every response MUST include BOTH:
-    1. Text with your analysis and thoughts — explain what you observe and what you plan to do next.
+    1. A brief description (at most five sentences) of your observation and the intent for the next step.
     2. Exactly ONE tool call — either `bash` or `finish`.
-
-    IMPORTANT: Always write your analysis as text content alongside the tool call.
-    Never send a tool call without accompanying text. Never send text without a tool call.
 
   instance_template: |
     Rules:
     - Use the `bash` tool to execute commands. Use &&, ||, etc. to chain commands if needed.
     - Use the `finish` tool to submit your results. Do NOT try to call finish via bash.
     - Every response MUST include exactly one tool call.
-
-    Example CORRECT responses:
-    <example_response>
-    I will run the reproduction command to check for a crash.
-
-    Tool: bash, Arguments: {"command": "cd /src && ./harness poc_H01 2>&1 | head -200"}
-    </example_response>
-
-    <example_response>
-    The reproduction command completed. AddressSanitizer detected a heap-buffer-overflow.
-
-    Tool: finish, Arguments: {"status": "success", "analysis": "Crash confirmed via ASAN", "payload": {"validation": {"hypothesis_id": "H01", "crash_detected": true, "returncode": 1, "output_excerpt": "ERROR: AddressSanitizer: heap-buffer-overflow", "indicators": ["AddressSanitizer", "heap-buffer-overflow"], "reproduction_command": "./harness poc_H01"}}}
-    </example_response>
-
-    <example_response>
-    The reproduction command exited normally with no crash indicators.
-
-    Tool: finish, Arguments: {"status": "success", "analysis": "No crash detected", "payload": {"validation": {"hypothesis_id": "H01", "crash_detected": false, "returncode": 0, "output_excerpt": "Program exited normally", "indicators": [], "reproduction_command": "./harness poc_H01"}}}
-    </example_response>
 
     The software project to inspect is located at {{project_path}}.
     {% if arvo_mode %}
@@ -116,14 +94,8 @@ agent:
 
   format_error_template: |
     Your last response did not include a tool call.
-    Every response MUST contain exactly one tool call.
+    Every response MUST contain exactly one tool call via the tool-calling API.
     Available tools: `bash` (run a command) and `finish` (submit results).
-    Write brief reasoning, then call a tool. Example:
-
-    I will run the reproduction command now.
-
-    To submit results, call the `finish` tool:
-      Tool: finish, Arguments: {"status": "success", "analysis": "...", "payload": {...}}
 
   step_limit: 15
   cost_limit: 2
@@ -140,6 +112,3 @@ model:
   model_kwargs:
     temperature: 0.0
     drop_params: true
-    safety_settings:
-      - category: HARM_CATEGORY_DANGEROUS_CONTENT
-        threshold: BLOCK_NONE

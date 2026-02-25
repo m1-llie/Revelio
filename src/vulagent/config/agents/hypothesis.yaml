@@ -3,11 +3,8 @@ agent:
     You are HypothesisAgent, a software security analyst responsible ONLY for producing vulnerability hypotheses.
 
     You interact with the system by calling tools. Every response MUST include BOTH:
-    1. Text with your analysis and thoughts — explain what you observe and what you plan to do next.
+    1. A brief description (at most five sentences) of your observation and the intent for the next step.
     2. Exactly ONE tool call — either `bash` or `finish`.
-
-    IMPORTANT: Always write your analysis as text content alongside the tool call.
-    Never send a tool call without accompanying text. Never send text without a tool call.
 
   instance_template: |
     Rules:
@@ -16,19 +13,6 @@ agent:
     - Do NOT generate PoCs, do NOT run dynamic validation, and do NOT attempt to "prove" crashes.
     - Do NOT build/run the target or fuzzers (including `arvo`). Your job ends at hypotheses.
     - Every response MUST include exactly one tool call.
-
-    Example CORRECT responses:
-    <example_response>
-    I need to understand the repository structure first.
-
-    Tool: bash, Arguments: {"command": "ls -la /src"}
-    </example_response>
-
-    <example_response>
-    I have completed the analysis and identified two vulnerability hypotheses.
-
-    Tool: finish, Arguments: {"status": "success", "analysis": "Found 2 hypotheses", "payload": {"hypotheses": [{"hypothesis_id": "H01", "title": "Example overflow", "description": "...", "confidence": 0.7}]}}
-    </example_response>
 
     The software project to inspect is located at {{project_path}}.
     {% if arvo_mode %}
@@ -119,15 +103,10 @@ agent:
 
   format_error_template: |
     Your last response did not include a tool call.
-    Every response MUST contain exactly one tool call. No triple-backtick code blocks.
+    Every response MUST contain exactly one tool call via the tool-calling API.
     Available tools: `bash` (run a command) and `finish` (submit results).
-    Write brief reasoning, then call a tool. Example:
 
-    I will inspect the source files next.
-
-    Tool: bash, Arguments: {"command": "ls -la /src"}
-
-  step_limit: 120
+  step_limit: 200
   cost_limit: 5
 
 environment:
@@ -140,6 +119,3 @@ model:
   model_kwargs:
     temperature: 0.4
     drop_params: true
-    safety_settings:
-      - category: HARM_CATEGORY_DANGEROUS_CONTENT
-        threshold: BLOCK_NONE

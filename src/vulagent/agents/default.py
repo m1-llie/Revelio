@@ -1,4 +1,5 @@
 """Basic agent class. See https://mini-swe-agent.com/latest/advanced/control_flow/ for visual explanation of the scaffold.
+Changed a lot by vul-agent.
 
 Implement the control flow:
 template-driven prompting, action parsing (bash ...), command execution, termination rules, and trajectory logging.
@@ -118,7 +119,6 @@ class DefaultAgent:
         self.messages = []
         self.add_message("system", self.render_template(self.config.system_template))
         self.add_message("user", self.render_template(self.config.instance_template))
-        print(self.messages)
         while True:
             try:
                 self.step()
@@ -140,9 +140,7 @@ class DefaultAgent:
         if 0 < self.config.step_limit <= self.model.n_calls or 0 < self.config.cost_limit <= self.model.cost:
             raise LimitsExceeded()
         messages = [self._strip_metadata(m) for m in self.messages]
-        print(messages[-1])
         response = self.model.query(messages, tools=self._tool_schemas)
-        self.add_message("assistant", **response)
         return response
     
     _metadata_keys = {"timestamp", "command", "command_output", "command_returncode", "tool_results", "extra"}
@@ -166,24 +164,40 @@ class DefaultAgent:
             ]
         return msg
 
+    @staticmethod
+    def _is_truncated(response: dict) -> bool:
+        """Check if the response was truncated due to max output tokens."""
+        try:
+            return response["extra"]["response"]["choices"][0]["finish_reason"] == "length"
+        except (KeyError, IndexError, TypeError):
+            return False
+
     def get_observation(self, response: dict) -> dict:
         """Execute the action (tool call or bash command) and return the observation."""
-        print(response)
         if "tool_calls" in response and response["tool_calls"]:
+            if self._is_truncated(response):
+                raise FormatError(
+                    "Your response was truncated due to the output token limit, "
+                    "so the tool call was malformed. Please retry with a shorter response."
+                )
             content = response.get("content") or ""
             if "```bash" in content:
                 raise FormatError(
                     "Tool calls must not include bash blocks. Execute commands first, "
                     "then call the tool in a separate reply."
                 )
+            self.add_message("assistant", **response)
             return self.execute_tool_calls(response["tool_calls"])
 
         # Fallback: parse text-format tool calls (e.g. "Tool: bash, Arguments: {...}")
         text_call = self._parse_text_tool_call(response.get("content") or "")
         if text_call:
+            self.add_message("assistant", **response)
+            self.messages[-1]["tool_calls"] = [text_call]
             return self.execute_tool_calls([text_call])
 
         # Legacy: bash code blocks
+        self.add_message("assistant", **response)
         action = self.parse_bash_action(response)
         output = self.execute_bash_action(action)
         observation = self.render_template(self.config.action_observation_template, output=output)
@@ -253,7 +267,10 @@ class DefaultAgent:
             if name not in self._tool_map:
                 result = f"Error: Unknown tool '{name}'"
             else:
-                result = self._tool_map[name](**arguments)
+                try:
+                    result = self._tool_map[name](**arguments)
+                except TypeError as e:
+                    result = f"Error calling tool '{name}': {e}"
 
             # For finish tool, raise Submitted with the result
             if name == "finish":

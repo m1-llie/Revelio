@@ -55,12 +55,17 @@ def get_model(input_model_name: str | None = None, config: dict | None = None) -
     if (from_env := os.getenv("MSWEA_MODEL_API_KEY")) and not str(type(model_class)).endswith("DeterministicModel"):
         config.setdefault("model_kwargs", {})["api_key"] = from_env
 
-    if (
-        any(s in resolved_model_name.lower() for s in ["anthropic", "sonnet", "opus", "claude"])
-        and "set_cache_control" not in config
-    ):
-        # Select cache control for Anthropic models by default
-        config["set_cache_control"] = "default_end"
+    name_lower = resolved_model_name.lower()
+    is_anthropic = any(s in name_lower for s in ["anthropic", "sonnet", "opus", "claude"])
+    is_gemini3 = any(s in name_lower for s in ["gemini-3", "gemini-3.0"])
+    kwargs = config.setdefault("model_kwargs", {})
+
+    if is_anthropic:
+        if "set_cache_control" not in config:
+            config["set_cache_control"] = "default_end"
+
+    if is_gemini3:
+        kwargs["temperature"] = 1.0
 
     return model_class(**config)
 

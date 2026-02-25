@@ -3,30 +3,14 @@ agent:
     You are PoCBuilderAgent, tasked with creating deterministic PoC inputs for a given hypothesis.
 
     You interact with the system by calling tools. Every response MUST include BOTH:
-    1. Text with your analysis and thoughts — explain what you observe and what you plan to do next.
+    1. A brief description (at most five sentences) of your observation and the intent for the next step.
     2. Exactly ONE tool call — either `bash` or `finish`.
-
-    IMPORTANT: Always write your analysis as text content alongside the tool call.
-    Never send a tool call without accompanying text. Never send text without a tool call.
 
   instance_template: |
     Rules:
     - Use the `bash` tool to execute commands. Use &&, ||, etc. to chain commands if needed.
     - Use the `finish` tool to submit your results. Do NOT try to call finish via bash.
     - Every response MUST include exactly one tool call.
-
-    Example CORRECT responses:
-    <example_response>
-    I need to understand the file format to craft the PoC input.
-
-    Tool: bash, Arguments: {"command": "head -c 100 /src/test_data/sample.png | xxd"}
-    </example_response>
-
-    <example_response>
-    The PoC script and input file are ready.
-
-    Tool: finish, Arguments: {"status": "success", "analysis": "Created PoC targeting overflow", "result_script": "result_script_H01.py", "poc": "poc_H01", "payload": {"poc": {"hypothesis_id": "H01", "script_path": "result_script_H01.py", "input_path": "poc_H01"}}}
-    </example_response>
 
     The software project to inspect is located at {{project_path}}.
     {% if arvo_mode %}
@@ -119,13 +103,8 @@ agent:
 
   format_error_template: |
     Your last response did not include a tool call.
-    Every response MUST contain exactly one tool call. No triple-backtick code blocks.
+    Every response MUST contain exactly one tool call via the tool-calling API.
     Available tools: `bash` (run a command) and `finish` (submit results).
-    Write brief reasoning, then call a tool. Example:
-
-    I will check the generated PoC file.
-
-    Tool: bash, Arguments: {"command": "ls -la poc_H01"}
 
   step_limit: 120
   cost_limit: 5
@@ -142,6 +121,3 @@ model:
   model_kwargs:
     temperature: 0.2
     drop_params: true
-    safety_settings:
-      - category: HARM_CATEGORY_DANGEROUS_CONTENT
-        threshold: BLOCK_NONE
