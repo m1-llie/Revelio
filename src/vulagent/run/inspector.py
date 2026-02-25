@@ -1,304 +1,362 @@
 #!/usr/bin/env python3
-"""
-Simple trajectory inspector for browsing agent conversation trajectories.
-"""
+"""Trajectory inspector for browsing agent conversation trajectories."""
 
 import json
-import os
+import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import typer
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Static
 
-ASSISTANT_DISPLAY_NAME = "assistant(Vul-Agent)"
-USER_DISPLAY_NAME = "user(Environment)"
+ROLE_LABELS = {
+    "assistant": "agent(Vul-Agent)",
+    "user": "user(Environment)",
+    "system": "system",
+    "tool": "tool(result)",
+}
+
+
+@dataclass
+class AgentEntry:
+    key: str
+    agent_type: str
+    hypothesis_id: str | None
+    attempt: int | None
+    n_steps: int
+    n_calls: int
+    cost: float
+    exit_status: str
+
+    @property
+    def display_name(self) -> str:
+        name = self.agent_type.replace("Agent", "")
+        if self.hypothesis_id:
+            name += f" {self.hypothesis_id}"
+        if self.attempt is not None:
+            name += f" #{self.attempt}"
+        return name
+
+    @property
+    def status_icon(self) -> str:
+        return "✓" if self.exit_status == "Submitted" else "✗"
+
+
+def _parse_agent_key(key: str) -> tuple[str, str | None, int | None]:
+    """Parse 'PoCBuilderAgent_H01_attempt2' into ('PoCBuilderAgent', 'H01', 2)."""
+    attempt = None
+    m = re.search(r"_attempt(\d+)$", key)
+    if m:
+        attempt = int(m.group(1))
+        key = key[: m.start()]
+    if "_" in key:
+        base, tail = key.rsplit("_", 1)
+        if re.match(r"^[A-Z]\d+$", tail):
+            return base, tail, attempt
+    return key, None, attempt
 
 
 def _format_message_content(message: dict) -> str:
-    """Format message content, including tool calls if present."""
     parts = []
-
-    # Regular content
     content = message.get("content")
     if content:
         if isinstance(content, list):
-            parts.append("\n".join([item.get("text", str(item)) for item in content]))
+            parts.append("\n".join(item.get("text", str(item)) for item in content))
         else:
             parts.append(str(content))
-
-    # Tool calls (for assistant messages)
-    tool_calls = message.get("tool_calls")
-    if tool_calls:
-        for tc in tool_calls:
-            name = tc.get("name", "unknown")
-            args = tc.get("arguments", {})
-            args_str = "\n".join(f"  {k}: {v}" for k, v in args.items())
-            parts.append(f"[Tool Call: {name}]\n{args_str}")
-
+    for tc in message.get("tool_calls") or []:
+        args = tc.get("arguments", {})
+        args_str = "\n".join(f"  {k}: {v}" for k, v in args.items())
+        parts.append(f"[Tool Call: {tc.get('name', '?')}]\n{args_str}")
     return "\n\n".join(parts) if parts else "(empty)"
 
 
 def _messages_to_steps(messages: list[dict]) -> list[list[dict]]:
-    """Convert a list of messages into steps (grouped by assistant/user pairs)."""
-    steps = []
-    current_step = []
-    for message in messages:
-        current_step.append(message)
-        if message.get("role") == "user" and len(current_step) > 1:
-            steps.append(current_step)
-            current_step = []
-    if current_step:
-        steps.append(current_step)
+    """Group messages into steps: each assistant message + its follow-up responses."""
+    steps: list[list[dict]] = []
+    current: list[dict] = []
+    for msg in messages:
+        if msg.get("role") == "assistant" and current:
+            steps.append(current)
+            current = []
+        current.append(msg)
+    if current:
+        steps.append(current)
     return steps
+
+
+def _build_entries(agents_map: dict) -> list[AgentEntry]:
+    entries = []
+    for key, data in agents_map.items():
+        agent_type, hyp_id, attempt = _parse_agent_key(key)
+        if isinstance(data, dict):
+            msgs = data.get("messages", [])
+            info = data.get("info", {})
+        else:
+            msgs = data if isinstance(data, list) else []
+            info = {}
+        stats = info.get("model_stats", {})
+        entries.append(
+            AgentEntry(
+                key=key,
+                agent_type=agent_type,
+                hypothesis_id=hyp_id,
+                attempt=attempt,
+                n_steps=len(_messages_to_steps(msgs)),
+                n_calls=stats.get("api_calls", 0),
+                cost=stats.get("instance_cost", 0.0),
+                exit_status=info.get("exit_status", "?"),
+            )
+        )
+    return entries
+
 
 app = typer.Typer(rich_markup_mode="rich", add_completion=False)
 
 
 class TrajectoryInspector(App):
+    DEFAULT_CSS = """
+    Screen { layout: grid; grid-size: 1; grid-rows: auto 1fr auto; }
+
+    #main { height: 100%; layout: horizontal; }
+
+    #sidebar {
+        width: 36;
+        border-right: tall $primary;
+    }
+    .sb-item {
+        padding: 0 1;
+        height: auto;
+    }
+    .sb-selected {
+        background: $accent;
+        text-style: bold;
+    }
+    .sb-sep {
+        color: $text-muted;
+        padding: 0 1;
+        height: 1;
+    }
+
+    #right-panel { width: 1fr; height: 100%; }
+    #info-bar {
+        height: auto;
+        padding: 0 2;
+        background: $boost;
+        text-style: bold;
+        border-bottom: solid $primary;
+    }
+    #content-scroll { height: 1fr; }
+    #content { height: auto; min-height: 0; padding: 1; }
+
+    .msg-box {
+        margin: 0 0 1 0;
+        padding: 1;
+        background: $surface;
+        height: auto;
+        width: 100%;
+    }
+    .msg-role {
+        color: $primary;
+        padding: 0 1;
+        text-style: bold;
+    }
+    .msg-body {
+        margin-top: 1;
+        padding: 0 1;
+    }
+
+    Footer { dock: bottom; }
+    """
+
     BINDINGS = [
-        Binding("right,l", "next_step", "Step++"),
-        Binding("left,h", "previous_step", "Step--"),
-        Binding("0", "first_step", "Step=0"),
-        Binding("$", "last_step", "Step=-1"),
-        Binding("j,down", "scroll_down", "Scroll down"),
-        Binding("k,up", "scroll_up", "Scroll up"),
-        Binding("L", "next_trajectory", "Next trajectory"),
-        Binding("H", "previous_trajectory", "Previous trajectory"),
-        Binding("n", "next_agent", "Agent++"),
-        Binding("p", "previous_agent", "Agent--"),
+        Binding("right,l", "next_step", "Step →", priority=True),
+        Binding("left,h", "prev_step", "Step ←", priority=True),
+        Binding("0", "first_step", "First", priority=True),
+        Binding("$", "last_step", "Last", priority=True),
+        Binding("down,j", "next_agent", "Agent ↓", priority=True),
+        Binding("up,k", "prev_agent", "Agent ↑", priority=True),
+        Binding("d", "scroll_down", "Scroll ↓", priority=True),
+        Binding("u", "scroll_up", "Scroll ↑", priority=True),
+        Binding("right_square_bracket", "next_traj", "Traj ]", priority=True),
+        Binding("left_square_bracket", "prev_traj", "Traj [", priority=True),
         Binding("q", "quit", "Quit"),
     ]
 
     def __init__(self, trajectory_files: list[Path]):
-        css_path = os.environ.get(
-            "MSWEA_INSPECTOR_STYLE_PATH", str(Path(__file__).parent.parent / "config" / "mini.tcss")
-        )
-        self.__class__.CSS = Path(css_path).read_text()
-
         super().__init__()
         self.trajectory_files = trajectory_files
-        self._i_trajectory = 0
-        self._i_step = 0
+        self._i_traj = 0
         self._i_agent = 0
-        self.messages = []
-        self.steps = []
-        self.agent_names: list[str] = []
+        self._i_step = 0
+        self.entries: list[AgentEntry] = []
+        self.steps: list[list[dict]] = []
         self._agents_map: dict[str, dict] = {}
-
         if trajectory_files:
-            self._load_current_trajectory()
+            self._load_trajectory()
 
-    # --- Basics ---
+    # ── data ──
 
-    @property
-    def i_step(self) -> int:
-        """Current step index."""
-        return self._i_step
-
-    @i_step.setter
-    def i_step(self, value: int) -> None:
-        """Set current step index, automatically clamping to valid bounds."""
-        if value != self._i_step and self.n_steps > 0:
-            self._i_step = max(0, min(value, self.n_steps - 1))
-            self.query_one(VerticalScroll).scroll_to(y=0, animate=False)
-            self.update_content()
-
-    @property
-    def n_steps(self) -> int:
-        """Number of steps in current trajectory."""
-        return len(self.steps)
-
-    @property
-    def i_agent(self) -> int:
-        """Current agent index."""
-        return self._i_agent
-
-    @i_agent.setter
-    def i_agent(self, value: int) -> None:
-        if value != self._i_agent and self.n_agents > 0:
-            self._i_agent = max(0, min(value, self.n_agents - 1))
-            self._load_agent()
-            self.query_one(VerticalScroll).scroll_to(y=0, animate=False)
-            self.update_content()
-
-    @property
-    def n_agents(self) -> int:
-        """Number of agents in current trajectory."""
-        return len(self.agent_names)
-
-    @property
-    def i_trajectory(self) -> int:
-        """Current trajectory index."""
-        return self._i_trajectory
-
-    @i_trajectory.setter
-    def i_trajectory(self, value: int) -> None:
-        """Set current trajectory index, automatically clamping to valid bounds."""
-        if value != self._i_trajectory and self.n_trajectories > 0:
-            self._i_trajectory = max(0, min(value, self.n_trajectories - 1))
-            self._load_current_trajectory()
-            self.query_one(VerticalScroll).scroll_to(y=0, animate=False)
-            self.update_content()
-
-    @property
-    def n_trajectories(self) -> int:
-        """Number of trajectory files."""
-        return len(self.trajectory_files)
-
-    def _load_current_trajectory(self) -> None:
-        """Load the currently selected trajectory file."""
-        if not self.trajectory_files:
-            self.messages = []
-            self.steps = []
-            self.agent_names = []
-            self._agents_map = {}
-            return
-
-        trajectory_file = self.trajectory_files[self.i_trajectory]
+    def _load_trajectory(self) -> None:
         try:
-            data = json.loads(trajectory_file.read_text())
-
-            self.agent_names = []
+            data = json.loads(self.trajectory_files[self._i_traj].read_text())
+            self._agents_map = data["agents"] if isinstance(data, dict) and "agents" in data else {"default": data}
+            self.entries = _build_entries(self._agents_map)
+        except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
             self._agents_map = {}
-
-            if isinstance(data, dict) and "agents" in data and isinstance(data["agents"], dict):
-                self._agents_map = data["agents"]
-                self.agent_names = list(self._agents_map.keys())
-            else:
-                self._agents_map = {"default": data}
-                self.agent_names = ["default"]
-
-            self._i_agent = 0
-            self._load_agent()
-        except (json.JSONDecodeError, FileNotFoundError, ValueError) as e:
-            self.messages = []
-            self.steps = []
-            self.agent_names = []
-            self._agents_map = {}
-            self.notify(f"Error loading {trajectory_file.name}: {e}", severity="error")
+            self.entries = []
+            if self.is_mounted:
+                self.notify(f"Load error: {e}", severity="error")
+        self._i_agent = 0
+        self._load_agent()
 
     def _load_agent(self) -> None:
-        """Load messages and steps for the current agent."""
-        if not self.agent_names:
-            self.messages = []
+        if not self.entries:
             self.steps = []
+            self._i_step = 0
             return
-        agent_name = self.agent_names[self.i_agent]
-        data = self._agents_map.get(agent_name, {})
-
-        if isinstance(data, list):
-            self.messages = data
-        elif isinstance(data, dict) and "messages" in data:
-            self.messages = data["messages"]
-        else:
-            self.messages = []
-
-        self.steps = _messages_to_steps(self.messages)
+        data = self._agents_map.get(self.entries[self._i_agent].key, {})
+        msgs = data.get("messages", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        self.steps = _messages_to_steps(msgs)
         self._i_step = 0
 
-    @property
-    def current_trajectory_name(self) -> str:
-        """Get the name of the current trajectory file."""
-        if not self.trajectory_files:
-            return "No trajectories"
-        return self.trajectory_files[self.i_trajectory].name
-
-    @property
-    def current_agent_name(self) -> str:
-        if not self.agent_names:
-            return "No agent"
-        return self.agent_names[self.i_agent]
+    # ── ui ──
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Container(id="main"):
-            with VerticalScroll():
-                yield Vertical(id="content")
+        with Horizontal(id="main"):
+            yield VerticalScroll(id="sidebar")
+            with Vertical(id="right-panel"):
+                yield Static(id="info-bar")
+                with VerticalScroll(id="content-scroll"):
+                    yield Vertical(id="content")
         yield Footer()
 
     def on_mount(self) -> None:
-        self.update_content()
+        self._refresh()
 
-    def update_content(self) -> None:
-        """Update the displayed content."""
+    def _refresh(self) -> None:
+        self._render_sidebar()
+        self._render_content()
+
+    def _render_sidebar(self) -> None:
+        sidebar = self.query_one("#sidebar", VerticalScroll)
+        sidebar.remove_children()
+        prev_hyp: str | None = None
+        for i, e in enumerate(self.entries):
+            if e.hypothesis_id and e.hypothesis_id != prev_hyp:
+                prev_hyp = e.hypothesis_id
+                sidebar.mount(Static(f"── {e.hypothesis_id} ──", classes="sb-sep"))
+            label = f"{e.status_icon} {e.display_name}\n    {e.n_steps} steps · {e.n_calls} calls · ${e.cost:.4f}"
+            classes = "sb-item sb-selected" if i == self._i_agent else "sb-item"
+            sidebar.mount(Static(label, classes=classes))
+
+    def _render_content(self) -> None:
+        # info bar
+        info = self.query_one("#info-bar", Static)
+        if self.entries:
+            e = self.entries[self._i_agent]
+            info.update(f" {e.display_name}  │  {e.n_calls} calls  │  ${e.cost:.4f}  │  {e.exit_status}")
+        else:
+            info.update(" No agent loaded")
+
+        # step content
         container = self.query_one("#content", Vertical)
         container.remove_children()
-
         if not self.steps:
-            container.mount(Static("No trajectory loaded or empty trajectory"))
-            self.title = "Trajectory Inspector - No Data"
+            container.mount(Static("No steps"))
+            self.title = "Trajectory Inspector"
             return
 
-        for message in self.steps[self.i_step]:
-            content_str = _format_message_content(message)
-            message_container = Vertical(classes="message-container")
-            container.mount(message_container)
-            role = message.get("role", "")
-            if role == "assistant":
-                role_display = ASSISTANT_DISPLAY_NAME
-            elif role == "user":
-                role_display = USER_DISPLAY_NAME
-            elif role == "system":
-                role_display = "system"
-            elif role == "tool":
-                role_display = "tool(result)"
-            else:
-                role_display = role or "unknown"
-            message_container.mount(Static(role_display, classes="message-header"))
-            message_container.mount(Static(Text(content_str, no_wrap=False), classes="message-content"))
+        for msg in self.steps[self._i_step]:
+            role = msg.get("role", "unknown")
+            box = Vertical(classes="msg-box")
+            container.mount(box)
+            box.mount(Static(ROLE_LABELS.get(role, role), classes="msg-role"))
+            box.mount(Static(Text(_format_message_content(msg), no_wrap=False), classes="msg-body"))
 
+        traj_name = self.trajectory_files[self._i_traj].parent.name
         self.title = (
-            f"Trajectory {self.i_trajectory + 1}/{self.n_trajectories} - "
-            f"{self.current_trajectory_name} - "
-            f"Agent {self.current_agent_name} ({self.i_agent + 1}/{self.n_agents}) - "
-            f"Step {self.i_step + 1}/{self.n_steps}"
+            f"{traj_name}  │  "
+            f"Agent {self._i_agent + 1}/{len(self.entries)}  │  "
+            f"Step {self._i_step + 1}/{len(self.steps)}"
         )
 
-    # --- Navigation actions ---
+    # ── navigation helpers ──
+
+    def _goto_step(self, i: int) -> None:
+        if not self.steps:
+            return
+        i = max(0, min(i, len(self.steps) - 1))
+        if i != self._i_step:
+            self._i_step = i
+            self.query_one("#content-scroll", VerticalScroll).scroll_to(y=0, animate=False)
+            self._render_content()
+
+    def _goto_agent(self, i: int) -> None:
+        if not self.entries:
+            return
+        i = max(0, min(i, len(self.entries) - 1))
+        if i != self._i_agent:
+            self._i_agent = i
+            self._load_agent()
+            self.query_one("#content-scroll", VerticalScroll).scroll_to(y=0, animate=False)
+            self._refresh()
+
+    def _goto_traj(self, i: int) -> None:
+        n = len(self.trajectory_files)
+        if n == 0:
+            return
+        i = max(0, min(i, n - 1))
+        if i != self._i_traj:
+            self._i_traj = i
+            self._load_trajectory()
+            self._refresh()
+
+    # ── actions ──
 
     def action_next_step(self) -> None:
-        self.i_step += 1
+        self._goto_step(self._i_step + 1)
 
-    def action_previous_step(self) -> None:
-        self.i_step -= 1
+    def action_prev_step(self) -> None:
+        self._goto_step(self._i_step - 1)
 
     def action_first_step(self) -> None:
-        self.i_step = 0
+        self._goto_step(0)
 
     def action_last_step(self) -> None:
-        self.i_step = self.n_steps - 1
-
-    def action_next_trajectory(self) -> None:
-        self.i_trajectory += 1
-
-    def action_previous_trajectory(self) -> None:
-        self.i_trajectory -= 1
+        self._goto_step(len(self.steps) - 1)
 
     def action_next_agent(self) -> None:
-        self.i_agent += 1
+        self._goto_agent(self._i_agent + 1)
 
-    def action_previous_agent(self) -> None:
-        self.i_agent -= 1
+    def action_prev_agent(self) -> None:
+        self._goto_agent(self._i_agent - 1)
+
+    def action_next_traj(self) -> None:
+        self._goto_traj(self._i_traj + 1)
+
+    def action_prev_traj(self) -> None:
+        self._goto_traj(self._i_traj - 1)
 
     def action_scroll_down(self) -> None:
-        vs = self.query_one(VerticalScroll)
+        vs = self.query_one("#content-scroll", VerticalScroll)
         vs.scroll_to(y=vs.scroll_target_y + 15)
 
     def action_scroll_up(self) -> None:
-        vs = self.query_one(VerticalScroll)
+        vs = self.query_one("#content-scroll", VerticalScroll)
         vs.scroll_to(y=vs.scroll_target_y - 15)
 
 
 @app.command(help=__doc__)
 def main(
-    path: str = typer.Argument(".", help="Directory to search for trajectory files or specific trajectory file"),
+    path: str = typer.Argument(".", help="Directory or trajectory file path"),
 ) -> None:
     path_obj = Path(path)
-
     if path_obj.is_file():
         trajectory_files = [path_obj]
     elif path_obj.is_dir():
@@ -308,10 +366,9 @@ def main(
         if not trajectory_files:
             raise typer.BadParameter(f"No trajectory files found in '{path}'")
     else:
-        raise typer.BadParameter(f"Error: Path '{path}' does not exist")
+        raise typer.BadParameter(f"Path '{path}' does not exist")
 
-    inspector = TrajectoryInspector(trajectory_files)
-    inspector.run()
+    TrajectoryInspector(trajectory_files).run()
 
 
 if __name__ == "__main__":

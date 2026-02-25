@@ -8,18 +8,11 @@ from vulagent.orchestrator.types import AgentSpec
 
 
 def default_agent_specs(config_dir: Path) -> dict[str, AgentSpec]:
-    """Return the default AgentSpec set for the multi-agent pipeline."""
+    """Return the default AgentSpec set for the multi-agent pipeline.
+
+    Note: The hypothesis stage is now handled by HypothesisOrchestrator (parallel file-level scanning), not a single LLM agent.
+    """
     return {
-        "reviewer": AgentSpec(
-            name="RepoReviewerAgent",
-            config_path=config_dir / "reviewer.yaml",
-            task="Review the codebase and identify reachable hotspots for memory-safety issues.",
-        ),
-        "hypothesis": AgentSpec(
-            name="HypothesisGeneratorAgent",
-            config_path=config_dir / "hypothesis.yaml",
-            task="Propose and rank top-10 vulnerability hypotheses based on the review and harness reachability.",
-        ),
         "poc_builder": AgentSpec(
             name="PoCBuilderAgent",
             config_path=config_dir / "poc_builder.yaml",

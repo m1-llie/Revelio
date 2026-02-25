@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Clean ARVO Docker images for zero-day vulnerability detection.
 
-Removes pre-existing PoCs, crashers, and seed corpus from ARVO images
+Removes pre-existing PoCs, crashers, seed corpus, and VCS metadata from ARVO images
 so the agent must find vulnerabilities from scratch.
 
 This creates a new Docker image tagged with '-clean' suffix.
@@ -33,12 +33,14 @@ app = typer.Typer(rich_markup_mode="rich")
 CLEANUP_COMMANDS = [
     # Remove pre-existing PoC
     "rm -f /tmp/poc",
-    # Remove seed corpus
-    "rm -f /out/*_seed_corpus.zip",
-    # Remove crashers from fuzzer-test-suite
-    "find /src/fuzzer-test-suite -name 'crash-*' -delete 2>/dev/null || true",
-    # Remove any seeds directories
-    "find /src/fuzzer-test-suite -type d -name 'seeds' -exec rm -rf {} + 2>/dev/null || true",
+    # Remove seed corpora generated for fuzzing
+    "find /out -maxdepth 1 -type f -name '*seed_corpus*.zip' -delete 2>/dev/null || true",
+    # Remove pre-existing fuzzing crashers anywhere in source tree
+    "find /src -name 'crash-*' -delete 2>/dev/null || true",
+    # Remove seed directories anywhere in source tree
+    "find /src -type d -name 'seeds' -exec rm -rf {} + 2>/dev/null || true",
+    # Remove git metadata to avoid leakage and reduce image size
+    "find /src -type d -name '.git' -prune -exec rm -rf {} + 2>/dev/null || true",
 ]
 
 
@@ -127,9 +129,10 @@ def main(
             # Check each cleanup target
             check_commands = [
                 ("Pre-existing PoC", "ls -la /tmp/poc 2>/dev/null || echo 'Not found'"),
-                ("Seed corpus", "ls -la /out/*_seed_corpus.zip 2>/dev/null || echo 'Not found'"),
-                ("Crashers", "find /src/fuzzer-test-suite -name 'crash-*' 2>/dev/null | head -10 || echo 'None'"),
-                ("Seeds dirs", "find /src/fuzzer-test-suite -type d -name 'seeds' 2>/dev/null | head -10 || echo 'None'"),
+                ("Seed corpus", "find /out -maxdepth 1 -type f -name '*seed_corpus*.zip' 2>/dev/null | head -10 || echo 'None'"),
+                ("Crashers", "find /src -name 'crash-*' 2>/dev/null | head -10 || echo 'None'"),
+                ("Seeds dirs", "find /src -type d -name 'seeds' 2>/dev/null | head -10 || echo 'None'"),
+                ("Git dirs", "find /src -type d -name '.git' 2>/dev/null | head -10 || echo 'None'"),
             ]
             
             for name, cmd in check_commands:

@@ -17,9 +17,9 @@ class GlobalModelStats:
         self._cost = 0.0
         self._n_calls = 0
         self._lock = threading.Lock()
-        self.cost_limit = float(os.getenv("MSWEA_GLOBAL_COST_LIMIT", "0"))
-        self.call_limit = int(os.getenv("MSWEA_GLOBAL_CALL_LIMIT", "0"))
-        if (self.cost_limit > 0 or self.call_limit > 0) and not os.getenv("MSWEA_SILENT_STARTUP"):
+        self.cost_limit = float(os.getenv("GLOBAL_COST_LIMIT", "0"))
+        self.call_limit = int(os.getenv("GLOBAL_CALL_LIMIT", "0"))
+        if (self.cost_limit > 0 or self.call_limit > 0) and not os.getenv("SILENT_STARTUP"):
             print(f"Global cost/call limit: ${self.cost_limit:.4f} / {self.call_limit}")
 
     def add(self, cost: float) -> None:
@@ -42,6 +42,15 @@ class GlobalModelStats:
 GLOBAL_MODEL_STATS = GlobalModelStats()
 
 
+def get_api_keys_pool() -> list[str]:
+    """Return API keys from MODEL_API_KEYS (comma-separated) or single MODEL_API_KEY."""
+    pool_str = os.getenv("MODEL_API_KEYS", "")
+    if pool_str:
+        return [k.strip() for k in pool_str.split(",") if k.strip()]
+    single = os.getenv("MODEL_API_KEY", "")
+    return [single] if single else []
+
+
 def get_model(input_model_name: str | None = None, config: dict | None = None) -> Model:
     """Get an initialized model object from any kind of user input or settings."""
     resolved_model_name = get_model_name(input_model_name, config)
@@ -52,15 +61,20 @@ def get_model(input_model_name: str | None = None, config: dict | None = None) -
 
     model_class = get_model_class(resolved_model_name, config.pop("model_class", ""))
 
-    if (from_env := os.getenv("MSWEA_MODEL_API_KEY")) and not str(type(model_class)).endswith("DeterministicModel"):
-        config.setdefault("model_kwargs", {})["api_key"] = from_env
+    if (from_env := os.getenv("MODEL_API_KEY")) and not str(type(model_class)).endswith("DeterministicModel"):
+        config.setdefault("model_kwargs", {}).setdefault("api_key", from_env)
 
-    if (
-        any(s in resolved_model_name.lower() for s in ["anthropic", "sonnet", "opus", "claude"])
-        and "set_cache_control" not in config
-    ):
-        # Select cache control for Anthropic models by default
-        config["set_cache_control"] = "default_end"
+    name_lower = resolved_model_name.lower()
+    is_anthropic = any(s in name_lower for s in ["anthropic", "sonnet", "opus", "claude"])
+    is_gemini3 = any(s in name_lower for s in ["gemini-3", "gemini-3.0"])
+    kwargs = config.setdefault("model_kwargs", {})
+
+    if is_anthropic:
+        if "set_cache_control" not in config:
+            config["set_cache_control"] = "default_end"
+
+    if is_gemini3:
+        kwargs["temperature"] = 1.0
 
     return model_class(**config)
 
@@ -73,7 +87,7 @@ def get_model_name(input_model_name: str | None = None, config: dict | None = No
         return input_model_name
     if from_config := config.get("model_name"):
         return from_config
-    if from_env := os.getenv("MSWEA_MODEL_NAME"):
+    if from_env := os.getenv("MODEL_NAME"):
         return from_env
     raise ValueError("No default model set. Please run `mini-extra config setup` to set one.")
 

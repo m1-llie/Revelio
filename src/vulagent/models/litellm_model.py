@@ -52,12 +52,13 @@ class LitellmModel:
             litellm.utils.register_model(json.loads(Path(self.config.litellm_model_registry).read_text()))
 
     @retry(
-        stop=stop_after_attempt(int(os.getenv("MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT", "10"))),
+        stop=stop_after_attempt(int(os.getenv("MODEL_RETRY_STOP_AFTER_ATTEMPT", "10"))),
         wait=wait_exponential(multiplier=1, min=4, max=60),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         retry=retry_if_not_exception_type(
             (
                 litellm.exceptions.UnsupportedParamsError,
+                litellm.exceptions.BadRequestError,
                 litellm.exceptions.NotFoundError,
                 litellm.exceptions.PermissionDeniedError,
                 litellm.exceptions.ContextWindowExceededError,
@@ -96,13 +97,19 @@ class LitellmModel:
         self.cost += cost
         GLOBAL_MODEL_STATS.add(cost)
 
+        if not response.choices:
+            logger.warning(
+                "Model returned empty choices (likely safety filter). "
+                "Returning empty content so the agent loop can retry."
+            )
+            return {"content": "[Model returned no response — possibly blocked by safety filter. Please try a different approach.]"}
+
         msg = response.choices[0].message
         result: dict[str, Any] = {
             "content": msg.content or "",
             "extra": {"response": response.model_dump()},
         }
 
-        # Parse tool calls if present
         tool_calls = _parse_tool_calls(msg)
         if tool_calls:
             result["tool_calls"] = tool_calls

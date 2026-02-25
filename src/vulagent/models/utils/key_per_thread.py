@@ -1,5 +1,4 @@
-"""Utility for anthropic where we need different keys for different parallel
-agents to not mess up prompt caching.
+"""Utility for anthropic where we need different keys for different parallel agents to not mess up prompt caching.
 """
 
 import threading

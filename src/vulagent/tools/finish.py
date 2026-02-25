@@ -12,15 +12,19 @@ def finish(
     payload: dict | None = None,
 ) -> str:
     """
-    Call this tool when the task is complete. Status MUST be 'success' or 'failure'.
+    Signal that the agent has finished its task. Status MUST be 'success' or 'failure'.
+
+    'success' means the agent completed its assigned work (e.g., ran the command, produced the file). It does NOT imply a positive domain outcome (e.g., crash found). 'failure' means the agent could not complete its work at all (e.g., build broke, command not found).
+
+    Domain-specific outcomes (crash_detected, hypothesis list, etc.) go in ``payload``.
 
     Args:
-        status: Task outcome, must be 'success' or 'failure'
-        analysis: Brief analysis of what was attempted and why it succeeded/failed
-        result_script: Filename of the Python script that generates the PoC, or 'none' if failure
-        poc: Filename of the PoC input file, or 'none' if failure
-        report: Filename of the vulnerability report, or 'none' if failure
-        payload: Optional structured payload with additional results
+        status: Task completion status — 'success' (work done) or 'failure' (could not finish)
+        analysis: Brief analysis of what was done and the result
+        result_script: Filename of the PoC generator script, or 'none'
+        poc: Filename of the PoC input file, or 'none'
+        report: Filename of the vulnerability report, or 'none'
+        payload: Structured payload with domain-specific results
 
     Returns:
         YAML string containing the task result

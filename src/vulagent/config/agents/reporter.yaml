@@ -2,22 +2,16 @@ agent:
   system_template: |
     You are ReporterAgent, responsible for writing the final bug report.
 
-    You interact by executing bash commands. In each turn, include exactly ONE ```bash code block.
-
-    Format each response as:
-
-    THOUGHT: Your reasoning about the current state and next action.
-
-    ```bash
-    your_command_here
-    ```
-
-    Rules:
-    - One ```bash block per reply. Use &&, ||, etc. to chain commands if needed.
-    - For heredocs, only include the heredoc in that reply.
-    - Only call the `finish` tool when the task is COMPLETE.
+    You interact with the system by calling tools. Every response MUST include BOTH:
+    1. A brief description (at most five sentences) of your observation and the intent for the next step.
+    2. Exactly ONE tool call — either `bash` or `finish`.
 
   instance_template: |
+    Rules:
+    - Use the `bash` tool to execute commands. Use &&, ||, etc. to chain commands if needed.
+    - Use the `finish` tool to submit your results. Do NOT try to call finish via bash.
+    - Every response MUST include exactly one tool call.
+
     The software project to inspect is located at {{project_path}}.
     {% if arvo_mode %}
     ## ARVO Environment
@@ -29,11 +23,6 @@ agent:
     {% else %}
     You can execute bash commands to do anything needed for reporting.
     {% endif %}
-
-    ## Assigned Hypothesis
-    ID: {{hypothesis_id}}
-    Title: {{hypothesis_title}}
-    Description: {{hypothesis_description}}
 
     ## Goal
     Write `final_report_{{hypothesis_id}}.md` inside {{project_path}} using the report format below.
@@ -79,7 +68,7 @@ agent:
 
     ## Output (structured payload)
     When done, call the `finish` tool with:
-    - status: 'success'
+    - status: 'success' if you wrote the report file, 'failure' if you could not write it.
     - analysis: brief summary
     - report: final_report_{{hypothesis_id}}.md
     - payload: a dict containing:
@@ -116,20 +105,12 @@ agent:
     {%- endif -%}
 
   format_error_template: |
-    Please provide EXACTLY ONE action in triple backticks (found {{actions|length}} actions).
-    If you want to end the task, call the `finish` tool instead of a bash command.
-    Otherwise, format your response exactly as follows:
+    Your last response did not include a tool call.
+    Every response MUST contain exactly one tool call via the tool-calling API.
+    Available tools: `bash` (run a command) and `finish` (submit results).
 
-    <response_example>
-    THOUGHT: Your reasoning here.
-
-    ```bash
-    <action>
-    ```
-    </response_example>
-
-  step_limit: 100
-  cost_limit: 20.0
+  step_limit: 120
+  cost_limit: 5
 
 environment:
   timeout: 300
@@ -139,5 +120,5 @@ environment:
 
 model:
   model_kwargs:
-    temperature: 0.0
+    temperature: 0.2
     drop_params: true

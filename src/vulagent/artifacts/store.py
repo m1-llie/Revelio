@@ -3,25 +3,21 @@
 Layout (per run_id):
   run_id/
     manifest.json
-    index.json
-    events.jsonl
+    events.jsonl         # real-time append-only event log
+    log.txt              # human-readable log
+    trajectory.json      # aggregated per-agent trajectories
     artifacts/
-      code_review/
-      hypotheses/
-      poc/
-      validation/
-      reports/
-      trajectories/
-      logs/
-    trajectory.json   # aggregated per-agent trajectories (optional)
+      handoffs/          # deterministic inter-agent handoff records
+      deliverables/      # final outputs: reports, PoC scripts, PoC inputs
 """
 
 from __future__ import annotations
 
 import json
-import os
+import shutil
+import threading
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -43,88 +39,42 @@ def new_run_id(prefix: str | None = None) -> str:
 class RunLayout:
     run_dir: Path
     artifacts_dir: Path
-    code_review_dir: Path
-    hypotheses_dir: Path
-    poc_dir: Path
-    validation_dir: Path
-    reports_dir: Path
-    trajectories_dir: Path
-    logs_dir: Path
-
-
-@dataclass
-class IndexEntry:
-    artifact_type: str
-    path: str
-    created_at: str
-    meta: dict[str, Any] = field(default_factory=dict)
+    handoffs_dir: Path
+    deliverables_dir: Path
 
 
 class ArtifactStore:
-    """Append-only-ish artifact store with JSON index and event log."""
+    """Append-only artifact store with event log and deterministic handoff records."""
 
     def __init__(self, root: Path | str, run_id: str | None = None):
         self.root = Path(root).resolve()
         self.run_id = run_id or new_run_id("run")
         self.run_dir = (self.root / self.run_id).resolve()
         self.layout = self._init_layout(self.run_dir)
-        self._index_path = self.run_dir / "index.json"
         self._events_path = self.run_dir / "events.jsonl"
         self._manifest_path = self.run_dir / "manifest.json"
         self._trajectory_path = self.run_dir / "trajectory.json"
-        self._init_index()
+        self._lock = threading.Lock()
 
     def _init_layout(self, run_dir: Path) -> RunLayout:
         artifacts = run_dir / "artifacts"
         layout = RunLayout(
             run_dir=run_dir,
             artifacts_dir=artifacts,
-            code_review_dir=artifacts / "code_review",
-            hypotheses_dir=artifacts / "hypotheses",
-            poc_dir=artifacts / "poc",
-            validation_dir=artifacts / "validation",
-            reports_dir=artifacts / "reports",
-            trajectories_dir=artifacts / "trajectories",
-            logs_dir=artifacts / "logs",
+            handoffs_dir=artifacts / "handoffs",
+            deliverables_dir=artifacts / "deliverables",
         )
-        for path in asdict(layout).values():
-            Path(path).mkdir(parents=True, exist_ok=True)
+        for d in (layout.artifacts_dir, layout.handoffs_dir, layout.deliverables_dir):
+            d.mkdir(parents=True, exist_ok=True)
         return layout
 
-    def _init_index(self) -> None:
-        if self._index_path.exists():
-            return
-        data = {
-            "run_id": self.run_id,
-            "created_at": _now_utc_iso(),
-            "counters": {},
-            "artifacts": {},
-        }
-        self._index_path.write_text(json.dumps(data, indent=2))
-
-    def _read_index(self) -> dict[str, Any]:
-        return json.loads(self._index_path.read_text())
-
-    def _write_index(self, data: dict[str, Any]) -> None:
-        self._index_path.write_text(json.dumps(data, indent=2))
-
-    def _next_id(self, category: str) -> int:
-        index = self._read_index()
-        counters = index.setdefault("counters", {})
-        next_id = int(counters.get(category, 0)) + 1
-        counters[category] = next_id
-        self._write_index(index)
-        return next_id
-
-    def _register(self, category: str, entry: IndexEntry) -> None:
-        index = self._read_index()
-        artifacts = index.setdefault("artifacts", {})
-        artifacts.setdefault(category, []).append(asdict(entry))
-        self._write_index(index)
+    # ── manifest ──
 
     def save_manifest(self, manifest: dict[str, Any]) -> Path:
         self._manifest_path.write_text(json.dumps(manifest, indent=2))
         return self._manifest_path
+
+    # ── events (real-time append-only record) ──
 
     def append_event(self, event_type: str, payload: dict[str, Any] | None = None) -> None:
         record = {
@@ -132,124 +82,108 @@ class ArtifactStore:
             "event": event_type,
             "payload": payload or {},
         }
-        with self._events_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record) + "\n")
+        with self._lock, self._events_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
 
-    def append_log_line(self, message: str, *, agent: str | None = None, event: str | None = None) -> Path:
-        ts = _now_utc_iso()
-        parts = [ts]
-        if agent:
-            parts.append(f"agent={agent}")
-        if event:
-            parts.append(f"event={event}")
-        line = " | ".join(parts) + f" | message={message}"
-        log_path = self.layout.logs_dir / "run.log"
-        with log_path.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
-        return log_path
+    # ── handoffs (deterministic inter-agent data) ──
 
-    def append_json_artifact(
+    def _handoff_path(self, stage: str, hypothesis_id: str | None = None, attempt: int | None = None) -> Path:
+        parts = [stage]
+        if hypothesis_id:
+            parts.append(hypothesis_id)
+        if attempt is not None:
+            parts.append(f"attempt{attempt}")
+        return self.layout.handoffs_dir / f"{'_'.join(parts)}.json"
+
+    def write_handoff(
         self,
-        category: str,
+        stage: str,
         data: Any,
         *,
-        name: str | None = None,
-        meta: ArtifactMeta | None = None,
+        hypothesis_id: str | None = None,
+        attempt: int | None = None,
     ) -> Path:
-        artifact_id = self._next_id(category)
-        filename = name or f"{artifact_id:04d}_{meta.artifact_type if meta else 'artifact'}.json"
-        path = (self.layout.artifacts_dir / category / filename).resolve()
-        payload = serialize_artifact(data)
+        """Write an inter-agent handoff record to disk."""
+        path = self._handoff_path(stage, hypothesis_id, attempt)
         content = {
-            "meta": (meta.to_dict() if meta else {"artifact_type": meta.artifact_type if meta else category}),
-            "data": payload,
+            "stage": stage,
+            "hypothesis_id": hypothesis_id,
+            "attempt": attempt,
+            "created_at": _now_utc_iso(),
+            "data": serialize_artifact(data),
+        }
+        with self._lock:
+            path.write_text(json.dumps(content, indent=2))
+        return path
+
+    def read_handoff(
+        self,
+        stage: str,
+        *,
+        hypothesis_id: str | None = None,
+        attempt: int | None = None,
+    ) -> dict[str, Any] | None:
+        """Read an inter-agent handoff record from disk. Returns None if not found."""
+        path = self._handoff_path(stage, hypothesis_id, attempt)
+        if not path.exists():
+            return None
+        return json.loads(path.read_text())
+
+    # ── deliverables (reports, PoC scripts, PoC inputs) ──
+
+    def save_deliverable(self, src: Path, *, filename: str | None = None) -> Path:
+        """Copy or move a file into the deliverables folder."""
+        dest = self.layout.deliverables_dir / (filename or src.name)
+        shutil.copy2(src, dest)
+        self.append_event("deliverable_saved", {"path": str(dest.name)})
+        return dest
+
+    def save_report_meta(self, data: Any, *, hypothesis_id: str, meta: ArtifactMeta | None = None) -> Path:
+        """Save structured report metadata as JSON."""
+        path = self.layout.deliverables_dir / f"report_{hypothesis_id}.json"
+        content = {
+            "meta": meta.to_dict() if meta else {"artifact_type": "BugReport"},
+            "data": serialize_artifact(data),
         }
         path.write_text(json.dumps(content, indent=2))
-        entry = IndexEntry(
-            artifact_type=(meta.artifact_type if meta else category),
-            path=str(path.relative_to(self.run_dir)),
-            created_at=_now_utc_iso(),
-            meta=meta.to_dict() if meta else {},
-        )
-        self._register(category, entry)
         return path
 
-    def append_text_artifact(
-        self,
-        category: str,
-        text: str,
-        *,
-        name: str,
-        meta: ArtifactMeta | None = None,
-    ) -> Path:
-        artifact_id = self._next_id(category)
-        filename = f"{artifact_id:04d}_{name}"
-        path = (self.layout.artifacts_dir / category / filename).resolve()
-        path.write_text(text)
-        entry = IndexEntry(
-            artifact_type=(meta.artifact_type if meta else category),
-            path=str(path.relative_to(self.run_dir)),
-            created_at=_now_utc_iso(),
-            meta=meta.to_dict() if meta else {},
-        )
-        self._register(category, entry)
-        return path
-
-    def append_blob_artifact(
-        self,
-        category: str,
-        data: bytes,
-        *,
-        name: str,
-        meta: ArtifactMeta | None = None,
-    ) -> Path:
-        artifact_id = self._next_id(category)
-        filename = f"{artifact_id:04d}_{name}"
-        path = (self.layout.artifacts_dir / category / filename).resolve()
-        path.write_bytes(data)
-        entry = IndexEntry(
-            artifact_type=(meta.artifact_type if meta else category),
-            path=str(path.relative_to(self.run_dir)),
-            created_at=_now_utc_iso(),
-            meta=meta.to_dict() if meta else {},
-        )
-        self._register(category, entry)
-        return path
-
-    def append_trajectory(self, agent_name: str, trajectory: dict[str, Any]) -> Path:
-        meta = ArtifactMeta(artifact_type="Trajectory", agent_name=agent_name)
-        name = f"trajectory_{agent_name}.json"
-        return self.append_json_artifact("trajectories", trajectory, name=name, meta=meta)
-
-    def register_existing(
-        self,
-        category: str,
-        path: Path,
-        *,
-        artifact_type: str | None = None,
-        meta: ArtifactMeta | None = None,
-    ) -> None:
-        """Register an existing file in the index (no copying)."""
-        rel_path = path.resolve().relative_to(self.run_dir)
-        entry = IndexEntry(
-            artifact_type=artifact_type or (meta.artifact_type if meta else category),
-            path=str(rel_path),
-            created_at=_now_utc_iso(),
-            meta=meta.to_dict() if meta else {},
-        )
-        self._register(category, entry)
+    # ── trajectory ──
 
     def write_aggregated_trajectory(self, trajectories: dict[str, Any]) -> Path:
-        self._trajectory_path.write_text(json.dumps(trajectories, indent=2))
+        with self._lock:
+            self._trajectory_path.write_text(json.dumps(trajectories, indent=2))
         return self._trajectory_path
+
+    # ── external file registration (records in event log) ──
+
+    def register_artifact(self, path: Path, *, artifact_type: str) -> None:
+        """Record that an external file (e.g. copied from container) now lives in the run dir."""
+        try:
+            rel = path.resolve().relative_to(self.run_dir)
+        except ValueError:
+            rel = path
+        self.append_event("artifact_registered", {
+            "type": artifact_type,
+            "path": str(rel),
+        })
+
+    # ── raw text (for parse-failure debugging) ──
+
+    def save_raw_output(self, text: str, *, stage: str, hypothesis_id: str | None = None) -> Path:
+        parts = ["raw", stage]
+        if hypothesis_id:
+            parts.append(hypothesis_id)
+        path = self.layout.artifacts_dir / f"{'_'.join(parts)}.txt"
+        with self._lock:
+            path.write_text(text)
+        return path
+
+    # ── properties ──
 
     @property
     def manifest_path(self) -> Path:
         return self._manifest_path
-
-    @property
-    def index_path(self) -> Path:
-        return self._index_path
 
     @property
     def events_path(self) -> Path:
