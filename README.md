@@ -17,6 +17,10 @@ A trustworthy and precise vulnerability detection AI agent that discovers softwa
 
 ### Pipeline Modes
 
+ The `--pipeline` flag controls how far the analysis goes.
+
+`--arvo` or `--project` tells detect.py where the code lives (which Docker image to use).
+
 ```
 detect.py  --pipeline [file | project | detect]
            --arvo / --project
@@ -118,10 +122,14 @@ python -m vulagent.run.detect \
 
 ### Custom Projects
 
+Example: Single file hypothesis on a custom project
+
 ```bash
 python -m vulagent.run.detect \
     --project ./my-project \
-    --model anthropic/claude-opus-4-6
+    --model anthropic/claude-opus-4-6 \
+    --pipeline file \
+    --target-file src/parser.c
 ```
 
 Use `--docker-image` to specify a custom Docker base image (default: `vulagent/memcheck:latest`).
