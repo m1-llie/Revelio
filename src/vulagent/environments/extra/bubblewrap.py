@@ -30,7 +30,7 @@ class BubblewrapEnvironmentConfig:
     """Dictionary of environment variables to set in the sandbox."""
     timeout: int = 30
     """Timeout for the command in seconds."""
-    executable: str = os.getenv("MSWEA_BUBBLEWRAP_EXECUTABLE", "bwrap")
+    executable: str = os.getenv("BUBBLEWRAP_EXECUTABLE", "bwrap")
     """Path to the bubblewrap executable."""
     wrapper_args: list[str] = field(
         default_factory=lambda: [

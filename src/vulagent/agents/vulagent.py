@@ -1,5 +1,4 @@
-"""Basic agent class. See https://mini-swe-agent.com/latest/advanced/control_flow/ for visual explanation of the scaffold.
-
+"""
 Implement the control flow:
 template-driven prompting, action parsing (bash ...), command execution, termination rules, and trajectory logging.
 """

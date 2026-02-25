@@ -9,12 +9,14 @@
 * `detect.py` - Detect memory-safety vulnerabilities using Docker sandbox. Supports:
   - `--arvo <image>` - ARVO targets with pre-built fuzzing infrastructure
   - `--project <path>` - Custom local C/C++ projects
-  - `--multi-agent/--single-agent` - Use multi-agent pipeline (default) or legacy single-agent
+  - `--pipeline <mode>` - Pipeline mode: `file` (single file hypothesis), `project` (parallel hypotheses only), `detect` (full pipeline, default)
+  - `--target-file <path>` - Target file path relative to project root (required for `--pipeline file`)
+  - `--max-workers <n>` - Number of parallel workers for hypothesis generation (default: 4)
   - `--agents-config-dir <path>` - Directory for per-agent prompt configs (default: config/agents)
-  - `--top-n <n>` - Number of hypotheses to generate in the first (hypothesis) stage
-  - `--max-poc-attempts <n>` - Max PoC attempts per hypothesis in multi-agent mode
+  - `--top-n <n>` - Number of hypotheses to use from the hypothesis stage
+  - `--max-poc-attempts <n>` - Max PoC attempts per hypothesis
 
-* `validate.py` - Validate a PoC against both ARVO versions:
+* `validate_if_target_singleAgent.py` - Validate a PoC against both ARVO versions:
   - Pulls `-fix` image if not cached locally
   - Tests PoC on both `-vul` and `-fix` versions
   - Passes if: crashes on vul AND no crash on fix

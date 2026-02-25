@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -53,6 +54,7 @@ class ArtifactStore:
         self._events_path = self.run_dir / "events.jsonl"
         self._manifest_path = self.run_dir / "manifest.json"
         self._trajectory_path = self.run_dir / "trajectory.json"
+        self._lock = threading.Lock()
 
     def _init_layout(self, run_dir: Path) -> RunLayout:
         artifacts = run_dir / "artifacts"
@@ -80,7 +82,7 @@ class ArtifactStore:
             "event": event_type,
             "payload": payload or {},
         }
-        with self._events_path.open("a", encoding="utf-8") as f:
+        with self._lock, self._events_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
 
     # ── handoffs (deterministic inter-agent data) ──
@@ -110,7 +112,8 @@ class ArtifactStore:
             "created_at": _now_utc_iso(),
             "data": serialize_artifact(data),
         }
-        path.write_text(json.dumps(content, indent=2))
+        with self._lock:
+            path.write_text(json.dumps(content, indent=2))
         return path
 
     def read_handoff(
@@ -148,7 +151,8 @@ class ArtifactStore:
     # ── trajectory ──
 
     def write_aggregated_trajectory(self, trajectories: dict[str, Any]) -> Path:
-        self._trajectory_path.write_text(json.dumps(trajectories, indent=2))
+        with self._lock:
+            self._trajectory_path.write_text(json.dumps(trajectories, indent=2))
         return self._trajectory_path
 
     # ── external file registration (records in event log) ──
@@ -171,7 +175,8 @@ class ArtifactStore:
         if hypothesis_id:
             parts.append(hypothesis_id)
         path = self.layout.artifacts_dir / f"{'_'.join(parts)}.txt"
-        path.write_text(text)
+        with self._lock:
+            path.write_text(text)
         return path
 
     # ── properties ──

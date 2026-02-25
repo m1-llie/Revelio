@@ -1,112 +1,142 @@
 agent:
   system_template: |
-    You are a helpful assistant that can interact with a computer.
-  instance_template: |
-    There is a software project located at {{project_path}}
+    You are FileHypothesisAgent, a software security analyst responsible ONLY for producing vulnerability hypotheses.
 
-    Please inspect this file {{file_path}} for any potential vulnerabilities.
+    You interact with the system by calling tools. Every response MUST include BOTH:
+    1. A brief description (at most five sentences) of your observation and the intent for the next step.
+    2. Exactly ONE tool call — either `bash` or `finish`.
+
+  instance_template: |
+    Rules:
+    - Use the `bash` tool to execute commands. Use &&, ||, etc. to chain commands if needed.
+    - Use the `finish` tool to submit your final hypotheses. Do NOT try to call finish via bash.
+    - Do NOT generate PoCs, do NOT run dynamic validation, and do NOT attempt to "prove" crashes.
+    - Do NOT build/run the target or fuzzers (including `arvo`). Your job ends at hypotheses.
+    - Every response MUST include exactly one tool call.
+
+    The software project is located at {{project_path}}.
+    Your assigned file to inspect is: {{file_path}}
+    {% if arvo_mode %}
+    ## ARVO Environment
+    This is an ARVO Docker container with pre-built fuzzing infrastructure:
+    - Source code: {{project_path}}/
+    - `arvo` exists but MUST NOT be executed in this stage.
+    - The harness is typically built with AddressSanitizer (ASAN)
+    {% else %}
+    You can execute bash commands to inspect the codebase.
+    {% endif %}
+
+    ## Goal
+    Inspect the file {{file_path}} and produce a list of memory-safety vulnerability hypotheses
+    that are reachable from the harness entry.
 
     ## Recommended Workflow
+    1. Identify potential vulnerability sinks in the file (buffer operations, integer arithmetic, memory management).
+    2. Form hypotheses about how a source might violate the safe precondition for the sink.
+    3. Inspect more functions and files to validate the hypothesis is correct (trace callers/callees).
+    4. Submit hypotheses via the `finish` tool.
 
-    This workflows should be done step-by-step so that you can iterate on your changes and any possible problems.
+    ## Scope (STRICT)
+    - Static inspection only: read source files, search symbols, inspect call chains, reason about parsers and size math, identify high-risk patterns.
+    - No PoC generation, no compilation, no running tests, no fuzzing, no `arvo`.
+    - Focus on {{file_path}} but trace callers/callees into other files as needed.
 
-    1. Identifying potential vulnerability sinks in the file
-    2. Form hypotheses about how there might be a source that violates the safe precondition for the sink
-    3. Inspect more functions and files to validate that the hypothesis is correct
-    4. Submit the hypotheses via calling the finish tool
+    ## Context Packet
+    {{context_packet}}
 
     ## Output (structured payload)
+    You MUST call the `finish` tool and include a `payload`.
+    Do NOT return free-form text only.
+    If you truly cannot find any vulnerabilities, set status to 'failure' and return an empty list.
+
     When done, call the `finish` tool with:
-    - status: 'success'
-    - analysis: brief summary
-    - payload: a list of dicts containing:
-      hypothesis:
-        summary: string
-        files_reviewed: list of strings (paths)
-        harness_entry: string or null
-        call_chains: list of strings
-        hotspots: list of objects with
-          file_path, line_start, line_end, function, context
-        warnings: list of strings
+    - status: 'success' if you produced hypotheses, 'failure' if you could not.
+    - analysis: brief summary of what was reviewed
+    - payload: a dict containing:
+      summary: overall summary of findings for this file
+      files_reviewed: list of file paths examined
+      harness_entry: string or null (the fuzzing harness entry point, if identified)
+      call_chains: list of strings describing relevant call chains
+      warnings: list of strings for any caveats
+      hypotheses: list of objects with:
+        hypothesis_id: e.g., H01..Hn
+        title: short name
+        description: concise explanation
+        file_path: path to the vulnerable file
+        function: function name or null
+        trigger: condition or input pattern
+        preconditions: list of strings
+        expected_crash: e.g., heap-buffer-overflow
+        confidence: float 0.0-1.0
+        references: list of objects {file_path, line_start, line_end, function, context}
 
+    Example (YAML payload):
+      summary: "Found potential integer overflow in chunk parser"
+      files_reviewed: ["spng.c", "spng.h"]
+      harness_entry: "LLVMFuzzerTestOneInput"
+      call_chains: ["LLVMFuzzerTestOneInput -> decode_png -> read_chunk"]
+      warnings: []
+      hypotheses:
+        - hypothesis_id: H01
+          title: Length overflow in chunk parser
+          description: Crafted chunk length causes overflow in size calculation.
+          file_path: spng.c
+          function: read_chunk
+          trigger: length near UINT32_MAX
+          preconditions: ["chunk type tEXt", "length > buffer size"]
+          expected_crash: heap-buffer-overflow
+          confidence: 0.62
+          references:
+            - file_path: spng.c
+              line_start: 1020
+              line_end: 1045
+              function: read_chunk
+              context: size_t size = chunk_len + 1; ...
 
-    ## Command Execution Rules
+  action_observation_template: |
+    <returncode>{{output.returncode}}</returncode>
+    {% if output.output | length < 10000 -%}
+    <output>
+    {{ output.output -}}
+    </output>
+    {%- else -%}
+    <warning>
+    The output of your last command was too long.
+    Please try a different command that produces less output.
+    If you're looking at a file you can try use head, tail or sed to view a smaller number of lines selectively.
+    If you're using grep or find and it produced too much output, you can use a more selective search pattern.
+    If you really need to see something from the full command's output, you can redirect output to a file and then search in that file.
+    </warning>
+    {%- set elided_chars = output.output | length - 10000 -%}
+    <output_head>
+    {{ output.output[:5000] }}
+    </output_head>
+    <elided_chars>
+    {{ elided_chars }} characters elided
+    </elided_chars>
+    <output_tail>
+    {{ output.output[-5000:] }}
+    </output_tail>
+    {%- endif -%}
 
-    You are operating in an environment where
+  format_error_template: |
+    Your last response did not include a tool call.
+    Every response MUST contain exactly one tool call via the tool-calling API.
+    Available tools: `bash` (run a command) and `finish` (submit results).
 
-    1. You issue at least one command
-    2. The system executes the command(s) in a subshell
-    3. You see the result(s)
-    4. You write your next command(s)
+  step_limit: 150
+  cost_limit: 10
 
-    Each response should include:
-
-    1. **Reasoning text** where you explain your analysis and plan
-    2. At least one tool call with your command
-
-
-    **CRITICAL REQUIREMENTS:**
-
-    - Your response SHOULD include reasoning text explaining what you're doing
-    - Your response MUST include EXACTLY ONE bash tool call
-    - Directory or environment variable changes are not persistent. Every action is executed in a new subshell.
-    - However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files
-    - Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
-      Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
-
-    Example of a CORRECT response:
-    <example_response>
-    I need to understand the structure of the repository first. Let me check what files are in the current directory to get a better understanding of the codebase.
-
-    ```bash
-    ls -la
-    ```
-    </example_response>
-
-  step_limit: 0
-  cost_limit: 10.
-  mode: confirm
 environment:
+  timeout: 300
   env:
     PAGER: cat
     MANPAGER: cat
     LESS: -R
     PIP_PROGRESS_BAR: 'off'
     TQDM_DISABLE: '1'
+
 model:
-  observation_template: |
-    {%- if output.output | length < 10000 -%}
-    {
-      "returncode": {{ output.returncode }},
-      "output": {{ output.output | tojson }}
-      {%- if output.exception_info %}, "exception_info": {{ output.exception_info | tojson }}{% endif %}
-    }
-    {%- else -%}
-    {
-      "returncode": {{ output.returncode }},
-      "output_head": {{ output.output[:5000] | tojson }},
-      "output_tail": {{ output.output[-5000:] | tojson }},
-      "elided_chars": {{ output.output | length - 10000 }},
-      "warning": "Output too long."
-      {%- if output.exception_info %}, "exception_info": {{ output.exception_info | tojson }}{% endif %}
-    }
-    {%- endif -%}
-  format_error_template: |
-    Tool call error:
-
-    <error>
-    {{error}}
-    </error>
-
-    Here is general guidance on how to submit correct toolcalls:
-
-    Every response needs to use the 'bash' tool at least once to execute commands.
-
-    Call the bash tool with your command as the argument:
-    - Tool: bash
-    - Arguments: {"command": "your_command_here"}
-
-    If you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`
-    without any other command.
   model_kwargs:
+    temperature: 0.4
     drop_params: true

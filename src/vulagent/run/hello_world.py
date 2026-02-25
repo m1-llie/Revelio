@@ -20,10 +20,9 @@ console = Console()
 def main(
     task: str = typer.Option(..., "-t", "--task", help="Task/problem statement", show_default=False, prompt=True),
     model_name: str = typer.Option(
-        os.getenv("MSWEA_MODEL_NAME"),
-        "-m",
+        os.getenv("MODEL_NAME"),
         "--model",
-        help="Model name (defaults to MSWEA_MODEL_NAME env var). Can be empty if MSWEA_MODEL_NAME is set.",
+        help="Model name (defaults to MODEL_NAME env var). Can be empty if MODEL_NAME is set.",
         prompt="What model do you want to use? (press Enter to use default from .env)",
     ),
     output: Path = typer.Option(
@@ -36,9 +35,9 @@ def main(
     """Run vul-agent with a simple task."""
     # Handle empty model_name
     if not model_name or model_name.strip() == "":
-        model_name = os.getenv("MSWEA_MODEL_NAME")
+        model_name = os.getenv("MODEL_NAME")
         if not model_name:
-            console.print("[bold red]Error:[/bold red] No model specified. Please set MSWEA_MODEL_NAME in .env or use -m option.")
+            console.print("[bold red]Error:[/bold red] No model specified. Please set MODEL_NAME in .env or use -m option.")
             raise typer.Exit(1)
         console.print(f"[dim]Using model from .env: {model_name}[/dim]")
     else:

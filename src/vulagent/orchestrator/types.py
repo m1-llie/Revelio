@@ -14,6 +14,8 @@ class AgentSpec:
     task: str
     max_attempts: int = 1
     role: str | None = None
+    model_name: str | None = None  # per-agent model override
+    api_key: str | None = None     # per-agent API key override
 
 
 @dataclass

@@ -20,6 +20,7 @@ from vulagent.artifacts.schema import (
 from vulagent.artifacts.store import ArtifactStore
 from vulagent.models import get_model
 from vulagent.orchestrator.context import ContextPacketBuilder, render_context_packet
+from vulagent.orchestrator.hypothesis import HypothesisOrchestrator
 from vulagent.orchestrator.parsers import (
     parse_bug_report,
     parse_hypotheses,
@@ -48,14 +49,12 @@ class AgentRunner:
         self,
         *,
         model_name: str,
-        model_config: dict[str, Any] | None,
         env: Any,
         store: ArtifactStore,
         log_fn: Any | None = None,
         checkpoint_every: int = 5,
     ):
         self.model_name = model_name
-        self.model_config = model_config or {}
         self.env = env
         self.store = store
         self.log_fn = log_fn
@@ -65,7 +64,10 @@ class AgentRunner:
         config_data = _load_yaml(spec.config_path)
         agent_config = config_data.get("agent", {})
         model_config = config_data.get("model", {})
-        model = get_model(self.model_name, model_config)
+        effective_model_name = spec.model_name or self.model_name
+        if spec.api_key:
+            model_config.setdefault("model_kwargs", {})["api_key"] = spec.api_key
+        model = get_model(effective_model_name, model_config)
 
         agent = DefaultAgent(model, self.env, **agent_config)
 
@@ -188,18 +190,20 @@ class MultiAgentOrchestrator:
         store: ArtifactStore,
         env: Any,
         model_name: str,
-        model_config: dict[str, Any] | None = None,
         project_path: str,
         arvo_mode: bool,
         top_n: int = 5,
         max_poc_attempts: int = 2,
         log_fn: Any | None = None,
         on_success: Any | None = None,
+        pipeline_mode: str = "detect",
+        max_workers: int = 4,
+        api_keys: list[str] | None = None,
+        file_extensions: list[str] | None = None,
     ):
         self.store = store
         self.env = env
         self.model_name = model_name
-        self.model_config = model_config or {}
         self.project_path = project_path
         self.arvo_mode = arvo_mode
         self.top_n = int(top_n)
@@ -209,6 +213,10 @@ class MultiAgentOrchestrator:
         self._artifacts: dict[str, Any] = {}
         self._log_fn = log_fn
         self._on_success = on_success
+        self.pipeline_mode = pipeline_mode
+        self.max_workers = max_workers
+        self.api_keys = api_keys
+        self.file_extensions = file_extensions
 
     def _log(self, message: str) -> None:
         if self._log_fn:
@@ -257,49 +265,62 @@ class MultiAgentOrchestrator:
     def run(
         self,
         *,
-        hypothesis: AgentSpec,
         poc_builder: AgentSpec,
         validator: AgentSpec,
         reporter: AgentSpec,
     ) -> OrchestratorResult:
         runner = AgentRunner(
             model_name=self.model_name,
-            model_config=self.model_config,
             env=self.env,
             store=self.store,
             log_fn=self._log_fn,
         )
 
-        self.store.append_event("run_start", {"arvo_mode": self.arvo_mode})
+        self.store.append_event("run_start", {"arvo_mode": self.arvo_mode, "pipeline_mode": self.pipeline_mode})
         common_vars = {"project_path": self.project_path, "arvo_mode": self.arvo_mode, "top_n": self.top_n}
 
-        self._log("Running HypothesisAgent (combined review+hypotheses)...")
-        hypothesis_context = self._context_builder.build(
-            hypothesis.name, run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode}
+        # Stage 1: Hypothesis generation (parallel file scanning)
+        self._log("Running HypothesisOrchestrator (parallel file scanning)...")
+        hypothesis_orch = HypothesisOrchestrator(
+            env=self.env,
+            model_name=self.model_name,
+            store=self.store,
+            log_fn=self._log_fn,
+            api_keys=self.api_keys,
+            file_extensions=self.file_extensions,
+            max_workers=self.max_workers,
         )
-        hypothesis_run = runner.run(
-            hypothesis,
-            extra_vars={**common_vars, "context_packet": render_context_packet(hypothesis_context)},
+        hypotheses = hypothesis_orch.run(
+            project_path=self.project_path,
+            arvo_mode=self.arvo_mode,
         )
-        self._record_trajectory(hypothesis_run)
-        if failure := self._check_run_status(hypothesis_run, "hypothesis"):
-            return failure
-        try:
-            hypotheses = parse_hypotheses(hypothesis_run.result)
-        except ValueError as exc:
-            self.store.append_event(
-                "parse_failure",
-                {"stage": "hypothesis", "error": str(exc)},
-            )
-            self.store.save_raw_output(hypothesis_run.result, stage="hypothesis")
+
+        if not hypotheses.hypotheses:
+            self.store.append_event("no_hypotheses", {})
             return OrchestratorResult(
                 status="failure",
-                summary=f"Hypothesis parsing failed: {exc}",
+                summary="No hypotheses were generated from file scanning.",
                 run_dir=self.store.run_dir,
             )
+
+        # Truncate to top_n
+        hypotheses.hypotheses = hypotheses.hypotheses[:self.top_n]
         self._artifacts["hypotheses"] = hypotheses
         self.store.write_handoff("hypotheses", hypotheses)
+        self._log(f"HypothesisOrchestrator produced {len(hypotheses.hypotheses)} hypotheses (top {self.top_n})")
 
+        # If pipeline_mode is "project", stop after hypothesis generation
+        if self.pipeline_mode == "project":
+            self.store.append_event("run_complete_project_mode", {
+                "hypotheses_count": len(hypotheses.hypotheses),
+            })
+            return OrchestratorResult(
+                status="success",
+                summary=f"Generated {len(hypotheses.hypotheses)} hypotheses (project mode).",
+                run_dir=self.store.run_dir,
+            )
+
+        # Stages 2-4: PoC -> Validator -> Reporter (detect mode)
         report_files: list[str] = []
         poc_files: list[str] = []
         script_files: list[str] = []

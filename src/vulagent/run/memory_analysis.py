@@ -51,9 +51,8 @@ def main(
     model: Optional[str] = typer.Option(
         None,
         "--model",
-        "-m",
-        envvar="MSWEA_MODEL_NAME",
-        help="Model name (set via --model or MSWEA_MODEL_NAME env var).",
+        envvar="MODEL_NAME",
+        help="Model name (set via --model or MODEL_NAME env var).",
     ),
     docker_image: str = typer.Option(
         DEFAULT_DOCKER_IMAGE,
@@ -84,9 +83,9 @@ def main(
 
     console.print(f"[bold green]Using config:[/bold green] {config_path}")
 
-    model_name = model or os.getenv("MSWEA_MODEL_NAME")
+    model_name = model or os.getenv("MODEL_NAME")
     if not model_name:
-        console.print("[bold red]No model specified.[/bold red] Set MSWEA_MODEL_NAME or use --model.")
+        console.print("[bold red]No model specified.[/bold red] Set MODEL_NAME or use --model.")
         raise typer.Exit(1)
 
     console.print(f"[bold green]Model:[/bold green] {model_name}")

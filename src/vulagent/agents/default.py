@@ -1,5 +1,5 @@
 """Basic agent class. See https://mini-swe-agent.com/latest/advanced/control_flow/ for visual explanation of the scaffold.
-Changed a lot by vul-agent.
+Note: Changed a lot by vul-agent.
 
 Implement the control flow:
 template-driven prompting, action parsing (bash ...), command execution, termination rules, and trajectory logging.
