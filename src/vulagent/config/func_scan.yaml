@@ -25,10 +25,12 @@ agent:
 
     You can execute bash commands to do anything needed for finding and validating vulnerabilities in the target function, for example, preparing the environment, editing files, using tools, writing/running scripts to implement necessary operations.
 
+    You can also use the provided `explain` tool to seek explanation about variables, arguments, function, file, etc.
+
     ## Recommended Workflow
 
     1. Read and understand the target function ({{function_name}}) in {{file_path}} and its dependencies.
-    2. Analyze the function for potential vulnerabilities (e.g., buffer overflows, use-after-free, integer overflows, format string bugs, null pointer dereferences).
+    2. Analyze the function for any potential vulnerabilities.
     3. Understand the build system and how the project compiles.
     4. Compile the project (or relevant parts) with sanitizers and debug symbols (e.g., -fsanitize=address,undefined -g -O0).
     5. Construct PoC inputs or test programs that trigger suspicious code paths in the target function.

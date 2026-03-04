@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Run a function-targeted vulnerability scan inside Docker.
+"""Run a repo-targeted vulnerability scan inside Docker.
 
 Copies a local folder into a Docker container and runs an agent
 to find vulnerabilities in a specific target file.
 
 Examples:
-    vul-agent-func-scan -f ./my-project -t src/parser.c -m gpt-4o
+    vul-agent-repo-scan -f ./my-project -t src/parser.c -m gpt-4o
 """
 
 from __future__ import annotations
@@ -30,18 +30,7 @@ from vulagent.run.utils import save_traj
 console = Console()
 app = typer.Typer(rich_markup_mode="rich")
 
-
-def explain(subject: str) -> str:
-    """Request a human explanation for a code element such as a file, function, argument, or variable.
-
-    Args:
-        subject: The name of the file, function, argument, or variable to explain.
-    """
-    console.print(f"\n[bold yellow]Agent requests explanation for:[/bold yellow] [cyan]{subject}[/cyan]")
-    explanation = input("Your explanation: ").strip()
-    return explanation
-
-DEFAULT_CONFIG = "func_scan.yaml"
+DEFAULT_CONFIG = "repo_scan.yaml"
 DEFAULT_IMAGE = "vulagent/file-scan:latest"
 PROJECT_ROOT = Path("/src")
 
@@ -129,31 +118,12 @@ def main(
         "-t",
         help="Relative path to the file within the folder to analyze.",
     ),
-    target_function: str = typer.Option(
-        ...,
-        "--target-function",
-        "-fn",
-        help="Name of the function within the target file to analyze.",
-    ),
     model: Optional[str] = typer.Option(
         None,
         "--model",
         "-m",
         envvar="MSWEA_MODEL_NAME",
         help="Model name (set via --model or MSWEA_MODEL_NAME env var).",
-    ),
-    base_url: Optional[str] = typer.Option(
-        None,
-        "--base-url",
-        "-b",
-        help="LiteLLM proxy base URL (e.g. https://litellm-proxy.example.com).",
-    ),
-    api_key: Optional[str] = typer.Option(
-        None,
-        "--api-key",
-        "-k",
-        envvar="MSWEA_MODEL_API_KEY",
-        help="API key for the model/proxy.",
     ),
     config: str = typer.Option(
         DEFAULT_CONFIG,
@@ -201,12 +171,9 @@ def main(
 
     console.print(f"[bold green]Config:[/bold green] {config_path}")
     console.print(f"[bold green]Model:[/bold green] {model_name}")
-    if base_url:
-        console.print(f"[bold green]API base:[/bold green] {base_url}")
     console.print(f"[bold green]Docker image:[/bold green] {docker_image}")
     console.print(f"[bold green]Folder:[/bold green] {folder_path}")
     console.print(f"[bold green]Target file:[/bold green] {target_file}")
-    console.print(f"[bold green]Target function:[/bold green] {target_function}")
     console.print()
 
     # --- Prepare output paths ---
@@ -215,8 +182,8 @@ def main(
         run_dir = output_path.parent
     else:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        run_name = f"func-scan_{folder_path.name}_{timestamp}"
-        run_dir = Path("output/func_scan") / run_name
+        run_name = f"repo-scan_{folder_path.name}_{timestamp}"
+        run_dir = Path("output/repo_scan") / run_name
         output_path = run_dir / "trajectory.json"
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -246,13 +213,6 @@ def main(
         agent_config = config_data.get("agent", {})
         model_config = config_data.get("model", {})
 
-        # Inject proxy settings into model_kwargs
-        model_config.setdefault("model_kwargs", {})
-        if base_url:
-            model_config["model_kwargs"]["base_url"] = base_url
-        if api_key:
-            model_config["model_kwargs"]["api_key"] = api_key
-
         # The YAML may place agent templates under the "model" key.
         # Move observation_template to agent_config (as action_observation_template)
         # and drop format_error_template (YAML version uses {{error}} which is
@@ -270,13 +230,12 @@ def main(
         agent = DefaultAgent(
             get_model(model_name, model_config),
             docker_env,
-            tools=[explain],
             **agent_config,
         )
 
         task_description = (
-            f"Analyze the function '{target_function}' in the file '{target_file}' "
-            f"in the project at {PROJECT_ROOT} for security vulnerabilities."
+            f"Analyze the file '{target_file}' in the project at {PROJECT_ROOT} "
+            f"for security vulnerabilities."
         )
 
         console.print("[bold green]Starting agent...[/bold green]\n")
@@ -286,7 +245,6 @@ def main(
             task_description,
             project_path=str(PROJECT_ROOT),
             file_path=target_file,
-            function_name=target_function,
             system=platform.system(),
         )
         finished_at = datetime.now(timezone.utc)
@@ -312,7 +270,6 @@ def main(
             "exit_status": exit_status,
             "folder_path": str(folder_path),
             "target_file": target_file,
-            "target_function": target_function,
             "docker_image": docker_image,
             "started_at_utc": started_at.isoformat(),
             "finished_at_utc": finished_at.isoformat(),

@@ -27,7 +27,7 @@ agent:
     ## Recommended Workflow
 
     1. Read and understand the target file ({{target_file}}) and its dependencies.
-    2. Analyze the code for any potential security vulnerabilities.
+    2. Analyze the code for potential vulnerabilities (e.g., buffer overflows, use-after-free, integer overflows, format string bugs, null pointer dereferences).
     3. Understand the build system and how the project compiles.
     4. Compile the project (or relevant parts) with sanitizers and debug symbols (e.g., -fsanitize=address,undefined -g -O0).
     5. Construct PoC inputs or test programs that trigger suspicious code paths in the target file.

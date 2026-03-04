@@ -29,6 +29,7 @@ vul-agent-validate-multi = "vulagent.run.validate_if_target_multiAgent:app"
 vul-agent-file-scan = "vulagent.run.file_scan:app"
 vul-agent-repo-scan = "vulagent.run.repo_scan:app"
 vul-agent-func-scan = "vulagent.run.func_scan:app"
+vul-agent-chat-scan = "vulagent.run.chat_scan:main"
 
 [tool.setuptools]
 include-package-data = true
