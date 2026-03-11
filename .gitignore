@@ -192,5 +192,5 @@ pyrightconfig.json
 
 output*/
 *.sh
-*.py
+./*.py
 *tmp*
