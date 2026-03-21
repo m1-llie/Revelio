@@ -45,7 +45,7 @@ When reviewing a function for security vulnerabilities, consider the following p
 """
 
 RAG_CHECK_PROMPT = """\
-You are evaluating the quality of a vulnerability tip for use in RAG-based retrieval.
+You are evaluating the property of a vulnerability.
 
 CVE ID: {cve_id}
 Description: {description}
@@ -59,13 +59,18 @@ Tip: {tip}
 
 Answer the following two questions:
 
-1. **Specific enough**: Is this CVE specific enough such that, assuming there is another function containing related vulnerability, a RAG query would return this CVE?
+1. **Specific enough**: Is this CVE feature-specific? A guideline:
+    - First ask: how hard it is to understand the patch given the description? Do I need to understand more about the repository?
+    - Next ask: Is it possible to have the same vulnerability somewhere else? Is it possible that this type of vulnerability happens in completely irrelevant scenarios?
+    If the understanding of the vulnerability is easy and it is possible for the vulnerability to take place in other scenarios, then this CVE is not specific enough.
 
-2. **General enough**: Is this tip general enough to apply across different codebases and functions — not just to this exact CVE?
+2. **General enough**: Is this tip general enough to apply across different codebases and functions — not just to this exact CVE? A criteria is that the tip should not mention any names specific to the repository.
 
-Respond with JSON only:
+First, briefly reason about each question. Then output your final answer inside <json>...</json> tags:
+<json>
 {{"specific_enough": true|false, "general_enough": true|false, \
-"rag_useful": true|false, "reasoning": "one sentence"}}"""
+"reasoning": "one sentence"}}
+</json>"""
 
 UPDATE_PROMPT = """\
 You are building a general security vulnerability-finding prompt for use by a security analyst \
@@ -88,6 +93,9 @@ an existing point. The updated prompt must:
 - Use concise bullet points (one per distinct pattern)
 - Merge overlapping patterns rather than duplicating them
 
+If there is one or more existing bullet points that highly overlaps with this CVE, please DO NOT CREATE A NEW POINT. Simple refine the existing bullet points.
+Please keep each bullet point short. At most 4 sentences.
+
 Output ONLY the updated general prompt in Markdown, starting with the `# General Vulnerability-Finding Tips` heading. No preamble."""
 
 REFINE_TIP_PROMPT = """\
@@ -104,7 +112,7 @@ Rewrite the tip so that it:
 - Remains actionable (tells the analyst what to look for)
 - Is 1-2 sentences
 
-Output ONLY the refined tip text, no preamble."""
+First, reason about how to best generalise the tip. Then output the refined tip inside <tip>...</tip> tags."""
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +159,7 @@ def main() -> None:
         print("Error: no model specified.", file=sys.stderr)
         sys.exit(1)
 
-    rag_kwargs: dict = {"temperature": 0.0, "drop_params": True, "max_tokens": 256}
+    rag_kwargs: dict = {"temperature": 0.7, "drop_params": True, "max_tokens": 1024}
     update_kwargs: dict = {"temperature": 0.3, "drop_params": True, "max_tokens": 4096}
     if args.base_url:
         rag_kwargs["base_url"] = args.base_url
@@ -162,8 +170,6 @@ def main() -> None:
 
     # Load tips
     tips = [json.loads(l) for l in open(args.tips)]
-    if args.limit:
-        tips = tips[: args.limit]
     print(f"Loaded {len(tips)} tips")
 
     # Load already-processed CVE IDs
@@ -184,6 +190,8 @@ def main() -> None:
     patches_dir = Path(args.patches_dir)
 
     remaining = [t for t in tips if t["cve_id"] not in done]
+    if args.limit:
+        remaining = remaining[: args.limit]
     print(f"Processing {len(remaining)} tips sequentially...\n")
 
     with open(rag_path, "a") as rag_f:
@@ -203,22 +211,25 @@ def main() -> None:
             try:
                 raw = _call(model, rag_prompt, rag_kwargs)
                 import re
-                m = re.search(r"\{[\s\S]*\}", raw)
-                rag_result = json.loads(m.group(0)) if m else {}
+                m = re.search(r"<json>([\s\S]*?)</json>", raw)
+                json_str = m.group(1).strip() if m else re.search(r"\{[\s\S]*\}", raw).group(0)
+                rag_result = json.loads(json_str)
             except Exception as e:
                 rag_result = {"error": str(e)}
 
-            rag_useful = rag_result.get("rag_useful", False)
+            specific_enough = rag_result.get("specific_enough", True)
             general_enough = rag_result.get("general_enough", True)
-            print(f"  RAG useful: {rag_useful}  general_enough: {general_enough} — {rag_result.get('reasoning', '')[:70]}")
+            print(f"  specific_enough: {specific_enough}  general_enough: {general_enough} — {rag_result.get('reasoning', '')[:70]}")
 
             # --- Refine tip if not general enough ---
             refined_tip = tip
             if not general_enough:
                 try:
-                    refined_tip = _call(model, REFINE_TIP_PROMPT.format(
+                    raw_refined = _call(model, REFINE_TIP_PROMPT.format(
                         tip=tip, description=description,
                     ), rag_kwargs)
+                    m = re.search(r"<tip>([\s\S]*?)</tip>", raw_refined)
+                    refined_tip = m.group(1).strip() if m else raw_refined
                     print(f"  Tip refined: {refined_tip[:80]}...")
                 except Exception as e:
                     print(f"  WARNING: tip refinement failed: {e}", file=sys.stderr)
@@ -228,7 +239,7 @@ def main() -> None:
             rag_f.flush()
 
             # --- Task 2: Update general prompt only if NOT RAG-retrievable ---
-            if not rag_useful:
+            if not specific_enough:
                 update_prompt = UPDATE_PROMPT.format(
                     current_prompt=current_prompt,
                     cve_id=cve_id,
@@ -239,7 +250,6 @@ def main() -> None:
                     updated = _call(model, update_prompt, update_kwargs)
                     if updated.startswith("#"):
                         current_prompt = updated
-                        gp_path.write_text(current_prompt)
                         print(f"  General prompt updated ({len(current_prompt)} chars)")
                     else:
                         print(f"  WARNING: unexpected prompt output, keeping previous")
@@ -247,6 +257,9 @@ def main() -> None:
                     print(f"  ERROR updating general prompt: {e}", file=sys.stderr)
             else:
                 print(f"  Skipping general prompt update (RAG-retrievable)")
+
+            # Always write the current prompt so progress is visible after each CVE
+            gp_path.write_text(current_prompt)
 
     print(f"\nDone.")
     print(f"RAG checks:     {rag_path}")

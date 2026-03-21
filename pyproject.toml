@@ -30,6 +30,7 @@ vul-agent-file-scan = "vulagent.run.file_scan:app"
 vul-agent-repo-scan = "vulagent.run.repo_scan:app"
 vul-agent-func-scan = "vulagent.run.func_scan:app"
 vul-agent-chat-scan = "vulagent.run.chat_scan:main"
+vul-agent-dedup = "vulagent.agents.dedup:main"
 
 [tool.setuptools]
 include-package-data = true
