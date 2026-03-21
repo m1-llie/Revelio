@@ -3,28 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VulAgent — Trace Viewer</title>
+<title>VulAgent — Scan & Filter Viewer</title>
 <style>
-/* ── Reset & Base ─────────────────────────────────────────────── */
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
-  --bg:        #0b0b14;
-  --bg-card:   #12121f;
-  --bg-hover:  #181830;
-  --border:    #1e1e38;
-  --text:      #c8c8d8;
-  --text-dim:  #6a6a80;
-  --text-bright:#f0f0f8;
-  --accent:    #6366f1;
-  --accent2:   #818cf8;
-  --green:     #34d399;
-  --red:       #f87171;
-  --orange:    #fb923c;
-  --yellow:    #facc15;
-  --cyan:      #22d3ee;
-  --pink:      #f472b6;
-  --radius:    10px;
-  --mono:      'SF Mono','Cascadia Code','Fira Code',monospace;
+  --bg:#0b0b14;--bg-card:#12121f;--bg-hover:#181830;
+  --border:#1e1e38;--text:#c8c8d8;--text-dim:#6a6a80;--text-bright:#f0f0f8;
+  --accent:#6366f1;--accent2:#818cf8;
+  --green:#34d399;--red:#f87171;--orange:#fb923c;--yellow:#facc15;--cyan:#22d3ee;--pink:#f472b6;
+  --radius:10px;--mono:'SF Mono','Cascadia Code','Fira Code',monospace;
 }
 html{font-size:15px}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh}
@@ -33,43 +20,42 @@ a:hover{text-decoration:underline}
 code,pre{font-family:var(--mono);font-size:.85rem}
 pre{background:#0a0a12;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;overflow-x:auto;white-space:pre-wrap;word-break:break-word;line-height:1.5;color:#b0b0c8}
 
-/* ── Layout ───────────────────────────────────────────────────── */
+/* Layout */
 nav{background:rgba(11,11,20,.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:.8rem 1.5rem;position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:1.2rem}
 nav .logo{font-size:1.2rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;cursor:pointer}
 nav .breadcrumb{color:var(--text-dim);font-size:.85rem;display:flex;align-items:center;gap:.4rem}
 nav .breadcrumb span{cursor:pointer;color:var(--text-dim)}
 nav .breadcrumb span:hover{color:var(--text)}
-nav .breadcrumb .sep{color:#333}
+nav .breadcrumb .sep{color:#333;cursor:default}
 
 .container{max-width:1200px;margin:0 auto;padding:2rem 1.5rem}
 
-/* ── Cards ────────────────────────────────────────────────────── */
+/* Cards */
 .card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1rem;transition:border-color .15s}
 .card:hover{border-color:#2a2a4a}
 .card h3{font-size:1rem;color:var(--text-bright);margin-bottom:.5rem}
-.card p{font-size:.85rem;color:var(--text-dim);line-height:1.5}
 
-/* ── Run list ─────────────────────────────────────────────────── */
-.run-card{cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:start}
+/* Run list */
+.run-card{cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:center}
 .run-card:hover{border-color:var(--accent);background:var(--bg-hover)}
-.run-meta{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.6rem}
-.run-meta .tag{font-size:.72rem;padding:2px 8px;border-radius:4px;border:1px solid var(--border);color:var(--text-dim);white-space:nowrap}
-.run-meta .tag.success{border-color:var(--green);color:var(--green)}
-.run-meta .tag.partial{border-color:var(--orange);color:var(--orange)}
-.run-meta .tag.unknown{border-color:var(--text-dim);color:var(--text-dim)}
-.run-stats{text-align:right;white-space:nowrap}
+.run-title{font-size:.95rem;font-weight:700;color:var(--text-bright);margin-bottom:.3rem}
+.run-file{font-family:var(--mono);font-size:.78rem;color:var(--cyan);margin-bottom:.4rem}
+.run-meta{display:flex;flex-wrap:wrap;gap:.4rem}
+.run-meta .tag{font-size:.7rem;padding:2px 8px;border-radius:4px;border:1px solid var(--border);color:var(--text-dim);white-space:nowrap}
+.run-stats{text-align:right}
 .run-stats .big{font-size:1.8rem;font-weight:800;color:var(--green)}
 .run-stats .label{font-size:.72rem;color:var(--text-dim)}
 
-/* ── Badge / Pill ─────────────────────────────────────────────── */
+/* Badges */
 .badge{display:inline-block;font-size:.7rem;padding:2px 8px;border-radius:999px;font-weight:600;letter-spacing:.02em}
 .badge-green{background:rgba(52,211,153,.12);color:var(--green);border:1px solid rgba(52,211,153,.25)}
 .badge-red{background:rgba(248,113,113,.12);color:var(--red);border:1px solid rgba(248,113,113,.25)}
 .badge-orange{background:rgba(251,146,60,.12);color:var(--orange);border:1px solid rgba(251,146,60,.25)}
 .badge-cyan{background:rgba(34,211,238,.12);color:var(--cyan);border:1px solid rgba(34,211,238,.25)}
 .badge-purple{background:rgba(99,102,241,.12);color:var(--accent2);border:1px solid rgba(99,102,241,.25)}
+.badge-yellow{background:rgba(250,204,21,.12);color:var(--yellow);border:1px solid rgba(250,204,21,.25)}
 
-/* ── Tabs ─────────────────────────────────────────────────────── */
+/* Tabs */
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:1.5rem;overflow-x:auto}
 .tab{padding:.6rem 1.2rem;font-size:.82rem;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s,border-color .15s}
 .tab:hover{color:var(--text)}
@@ -77,1429 +63,462 @@ nav .breadcrumb .sep{color:#333}
 .tab-panel{display:none}
 .tab-panel.active{display:block}
 
-/* ── Overview grid ────────────────────────────────────────────── */
-.overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem}
+/* Stat grid */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem;margin-bottom:1.5rem}
 .stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;text-align:center}
-.stat-card .val{font-size:1.6rem;font-weight:800;color:var(--accent2)}
+.stat-card .val{font-size:1.5rem;font-weight:800;color:var(--accent2)}
 .stat-card .lbl{font-size:.72rem;color:var(--text-dim);margin-top:.2rem}
 
-/* ── Timeline ─────────────────────────────────────────────────── */
-.timeline{position:relative;padding-left:1.5rem;border-left:2px solid var(--border);margin:1rem 0 1.5rem}
-.timeline .ev{position:relative;padding:.5rem 0 .5rem .8rem;font-size:.82rem}
-.timeline .ev::before{content:'';position:absolute;left:-1.65rem;top:.75rem;width:10px;height:10px;border-radius:50%;background:var(--border);border:2px solid var(--bg)}
-.timeline .ev.success::before{background:var(--green)}
-.timeline .ev.start::before{background:var(--accent)}
-.timeline .ev.attempt::before{background:var(--orange)}
-.timeline .ev .ts{color:var(--text-dim);font-size:.72rem;margin-right:.5rem}
+/* Section */
+.section-title{font-size:1.1rem;font-weight:700;color:var(--text-bright);margin:1.5rem 0 1rem;display:flex;align-items:center;gap:.5rem}
+.section-title .count{font-size:.75rem;background:var(--accent);color:#fff;padding:1px 8px;border-radius:999px}
 
-/* ── Hypothesis card ──────────────────────────────────────────── */
-.hyp-card{border-left:3px solid var(--accent);margin-bottom:1.5rem}
+/* Hypothesis card */
+.hyp-card{border-left:3px solid var(--accent);cursor:pointer}
+.hyp-card:hover{border-color:var(--accent);background:var(--bg-hover)}
+.hyp-card.valid{border-left-color:var(--green)}
+.hyp-card.invalid{border-left-color:var(--red)}
 .hyp-header{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.5rem}
-.confidence-bar{width:100px;height:6px;background:#1a1a30;border-radius:3px;overflow:hidden;margin-top:.4rem}
+.hyp-summary{font-size:.9rem;font-weight:600;color:var(--text-bright)}
+.hyp-meta{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.5rem}
+.confidence-bar{width:80px;height:6px;background:#1a1a30;border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:.4rem}
 .confidence-bar .fill{height:100%;border-radius:3px}
 
-/* ── Hotspot ──────────────────────────────────────────────────── */
+/* Hotspot */
 .hotspot{background:#0d0d18;border:1px solid var(--border);border-left:3px solid var(--red);border-radius:var(--radius);padding:1rem;margin-bottom:.8rem}
 .hotspot .fn{color:var(--pink);font-family:var(--mono);font-size:.82rem}
 .hotspot .loc{color:var(--text-dim);font-size:.72rem;margin-top:.2rem}
 .hotspot .ctx{color:var(--text);font-size:.82rem;margin-top:.5rem;line-height:1.5}
 
-/* ── ASAN output ──────────────────────────────────────────────── */
-.asan-output{background:#0a0008;border:1px solid #3a1020;border-radius:var(--radius);padding:1rem;font-family:var(--mono);font-size:.78rem;line-height:1.6;color:#e88;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
-.asan-output .asan-error{color:#ff6b6b;font-weight:700}
-.asan-output .asan-frame{color:#c8c8d8}
-.asan-output .asan-summary{color:#fb923c;font-weight:600}
+/* Call chain */
+.call-chain{font-family:var(--mono);font-size:.78rem;color:var(--text);padding:.5rem .8rem;background:#0a0a12;border-radius:6px;margin-bottom:.4rem;border:1px solid var(--border)}
 
-/* ── Trajectory viewer ────────────────────────────────────────── */
+/* CWE tag */
+.cwe-tag{font-family:var(--mono);font-size:.72rem;padding:2px 6px;border-radius:4px;background:rgba(99,102,241,.1);color:var(--accent2);border:1px solid rgba(99,102,241,.2)}
+
+/* Warning */
+.warning-item{font-size:.82rem;color:var(--orange);padding:.3rem 0;padding-left:1rem;position:relative}
+.warning-item::before{content:'!';position:absolute;left:0;color:var(--orange);font-weight:700}
+
+/* Trajectory viewer */
 .traj-msg{margin-bottom:.8rem;border-radius:var(--radius);padding:1rem;font-size:.82rem;line-height:1.5}
 .traj-msg.system{background:#0d0d20;border:1px solid #1a1a3a;color:var(--text-dim)}
 .traj-msg.user{background:#0d1420;border:1px solid #1a2a40}
 .traj-msg.assistant{background:#0d200d;border:1px solid #1a3a1a}
-.traj-msg .role{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;display:flex;align-items:center;gap:.5rem}
-.traj-msg .step-num{font-size:.65rem;background:rgba(99,102,241,.2);color:var(--accent2);padding:1px 6px;border-radius:3px;font-weight:600;letter-spacing:0}
+.traj-msg .role{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem}
 .traj-msg.system .role{color:var(--text-dim)}
 .traj-msg.user .role{color:var(--cyan)}
 .traj-msg.assistant .role{color:var(--green)}
 .traj-msg .content{white-space:pre-wrap;word-break:break-word;max-height:400px;overflow-y:auto}
-.traj-msg .content.collapsed{max-height:120px;overflow:hidden;position:relative}
+.traj-msg .content.collapsed{max-height:150px;overflow:hidden;position:relative}
 .traj-msg .content.collapsed::after{content:'';position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,var(--bg-card))}
 .msg-toggle{font-size:.72rem;color:var(--accent2);cursor:pointer;margin-top:.3rem;display:inline-block}
 .msg-toggle:hover{text-decoration:underline}
 
-/* ── Agent summary row ────────────────────────────────────────── */
-.agent-row{display:grid;grid-template-columns:1fr auto auto auto;gap:1rem;align-items:center;padding:.8rem 1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:.5rem;cursor:pointer;transition:border-color .15s}
-.agent-row:hover{border-color:var(--accent)}
-.agent-row .name{font-weight:600;font-size:.9rem;color:var(--text-bright)}
-.agent-row .detail{font-size:.78rem;color:var(--text-dim);text-align:right}
+/* Tool call */
+.tool-call{background:#0a0a14;border:1px solid var(--border);border-left:3px solid var(--yellow);border-radius:var(--radius);padding:.8rem;margin:.5rem 0;font-family:var(--mono);font-size:.78rem}
+.tool-call .tool-name{color:var(--yellow);font-weight:600}
+.tool-call .tool-args{color:var(--text-dim);margin-top:.3rem;white-space:pre-wrap;word-break:break-word;max-height:200px;overflow-y:auto}
 
-/* ── Log viewer ───────────────────────────────────────────────── */
-.log-viewer{background:#0a0a12;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;font-family:var(--mono);font-size:.75rem;line-height:1.6;max-height:600px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
-.log-line{display:block}
-.log-line .log-ts{color:var(--text-dim)}
-.log-line .log-agent{color:var(--cyan)}
-.log-line.log-finish{color:var(--green)}
-.log-line.log-start{color:var(--accent2)}
+/* Removal reason */
+.removal-reason{background:#1a0a0a;border:1px solid #3a1a1a;border-radius:var(--radius);padding:1rem;font-size:.82rem;color:var(--red);line-height:1.5;margin-top:.5rem}
 
-/* ── Section header ───────────────────────────────────────────── */
-.section-title{font-size:1.1rem;font-weight:700;color:var(--text-bright);margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
-.section-title .count{font-size:.75rem;background:var(--accent);color:#fff;padding:1px 8px;border-radius:999px}
+/* Summary markdown */
+.md-content{font-size:.85rem;line-height:1.7;color:var(--text)}
+.md-content h1,.md-content h2,.md-content h3{color:var(--text-bright);margin:1rem 0 .5rem}
+.md-content h1{font-size:1.2rem}
+.md-content h2{font-size:1.05rem}
+.md-content h3{font-size:.95rem}
+.md-content ul,.md-content ol{padding-left:1.5rem;margin:.5rem 0}
+.md-content li{margin:.2rem 0}
+.md-content strong{color:var(--text-bright)}
+.md-content code{background:#1a1a2a;padding:1px 4px;border-radius:3px;font-size:.8rem}
 
-/* ── Code reference ───────────────────────────────────────────── */
-.code-ref{font-family:var(--mono);font-size:.78rem;color:var(--cyan);display:inline-flex;align-items:center;gap:.3rem}
-.code-ref .file{color:var(--text)}
-.code-ref .lines{color:var(--text-dim)}
+/* Back button */
+.back-btn{display:inline-flex;align-items:center;gap:.3rem;font-size:.8rem;color:var(--text-dim);cursor:pointer;margin-bottom:1rem;padding:.3rem .6rem;border-radius:4px;transition:all .15s}
+.back-btn:hover{color:var(--text);background:var(--bg-hover)}
 
-/* ── Call chain ───────────────────────────────────────────────── */
-.call-chain{font-family:var(--mono);font-size:.78rem;color:var(--text);padding:.5rem .8rem;background:#0a0a12;border-radius:6px;margin-bottom:.4rem;border:1px solid var(--border)}
-.call-chain .arrow{color:var(--accent2)}
+/* Filter info */
+.filter-info{display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-top:.5rem}
+.filter-info .item{font-size:.75rem;color:var(--text-dim)}
+.filter-info .item span{color:var(--text)}
 
-/* ── Python script viewer ─────────────────────────────────────── */
-.script-view{position:relative}
-.copy-btn{position:absolute;top:.5rem;right:.5rem;background:var(--bg-hover);border:1px solid var(--border);color:var(--text-dim);padding:3px 10px;border-radius:4px;font-size:.7rem;cursor:pointer}
-.copy-btn:hover{color:var(--text);border-color:var(--accent)}
-
-/* ── Responsive ───────────────────────────────────────────────── */
 @media(max-width:640px){
   .run-card{grid-template-columns:1fr}
   .run-stats{text-align:left}
-  .overview-grid{grid-template-columns:repeat(2,1fr)}
-  .agent-row{grid-template-columns:1fr;gap:.3rem}
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
   nav{flex-wrap:wrap}
 }
-
-/* ── Search & Filter bar ──────────────────────────────────────── */
-.filter-bar{display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
-.filter-bar input{flex:1;min-width:200px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem .8rem;color:var(--text-bright);font-size:.82rem;outline:none;transition:border-color .15s}
-.filter-bar input:focus{border-color:var(--accent)}
-.filter-bar input::placeholder{color:var(--text-dim)}
-.filter-bar select{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem .8rem;color:var(--text-bright);font-size:.82rem;outline:none;cursor:pointer;transition:border-color .15s;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236a6a80'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .6rem center;padding-right:2rem}
-.filter-bar select:focus{border-color:var(--accent)}
-.filter-bar select option{background:var(--bg-card);color:var(--text)}
-.filter-bar .filter-label{font-size:.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em}
-.filter-bar .filter-reset{background:none;border:1px solid var(--border);border-radius:var(--radius);padding:.5rem .8rem;color:var(--text-dim);font-size:.78rem;cursor:pointer;transition:all .15s}
-.filter-bar .filter-reset:hover{border-color:var(--accent);color:var(--text)}
-
-/* ── Run card (updated) ──────────────────────────────────────── */
-.run-card .run-title{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
-.run-card .run-title .cve-id{font-size:1rem;font-weight:700;color:var(--text-bright)}
-.run-card .run-title .batch-type{font-size:.7rem;padding:2px 8px;border-radius:4px;font-weight:600;letter-spacing:.02em}
-.batch-type.batch-file-scan{background:rgba(34,211,238,.1);color:var(--cyan);border:1px solid rgba(34,211,238,.25)}
-.batch-type.batch-claude-code{background:rgba(244,114,182,.1);color:var(--pink);border:1px solid rgba(244,114,182,.25)}
-.batch-type.batch-other{background:rgba(99,102,241,.1);color:var(--accent2);border:1px solid rgba(99,102,241,.25)}
-
-/* ── Score indicators ────────────────────────────────────────── */
-.score-indicators{display:flex;gap:.5rem;align-items:center;flex-shrink:0}
-.score-dot{display:flex;flex-direction:column;align-items:center;gap:.15rem;min-width:2.5rem}
-.score-dot .dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--border)}
-.score-dot .dot.hit{border-color:transparent}
-.score-dot .dot.hit-yes{background:var(--green)}
-.score-dot .dot.hit-no{background:var(--red);opacity:.6}
-.score-dot .dot-label{font-size:.58rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
-.score-detail{font-size:.62rem;color:var(--text-dim);font-family:var(--mono)}
-
-/* ── Command block (trajectory) ──────────────────────────────── */
-.cmd-block{margin-top:.5rem;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-.cmd-block .cmd-header{background:#0d0d18;padding:.4rem .8rem;font-size:.72rem;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)}
-.cmd-block .cmd-header .cmd-rc{font-weight:700}
-.cmd-block .cmd-header .cmd-rc.rc-ok{color:var(--green)}
-.cmd-block .cmd-header .cmd-rc.rc-fail{color:var(--red)}
-.cmd-block .cmd-cmd{background:#0a0a14;padding:.5rem .8rem;font-family:var(--mono);font-size:.78rem;color:var(--cyan);white-space:pre-wrap;word-break:break-all;border-bottom:1px solid var(--border)}
-.cmd-block .cmd-output{background:#08080e;padding:.5rem .8rem;font-family:var(--mono);font-size:.75rem;color:var(--text);white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto;line-height:1.5}
-.cmd-block .cmd-output.collapsed{max-height:120px;overflow:hidden;position:relative}
-.cmd-block .cmd-output.collapsed::after{content:'';position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,#08080e)}
-
-/* ── Vuln Context ────────────────────────────────────────────── */
-.vuln-context-panels{display:grid;grid-template-columns:1fr 1fr;gap:1rem;min-height:400px}
-@media(max-width:900px){.vuln-context-panels{grid-template-columns:1fr}}
-.vuln-panel{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
-.vuln-panel-header{padding:.6rem 1rem;background:#0d0d18;border-bottom:1px solid var(--border);font-size:.82rem;font-weight:600;color:var(--text-bright);display:flex;justify-content:space-between;align-items:center}
-.vuln-panel-body{overflow:auto;max-height:70vh;flex:1}
-.source-file-selector{padding:.5rem 1rem;border-bottom:1px solid var(--border);display:flex;gap:.4rem;flex-wrap:wrap}
-.source-file-selector .file-btn{font-size:.72rem;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;font-family:var(--mono);transition:all .15s}
-.source-file-selector .file-btn:hover{border-color:var(--accent);color:var(--text)}
-.source-file-selector .file-btn.active{border-color:var(--accent);background:rgba(99,102,241,.15);color:var(--accent2)}
-.source-lines{font-family:var(--mono);font-size:.75rem;line-height:1.6;padding:0}
-.source-line{display:flex;padding:0 .5rem}
-.source-line .ln{color:var(--text-dim);min-width:3.5rem;text-align:right;padding-right:.8rem;user-select:none;flex-shrink:0}
-.source-line .code{white-space:pre-wrap;word-break:break-all;flex:1}
-.source-line.hl{background:rgba(248,113,113,.1);border-left:3px solid var(--red)}
-.source-line.hl .ln{color:var(--red)}
-.hl-annotation{padding:.3rem .5rem .3rem 4.5rem;font-size:.7rem;color:var(--pink);background:rgba(248,113,113,.06);border-left:3px solid var(--red);font-style:italic}
-.diff-lines{font-family:var(--mono);font-size:.75rem;line-height:1.6;padding:.5rem}
-.diff-line{padding:0 .5rem;white-space:pre-wrap;word-break:break-all}
-.diff-line.diff-add{background:rgba(52,211,153,.1);color:var(--green)}
-.diff-line.diff-del{background:rgba(248,113,113,.1);color:var(--red)}
-.diff-line.diff-hunk{color:var(--cyan);font-weight:600;margin-top:.5rem}
-.diff-line.diff-header{color:var(--text-dim)}
-.vuln-loc-list{padding:.5rem}
-.vuln-loc-item{padding:.5rem .8rem;margin-bottom:.4rem;background:#0d0d18;border:1px solid var(--border);border-left:3px solid var(--orange);border-radius:6px;font-size:.78rem;cursor:pointer;transition:border-color .15s}
-.vuln-loc-item:hover{border-color:var(--accent)}
-.vuln-loc-item .loc-file{color:var(--cyan);font-family:var(--mono)}
-.vuln-loc-item .loc-lines{color:var(--text-dim);font-family:var(--mono);font-size:.72rem}
-.vuln-loc-item .loc-fn{color:var(--pink);font-size:.72rem;margin-top:.2rem}
-.vuln-loc-item .loc-ctx{color:var(--text-dim);font-size:.72rem;margin-top:.2rem;line-height:1.4}
-.cve-info-box{padding:.8rem 1rem;border-bottom:1px solid var(--border);font-size:.82rem;line-height:1.5}
-.cve-info-box .cve-title{color:var(--text-bright);font-weight:600;font-size:.9rem;margin-bottom:.3rem}
-.cve-info-box .cve-desc{color:var(--text-dim)}
-
-/* ── Jump flash ───────────────────────────────────────────────── */
-@keyframes jumpFlash{
-  0%,15%{background:rgba(250,204,21,.45);outline:2px solid var(--yellow)}
-  100%  {background:transparent;outline:none}
-}
-.source-line.jump-flash{animation:jumpFlash 1.6s ease-out forwards;border-radius:2px}
-
-/* ── Loading ──────────────────────────────────────────────────── */
-.loading{text-align:center;padding:4rem;color:var(--text-dim)}
-.spinner{display:inline-block;width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;margin-bottom:.5rem}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-/* ── Empty state ──────────────────────────────────────────────── */
-.empty{text-align:center;padding:4rem;color:var(--text-dim)}
-.empty .icon{font-size:2.5rem;margin-bottom:1rem;opacity:.4}
-
-/* ── Markdown rendered ────────────────────────────────────────── */
-.md-render{line-height:1.7;font-size:.88rem}
-.md-render h1,.md-render h2,.md-render h3{color:var(--text-bright);margin:1.2rem 0 .5rem}
-.md-render h1{font-size:1.3rem;border-bottom:1px solid var(--border);padding-bottom:.4rem}
-.md-render h2{font-size:1.1rem}
-.md-render h3{font-size:.95rem}
-.md-render p{margin:.5rem 0}
-.md-render code{background:#1a1a2e;padding:1px 5px;border-radius:3px;font-size:.82rem}
-.md-render pre{margin:.8rem 0}
-.md-render pre code{background:none;padding:0}
-.md-render ul,.md-render ol{padding-left:1.5rem;margin:.5rem 0}
-.md-render li{margin:.2rem 0}
-.md-render table{border-collapse:collapse;width:100%;margin:.8rem 0;font-size:.82rem}
-.md-render th,.md-render td{border:1px solid var(--border);padding:.4rem .8rem;vertical-align:top}
-.md-render th{background:#0d0d20;color:var(--text-bright);font-weight:600;white-space:nowrap}
-.md-render tr:nth-child(even) td{background:#0a0a14}
-.md-render tr:hover td{background:var(--bg-hover)}
 </style>
 </head>
 <body>
 
 <nav>
-  <div class="logo" onclick="navigate('')">VulAgent</div>
+  <div class="logo" onclick="navigate('list')">VulAgent</div>
   <div class="breadcrumb" id="breadcrumb"></div>
-  <div style="margin-left:auto;display:flex;gap:.5rem">
-    <button onclick="navigate('')" id="nav-runs" style="background:none;border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .9rem;color:var(--text-dim);font-size:.78rem;cursor:pointer;transition:all .15s">All Runs</button>
-    <button onclick="navigate('failure-summary')" id="nav-failure" style="background:none;border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .9rem;color:var(--text-dim);font-size:.78rem;cursor:pointer;transition:all .15s">Failure Summary</button>
-  </div>
 </nav>
 
-<div class="container" id="app">
-  <div class="loading"><div class="spinner"></div><br>Loading runs...</div>
-</div>
+<div class="container" id="app"></div>
 
 <script>
-// ── State ──────────────────────────────────────────────────────
-let currentView = 'list'; // list | detail
-let currentRunId = null;
-let runsData = [];
-let runDetail = null;
+const $ = s => document.querySelector(s);
+const app = $('#app');
 
-// ── API ────────────────────────────────────────────────────────
-const API = '';
+let state = {view:'list', runId:null, hypCategory:null, hypDir:null};
+
+// Simple markdown-to-html (headings, bold, code, lists)
+function md(text) {
+  if (!text) return '';
+  return text
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+    .replace(/\n\n/g, '<br><br>')
+    .replace(/\n/g, '<br>');
+}
+
+function navigate(view, params={}) {
+  state = {view, ...params};
+  const hash = view === 'list' ? '' :
+    view === 'run' ? `run/${params.runId}` :
+    view === 'hypothesis' ? `run/${params.runId}/${params.hypCategory}/${params.hypDir}` : '';
+  history.pushState(null, '', '#' + hash);
+  render();
+}
+
+function parseHash() {
+  const h = location.hash.slice(1);
+  if (!h) return {view:'list'};
+  const p = h.split('/');
+  if (p[0] === 'run' && p.length === 2) return {view:'run', runId:p[1]};
+  if (p[0] === 'run' && p.length >= 4) return {view:'hypothesis', runId:p[1], hypCategory:p[2], hypDir:p.slice(3).join('/')};
+  return {view:'list'};
+}
+
 async function api(path) {
-  const r = await fetch(API + path);
-  if (!r.ok) throw new Error(`${r.status}`);
-  const ct = r.headers.get('content-type') || '';
-  return ct.includes('json') ? r.json() : r.text();
+  const r = await fetch('/api/' + path);
+  return r.json();
 }
 
-// ── Router ─────────────────────────────────────────────────────
-function navigate(hash) {
-  window.location.hash = hash;
+function render() {
+  const s = state;
+  if (s.view === 'list') renderList();
+  else if (s.view === 'run') renderRun(s.runId);
+  else if (s.view === 'hypothesis') renderHypothesis(s.runId, s.hypCategory, s.hypDir);
 }
 
-window.addEventListener('hashchange', route);
-window.addEventListener('load', () => { route(); });
+// ── Run List ──
 
-async function route() {
-  const hash = window.location.hash.slice(1);
-  if (hash === 'failure-summary') {
-    currentView = 'failure-summary';
-    currentRunId = null;
-    await loadFailureSummary();
-  } else if (hash && hash !== '') {
-    currentRunId = decodeURIComponent(hash);
-    currentView = 'detail';
-    vulnContextLoaded = false;
-    vulnContextData = null;
-    await loadRunDetail(currentRunId);
-  } else {
-    currentView = 'list';
-    currentRunId = null;
-    await loadRunsList();
-  }
-  updateBreadcrumb();
-  updateNavButtons();
-}
-
-function updateBreadcrumb() {
-  const bc = document.getElementById('breadcrumb');
-  if (currentView === 'list') {
-    bc.innerHTML = '<span onclick="navigate(\'\')">All Runs</span>';
-  } else if (currentView === 'failure-summary') {
-    bc.innerHTML = `<span onclick="navigate('')">All Runs</span><span class="sep">/</span><span>Failure Summary</span>`;
-  } else {
-    bc.innerHTML = `<span onclick="navigate('')">All Runs</span><span class="sep">/</span><span>${esc(currentRunId)}</span>`;
-  }
-}
-
-function updateNavButtons() {
-  const navRuns = document.getElementById('nav-runs');
-  const navFailure = document.getElementById('nav-failure');
-  if (!navRuns || !navFailure) return;
-  const base = 'border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .9rem;font-size:.78rem;cursor:pointer;transition:all .15s;';
-  const active = base + 'background:rgba(99,102,241,.15);border-color:var(--accent);color:var(--accent2)';
-  const inactive = base + 'background:none;color:var(--text-dim)';
-  navRuns.setAttribute('style', currentView !== 'failure-summary' ? active : inactive);
-  navFailure.setAttribute('style', currentView === 'failure-summary' ? active : inactive);
-}
-
-// ── Runs List ──────────────────────────────────────────────────
-async function loadRunsList() {
-  const app = document.getElementById('app');
-  app.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading runs...</div>';
-  try {
-    runsData = await api('/api/runs');
-    renderRunsList();
-  } catch (e) {
-    app.innerHTML = `<div class="empty"><div class="icon">!</div><p>Failed to load runs: ${esc(e.message)}</p></div>`;
-  }
-}
-
-// Parse run_id into {batchType, cveId}
-function parseRunId(runId) {
-  const parts = (runId || '').split('--');
-  if (parts.length >= 2) {
-    return { batchType: parts[0], cveId: parts.slice(1).join('--') };
-  }
-  return { batchType: '', cveId: runId || '' };
-}
-
-// Friendly label for batch type
-function batchLabel(bt) {
-  if (bt === 'batch_file_scan') return 'file-scan';
-  if (bt === 'batch_claude_code') return 'claude-code';
-  return bt.replace(/^batch_/, '').replace(/_/g, '-') || '—';
-}
-
-// Batch type CSS class
-function batchCls(bt) {
-  if (bt === 'batch_file_scan') return 'batch-file-scan';
-  if (bt === 'batch_claude_code') return 'batch-claude-code';
-  return 'batch-other';
-}
-
-// Current filter state
-let listFilters = { search: '', batchType: '', status: '', model: '', score: '' };
-
-function renderRunsList() {
-  const app = document.getElementById('app');
-  if (!runsData.length) {
-    app.innerHTML = '<div class="empty"><div class="icon">&#128269;</div><p>No runs found in the output directories.</p></div>';
+async function renderList() {
+  setBreadcrumb([{label:'Runs'}]);
+  const runs = await api('runs');
+  if (!runs.length) {
+    app.innerHTML = '<div class="card"><p style="color:var(--text-dim)">No scan_and_filter runs found.</p></div>';
     return;
   }
-
-  // Collect unique values for dropdown filters
-  const batchTypes = new Set();
-  const statuses = new Set();
-  const models = new Set();
-  for (const r of runsData) {
-    const { batchType } = parseRunId(r.run_id);
-    if (batchType) batchTypes.add(batchType);
-    if (r.status) statuses.add(r.status);
-    const m = r.model_name ? r.model_name.split('/').pop() : '';
-    if (m) models.add(m);
-  }
-
-  // Apply filters
-  const q = (listFilters.search || '').toLowerCase().trim();
-  const filtered = runsData.filter(r => {
-    const { batchType, cveId } = parseRunId(r.run_id);
-    if (q && !(r.run_id || '').toLowerCase().includes(q)
-        && !(cveId || '').toLowerCase().includes(q)
-        && !(r.target_ref || '').toLowerCase().includes(q)
-        && !(r.model_name || '').toLowerCase().includes(q)) return false;
-    if (listFilters.batchType && batchType !== listFilters.batchType) return false;
-    if (listFilters.status && r.status !== listFilters.status) return false;
-    if (listFilters.model) {
-      const rm = r.model_name ? r.model_name.split('/').pop() : '';
-      if (rm !== listFilters.model) return false;
-    }
-    if (listFilters.score) {
-      const sc = r.score;
-      if (!sc) return listFilters.score === 'no_score';
-      if (listFilters.score === 'no_score') return !sc;
-      if (listFilters.score === 'file_hit') return sc.file_hit;
-      if (listFilters.score === 'file_miss') return !sc.file_hit;
-      if (listFilters.score === 'func_hit') return sc.function_hit;
-      if (listFilters.score === 'func_miss') return !sc.function_hit;
-      if (listFilters.score === 'line_hit') return sc.line_hit;
-      if (listFilters.score === 'line_miss') return !sc.line_hit;
-      if (listFilters.score === 'all_hit') return sc.file_hit && sc.function_hit && sc.line_hit;
-      if (listFilters.score === 'none_hit') return !sc.file_hit && !sc.function_hit && !sc.line_hit;
-    }
-    return true;
-  });
-
-  // Build filter bar
-  let html = `<div class="filter-bar">
-    <input type="text" id="run-search" placeholder="Search CVE ID, target, model..." value="${esc(listFilters.search || '')}" onkeydown="if(event.key==='Enter')applyFilters()" oninput="applyFilters()">
-    <select id="filter-batch" onchange="applyFilters()">
-      <option value="">All Types</option>
-      ${[...batchTypes].sort().map(bt => `<option value="${esc(bt)}" ${listFilters.batchType===bt?'selected':''}>${esc(batchLabel(bt))}</option>`).join('')}
-    </select>
-    <select id="filter-status" onchange="applyFilters()">
-      <option value="">All Statuses</option>
-      ${[...statuses].sort().map(s => `<option value="${esc(s)}" ${listFilters.status===s?'selected':''}>${esc(s)}</option>`).join('')}
-    </select>
-    <select id="filter-model" onchange="applyFilters()">
-      <option value="">All Models</option>
-      ${[...models].sort().map(m => `<option value="${esc(m)}" ${listFilters.model===m?'selected':''}>${esc(m)}</option>`).join('')}
-    </select>
-    <select id="filter-score" onchange="applyFilters()">
-      <option value="">All Scores</option>
-      <option value="all_hit" ${listFilters.score==='all_hit'?'selected':''}>All Hit</option>
-      <option value="file_hit" ${listFilters.score==='file_hit'?'selected':''}>File Hit</option>
-      <option value="func_hit" ${listFilters.score==='func_hit'?'selected':''}>Func Hit</option>
-      <option value="line_hit" ${listFilters.score==='line_hit'?'selected':''}>Line Hit</option>
-      <option value="file_miss" ${listFilters.score==='file_miss'?'selected':''}>File Miss</option>
-      <option value="func_miss" ${listFilters.score==='func_miss'?'selected':''}>Func Miss</option>
-      <option value="line_miss" ${listFilters.score==='line_miss'?'selected':''}>Line Miss</option>
-      <option value="none_hit" ${listFilters.score==='none_hit'?'selected':''}>No Hits</option>
-      <option value="no_score" ${listFilters.score==='no_score'?'selected':''}>Not Scored</option>
-    </select>
-    <button class="filter-reset" onclick="resetFilters()">Reset</button>
-  </div>`;
-
-  const hasActiveFilters = q || listFilters.batchType || listFilters.status || listFilters.model || listFilters.score;
-
-  // Aggregate stats for filtered runs
-  const scoredRuns = filtered.filter(r => r.score);
-  const n = scoredRuns.length;
-  const fileHits = scoredRuns.filter(r => r.score.file_hit).length;
-  const funcHits = scoredRuns.filter(r => r.score.function_hit).length;
-  const lineHits = scoredRuns.filter(r => r.score.line_hit).length;
-  const totalCostFiltered = filtered.reduce((s, r) => s + (r.total_cost || 0), 0);
-
-  const pct = (count, total) => total > 0 ? (count / total * 100).toFixed(1) + '%' : '—';
-  const hitLbl = (count, total) => total > 0 ? ` <span style="font-size:.65rem;color:var(--text-dim)">(${count}/${total})</span>` : '';
-
-  html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin-bottom:1.25rem">
-    <div class="stat-card">
-      <div class="val" style="font-size:1.35rem">${pct(fileHits, n)}</div>
-      <div class="lbl">File Hit${hitLbl(fileHits, n)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="val" style="font-size:1.35rem">${pct(funcHits, n)}</div>
-      <div class="lbl">Func Hit${hitLbl(funcHits, n)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="val" style="font-size:1.35rem">${pct(lineHits, n)}</div>
-      <div class="lbl">Line Hit${hitLbl(lineHits, n)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="val" style="font-size:1.35rem;color:var(--yellow)">$${totalCostFiltered.toFixed(2)}</div>
-      <div class="lbl">Total Cost</div>
-    </div>
-    <div class="stat-card">
-      <div class="val" style="font-size:1.35rem">${n}<span style="font-size:.9rem;color:var(--text-dim)">/${filtered.length}</span></div>
-      <div class="lbl">Scored Runs</div>
-    </div>
-  </div>`;
-
-  html += `<h2 style="color:var(--text-bright);margin-bottom:1.5rem">Runs <span style="font-size:.85rem;color:var(--text-dim);font-weight:400">(${filtered.length}${hasActiveFilters ? ' / ' + runsData.length : ''})</span></h2>`;
-
-  if (hasActiveFilters && !filtered.length) {
-    html += '<div class="empty"><p>No runs match your filters.</p></div>';
-  }
-
-  for (const r of filtered) {
-    const { batchType, cveId } = parseRunId(r.run_id);
-    const statusCls = r.status === 'success' ? 'success' : r.status === 'partial' ? 'partial' : r.status === 'Submitted' || r.status === 'completed' ? 'success' : 'unknown';
-    const statusLabel = r.status === 'success' ? 'All Confirmed' : r.status === 'partial' ? 'Partial' : r.status === 'unknown' ? 'Unknown' : r.status;
-    const date = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
-    const model = r.model_name ? r.model_name.split('/').pop() : '—';
-    const costStr = r.total_cost ? '$' + r.total_cost.toFixed(2) : '';
-    const durStr = r.duration_seconds ? fmtDuration(r.duration_seconds) : '';
-    const sc = r.score;
-    html += `
-    <div class="card run-card" onclick="navigate('${encUri(r.run_id)}')">
+  app.innerHTML = runs.map(r => `
+    <div class="card run-card" onclick="navigate('run',{runId:'${r.id}'})">
       <div>
-        <div class="run-title">
-          <span class="cve-id">${esc(cveId)}</span>
-          <span class="batch-type ${batchCls(batchType)}">${esc(batchLabel(batchType))}</span>
-        </div>
-        <p style="margin-top:.3rem">${esc(r.target_ref || '—')}</p>
+        <div class="run-title">${esc(r.id)}</div>
+        <div class="run-file">${esc(r.file_path)}</div>
         <div class="run-meta">
-          <span class="tag ${statusCls}">${statusLabel}</span>
-          <span class="tag">${esc(model)}</span>
-          ${costStr ? `<span class="tag">${costStr}</span>` : ''}
-          ${durStr ? `<span class="tag">${durStr}</span>` : ''}
-          <span class="tag">${date}</span>
+          <span class="tag">${esc(r.model.split('/').pop())}</span>
+          <span class="tag">${r.functions_found} funcs found</span>
+          <span class="tag">${r.functions_analyzed} analyzed</span>
+          <span class="tag">${Math.round(r.duration_seconds)}s</span>
+          <span class="tag">${r.raw_hypotheses} raw</span>
+          <span class="tag">${r.deduped_hypotheses} deduped</span>
         </div>
       </div>
-      ${sc ? `<div class="score-indicators">
-        <div class="score-dot"><div class="dot hit ${sc.file_hit?'hit-yes':'hit-no'}"></div><div class="dot-label">File</div></div>
-        <div class="score-dot"><div class="dot hit ${sc.function_hit?'hit-yes':'hit-no'}"></div><div class="dot-label">Func</div></div>
-        <div class="score-dot"><div class="dot hit ${sc.line_hit?'hit-yes':'hit-no'}"></div><div class="dot-label">Line</div></div>
-      </div>` : `<div class="run-stats">
-        <div class="big">${r.hypotheses_confirmed || 0}</div>
-        <div class="label">confirmed</div>
-      </div>`}
-    </div>`;
+      <div class="run-stats">
+        <div class="big">${r.final_hypotheses}</div>
+        <div class="label">valid</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Run Detail ──
+
+async function renderRun(runId) {
+  setBreadcrumb([
+    {label:'Runs', action:()=>navigate('list')},
+    {label:runId}
+  ]);
+  app.innerHTML = '<div style="color:var(--text-dim)">Loading...</div>';
+
+  const [summary, valid, invalid] = await Promise.all([
+    api(`run/${runId}`),
+    api(`run/${runId}/valid`),
+    api(`run/${runId}/invalid`)
+  ]);
+
+  const info = summary.info || {};
+
+  let html = '';
+
+  // Stats
+  html += `<div class="stat-grid">
+    <div class="stat-card"><div class="val">${info.functions_found||0}</div><div class="lbl">Functions Found</div></div>
+    <div class="stat-card"><div class="val">${info.functions_analyzed||0}</div><div class="lbl">Analyzed</div></div>
+    <div class="stat-card"><div class="val">${info.raw_hypothesis_count||0}</div><div class="lbl">Raw Hypotheses</div></div>
+    <div class="stat-card"><div class="val">${info.deduped_hypothesis_count||0}</div><div class="lbl">After Dedup</div></div>
+    <div class="stat-card"><div class="val" style="color:var(--green)">${info.final_hypothesis_count||0}</div><div class="lbl">Final (Valid)</div></div>
+    <div class="stat-card"><div class="val">${Math.round(info.duration_seconds||0)}s</div><div class="lbl">Duration</div></div>
+  </div>`;
+
+  // Info card
+  html += `<div class="card">
+    <h3>Run Info</h3>
+    <p style="font-family:var(--mono);font-size:.8rem;color:var(--cyan)">${esc(info.file_path||'')}</p>
+    <p style="font-size:.78rem;color:var(--text-dim);margin-top:.3rem">Model: ${esc(info.model||'')} | Started: ${esc(info.started_at_utc||'')}</p>
+  </div>`;
+
+  // Tabs: Summary | Valid | Invalid
+  html += `<div class="tabs">
+    <div class="tab active" data-tab="summary">Summary</div>
+    <div class="tab" data-tab="valid">Valid Hypotheses <span class="badge badge-green">${valid.length}</span></div>
+    <div class="tab" data-tab="invalid">Invalid / Removed <span class="badge badge-red">${invalid.length}</span></div>
+  </div>`;
+
+  // Summary tab
+  html += `<div class="tab-panel active" id="tab-summary">
+    <div class="card"><h3>Deep Summary</h3><div class="md-content">${md(summary.deep_summary||'')}</div></div>
+    <div class="card"><h3>Full Summary</h3><div class="md-content">${md(summary.summary||'')}</div></div>
+  </div>`;
+
+  // Valid hypotheses tab
+  html += `<div class="tab-panel" id="tab-valid">`;
+  if (!valid.length) {
+    html += '<div class="card"><p style="color:var(--text-dim)">No valid hypotheses.</p></div>';
+  } else {
+    valid.forEach(h => {
+      const hyp = h.hypothesis || {};
+      const cwes = (h._cwe_ids||[]).map(c=>`<span class="cwe-tag">${esc(c)}</span>`).join(' ');
+      const conf = h._filter_confidence != null ? h._filter_confidence : null;
+      const confBar = conf != null ? `<span style="font-size:.72rem;color:var(--text-dim)">conf: ${(conf*100).toFixed(0)}%</span>${confidenceBar(conf)}` : '';
+      html += `<div class="card hyp-card valid" onclick="navigate('hypothesis',{runId:'${runId}',hypCategory:'valid',hypDir:'${esc(h._dir_name)}'})">
+        <div class="hyp-header">
+          <div>
+            <div class="hyp-summary">${esc(hyp.summary||'')}</div>
+            <div class="hyp-meta">${cwes} <span class="badge badge-green">VALID</span> ${confBar}</div>
+          </div>
+        </div>
+        <div style="margin-top:.5rem;font-size:.78rem;color:var(--text-dim)">
+          Entry: <code>${esc(hyp.harness_entry||'')}</code>
+          ${(hyp.hotspots||[]).map(hs=>`| <span style="color:var(--pink)">${esc(hs.file_path)}:${hs.line_start}-${hs.line_end}</span>`).join(' ')}
+        </div>
+      </div>`;
+    });
   }
+  html += '</div>';
+
+  // Invalid hypotheses tab
+  html += `<div class="tab-panel" id="tab-invalid">`;
+  if (!invalid.length) {
+    html += '<div class="card"><p style="color:var(--text-dim)">No invalid hypotheses.</p></div>';
+  } else {
+    invalid.forEach(h => {
+      const hyp = h.hypothesis || {};
+      const cwes = (h._cwe_ids||[]).map(c=>`<span class="cwe-tag">${esc(c)}</span>`).join(' ');
+      const reason = h._removed || '';
+      const verdict = h._filter_verdict || '';
+      const verdictBadge = verdict === 'INVALID' ? '<span class="badge badge-red">FILTERED</span>' : '<span class="badge badge-orange">REMOVED</span>';
+      const conf = h._filter_confidence != null ? `<span style="font-size:.72rem;color:var(--text-dim);margin-left:.5rem">conf: ${(h._filter_confidence*100).toFixed(0)}%</span>` : '';
+      html += `<div class="card hyp-card invalid" onclick="navigate('hypothesis',{runId:'${runId}',hypCategory:'invalid',hypDir:'${esc(h._dir_name)}'})">
+        <div class="hyp-header">
+          <div>
+            <div class="hyp-summary">${esc(hyp.summary||'')}</div>
+            <div class="hyp-meta">${cwes} ${verdictBadge}${conf}</div>
+          </div>
+        </div>
+        ${reason ? `<div class="removal-reason">${esc(reason)}</div>` : ''}
+      </div>`;
+    });
+  }
+  html += '</div>';
+
+  app.innerHTML = html;
+  initTabs();
+}
+
+// ── Hypothesis Detail ──
+
+async function renderHypothesis(runId, category, dirName) {
+  setBreadcrumb([
+    {label:'Runs', action:()=>navigate('list')},
+    {label:runId, action:()=>navigate('run',{runId})},
+    {label:(category==='valid'?'Valid':'Invalid')+': '+dirName}
+  ]);
+  app.innerHTML = '<div style="color:var(--text-dim)">Loading...</div>';
+
+  const data = await api(`run/${runId}/hypothesis/${category}/${dirName}`);
+  const hyp = data.hypothesis || {};
+  const hasTraj = data._has_trajectory;
+
+  let html = '';
+
+  // Back
+  html += `<div class="back-btn" onclick="navigate('run',{runId:'${runId}'})">&larr; Back to run</div>`;
+
+  // Header
+  const verdictClass = data._filter_verdict === 'VALID' ? 'badge-green' : data._filter_verdict === 'INVALID' ? 'badge-red' : 'badge-orange';
+  const verdictLabel = data._filter_verdict || (data._removed ? 'REMOVED' : 'UNKNOWN');
+  html += `<div class="card">
+    <h3>${esc(hyp.summary||'')}</h3>
+    <div style="margin-top:.5rem;display:flex;flex-wrap:wrap;gap:.5rem;align-items:center">
+      <span class="badge ${verdictClass}">${verdictLabel}</span>
+      ${(data._cwe_ids||[]).map(c=>`<span class="cwe-tag">${esc(c)}</span>`).join(' ')}
+      ${data._is_asan ? '<span class="badge badge-yellow">ASAN</span>' : ''}
+      ${data._is_vulnerability ? '<span class="badge badge-red">Vulnerability</span>' : ''}
+    </div>
+    ${data._filter_confidence != null ? `
+    <div class="filter-info">
+      <div class="item">Confidence: <span>${(data._filter_confidence*100).toFixed(0)}%</span> ${confidenceBar(data._filter_confidence)}</div>
+      ${data._filter_model_cost ? `<div class="item">Filter cost: <span>$${data._filter_model_cost.toFixed(4)}</span></div>` : ''}
+      ${data._filter_model_calls ? `<div class="item">Filter calls: <span>${data._filter_model_calls}</span></div>` : ''}
+    </div>` : ''}
+    ${data._removed ? `<div class="removal-reason" style="margin-top:1rem">${esc(data._removed)}</div>` : ''}
+    ${data._filter_reason ? `<div style="margin-top:.8rem;font-size:.82rem;color:var(--text-dim)">${esc(data._filter_reason)}</div>` : ''}
+    ${data._filter_reasoning ? `<div style="margin-top:.5rem;font-size:.82rem;color:var(--text-dim)">${esc(data._filter_reasoning)}</div>` : ''}
+  </div>`;
+
+  // Entry & files
+  html += `<div class="card">
+    <h3>Entry Point</h3>
+    <code style="color:var(--cyan);font-size:.9rem">${esc(hyp.harness_entry||'')}</code>
+    <div style="margin-top:.5rem;font-size:.78rem;color:var(--text-dim)">Files reviewed: ${(hyp.files_reviewed||[]).map(f=>`<code>${esc(f)}</code>`).join(', ')}</div>
+  </div>`;
+
+  // Call chains
+  if (hyp.call_chains && hyp.call_chains.length) {
+    html += `<div class="section-title">Call Chains <span class="count">${hyp.call_chains.length}</span></div>`;
+    hyp.call_chains.forEach(c => {
+      html += `<div class="call-chain">${esc(c).replace(/->/g,'<span style="color:var(--accent2)"> -> </span>')}</div>`;
+    });
+  }
+
+  // Hotspots
+  if (hyp.hotspots && hyp.hotspots.length) {
+    html += `<div class="section-title">Hotspots <span class="count">${hyp.hotspots.length}</span></div>`;
+    hyp.hotspots.forEach(hs => {
+      html += `<div class="hotspot">
+        <div class="fn">${esc(hs.function||'')}</div>
+        <div class="loc">${esc(hs.file_path||'')}:${hs.line_start}-${hs.line_end}</div>
+        <div class="ctx">${esc(hs.context||'')}</div>
+      </div>`;
+    });
+  }
+
+  // Warnings
+  if (hyp.warnings && hyp.warnings.length) {
+    html += `<div class="section-title">Warnings <span class="count">${hyp.warnings.length}</span></div>`;
+    html += '<div class="card">';
+    hyp.warnings.forEach(w => {
+      html += `<div class="warning-item">${esc(w)}</div>`;
+    });
+    html += '</div>';
+  }
+
+  // Filter trajectory
+  if (hasTraj) {
+    html += `<div class="section-title">Filter Trajectory</div>`;
+    html += `<div id="trajectory-container"><div class="back-btn" onclick="loadTrajectory('${runId}','${category}','${esc(dirName)}')">Load trajectory...</div></div>`;
+  }
+
   app.innerHTML = html;
 }
 
-function applyFilters() {
-  listFilters.search = (document.getElementById('run-search') || {}).value || '';
-  listFilters.batchType = (document.getElementById('filter-batch') || {}).value || '';
-  listFilters.status = (document.getElementById('filter-status') || {}).value || '';
-  listFilters.model = (document.getElementById('filter-model') || {}).value || '';
-  listFilters.score = (document.getElementById('filter-score') || {}).value || '';
-  renderRunsList();
-}
+async function loadTrajectory(runId, category, dirName) {
+  const container = document.getElementById('trajectory-container');
+  container.innerHTML = '<div style="color:var(--text-dim)">Loading...</div>';
+  const traj = await api(`run/${runId}/trajectory/${category}/${dirName}`);
 
-function resetFilters() {
-  listFilters = { search: '', batchType: '', status: '', model: '', score: '' };
-  renderRunsList();
-}
-
-// ── Run Detail ─────────────────────────────────────────────────
-async function loadRunDetail(runId) {
-  const app = document.getElementById('app');
-  app.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading run detail...</div>';
-  try {
-    runDetail = await api(`/api/runs/${encodeURIComponent(runId)}`);
-    renderRunDetail();
-  } catch (e) {
-    app.innerHTML = `<div class="empty"><div class="icon">!</div><p>Failed to load run: ${esc(e.message)}</p></div>`;
-  }
-}
-
-function renderRunDetail() {
-  const d = runDetail;
-  const m = d.manifest;
-  const counters = d.index.counters || {};
-
-  // Compute totals
-  let totalCost = 0;
-  let totalCalls = 0;
-  for (const t of d.trajectory_summaries || []) {
-    totalCost += t.cost || 0;
-    totalCalls += t.api_calls || 0;
-  }
-
-  // ── Trajectory-only view (file-scan pipeline or claude-code) ──
-  if (d.trajectory_only) {
-    const hasReport = !!(d.result_text);
-    const tabs = ['Overview'];
-    if (hasReport) tabs.push('Report');
-    tabs.push('Trajectory', 'Vuln Context');
-    let html = `<div class="tabs" id="detail-tabs">`;
-    tabs.forEach((t,i) => {
-      html += `<div class="tab ${i===0?'active':''}" onclick="switchTab(${i},'detail');${t==='Vuln Context'?'loadVulnContext()':''}">${t}</div>`;
-    });
-    html += `</div>`;
-
-    // Tab 0: Overview
-    let tabIdx = 0;
-    html += `<div class="tab-panel active" id="detail-tab-${tabIdx}">`;
-    html += `<div class="overview-grid">`;
-    html += statCard(m.target_ref || '—', 'Target');
-    html += statCard((m.model_name||'').split('/').pop(), 'Model');
-    html += statCard(m.exit_status || '—', 'Exit Status');
-    html += statCard('$' + totalCost.toFixed(2), 'Total Cost');
-    html += statCard(totalCalls, 'API Calls');
-    if (m.duration_seconds) html += statCard(fmtDuration(m.duration_seconds), 'Duration');
-    if (m.num_turns) html += statCard(m.num_turns, 'Turns');
-    html += `</div>`;
-    html += `<div class="section-title">Run Info</div>`;
-    html += `<pre>${esc(JSON.stringify(m, null, 2))}</pre>`;
-    html += `</div>`;
-    tabIdx++;
-
-    // Report tab (claude-code only)
-    if (hasReport) {
-      html += `<div class="tab-panel" id="detail-tab-${tabIdx}">`;
-      html += `<div class="card" style="max-width:900px"><div class="md-render">${renderMarkdown(stripJsonBlocks(d.result_text))}</div></div>`;
-      html += `</div>`;
-      tabIdx++;
-    }
-
-    // Trajectory tab
-    html += `<div class="tab-panel" id="detail-tab-${tabIdx}">`;
-    html += renderInlineTrajectory(d.inline_messages || []);
-    html += `</div>`;
-    tabIdx++;
-
-    // Vuln Context tab (lazy loaded)
-    html += `<div class="tab-panel" id="detail-tab-${tabIdx}">`;
-    html += `<div id="vuln-context-container"><div class="loading"><div class="spinner"></div><br>Click to load vulnerability context...</div></div>`;
-    html += `</div>`;
-
-    document.getElementById('app').innerHTML = html;
-    return;
-  }
-
-  // ── Standard multi-agent pipeline view ──
-  const tabs = ['Overview','Code Review','Hypotheses','Trajectories','Log'];
-  let html = `<div class="tabs" id="detail-tabs">`;
-  tabs.forEach((t,i) => {
-    html += `<div class="tab ${i===0?'active':''}" onclick="switchTab(${i},'detail')">${t}</div>`;
-  });
-  html += `</div>`;
-
-  // ── Tab 0: Overview
-  html += `<div class="tab-panel active" id="detail-tab-0">`;
-  html += `<div class="overview-grid">`;
-  html += statCard(m.target_ref || '—', 'Target');
-  html += statCard((m.model_name||'').split('/').pop(), 'Model');
-  html += statCard(counters.hypotheses || 0, 'Hypotheses');
-  html += statCard(counters.validation || 0, 'Validations');
-  html += statCard('$' + totalCost.toFixed(2), 'Total Cost');
-  html += statCard(totalCalls, 'API Calls');
-  html += `</div>`;
-
-  // Timeline
-  html += `<div class="section-title">Timeline</div>`;
-  html += `<div class="timeline">`;
-  for (const ev of d.events) {
-    const cls = ev.event === 'run_start' ? 'start' : ev.event.includes('success') ? 'success' : 'attempt';
-    const ts = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : '';
-    const payload = ev.payload ? Object.entries(ev.payload).map(([k,v])=>`${k}: ${v}`).join(', ') : '';
-    html += `<div class="ev ${cls}"><span class="ts">${ts}</span><strong>${esc(ev.event)}</strong> ${payload ? `<span style="color:var(--text-dim);margin-left:.5rem">${esc(payload)}</span>` : ''}</div>`;
-  }
-  html += `</div>`;
-
-  // Manifest details
-  html += `<div class="section-title">Manifest</div>`;
-  html += `<pre>${esc(JSON.stringify(m, null, 2))}</pre>`;
-  html += `</div>`;
-
-  // ── Tab 1: Code Review
-  html += `<div class="tab-panel" id="detail-tab-1">`;
-  const reviews = d.artifacts.code_review || [];
-  if (reviews.length === 0) {
-    html += `<div class="empty"><p>No code review artifacts found.</p></div>`;
-  } else {
-    for (const cr of reviews) {
-      if (cr.data) {
-        const data = cr.data;
-        html += `<div class="card"><h3>Summary</h3><p>${esc(data.summary)}</p></div>`;
-
-        // Files reviewed
-        if (data.files_reviewed && data.files_reviewed.length) {
-          html += `<div class="section-title">Files Reviewed <span class="count">${data.files_reviewed.length}</span></div>`;
-          html += `<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.5rem">`;
-          for (const f of data.files_reviewed) {
-            html += `<span class="badge badge-purple">${esc(f)}</span>`;
-          }
-          html += `</div>`;
-        }
-
-        // Harness
-        if (data.harness_entry) {
-          html += `<div class="card"><h3>Harness Entry</h3><p><code>${esc(data.harness_entry)}</code></p></div>`;
-        }
-
-        // Call chains
-        if (data.call_chains && data.call_chains.length) {
-          html += `<div class="section-title">Call Chains <span class="count">${data.call_chains.length}</span></div>`;
-          for (const chain of data.call_chains) {
-            const parts = chain.split(' -> ');
-            html += `<div class="call-chain">${parts.map(p => esc(p)).join(' <span class="arrow">-></span> ')}</div>`;
-          }
-          html += `<br>`;
-        }
-
-        // Hotspots
-        if (data.hotspots && data.hotspots.length) {
-          html += `<div class="section-title">Hotspots <span class="count">${data.hotspots.length}</span></div>`;
-          for (const h of data.hotspots) {
-            html += `<div class="hotspot">`;
-            html += `<div class="fn">${esc(h.function || '—')}</div>`;
-            html += `<div class="loc">${esc(h.file_path || '')}:${h.line_start||'?'}-${h.line_end||'?'}</div>`;
-            html += `<div class="ctx">${esc(h.context || '')}</div>`;
-            html += `</div>`;
-          }
-        }
-
-        // Warnings
-        if (data.warnings && data.warnings.length) {
-          html += `<div class="section-title">Warnings <span class="count">${data.warnings.length}</span></div>`;
-          for (const w of data.warnings) {
-            html += `<div class="card" style="border-left:3px solid var(--orange)"><p>${esc(w)}</p></div>`;
-          }
-        }
-      }
-    }
-  }
-  html += `</div>`;
-
-  // ── Tab 2: Hypotheses
-  html += `<div class="tab-panel" id="detail-tab-2">`;
-  html += renderHypotheses(d);
-  html += `</div>`;
-
-  // ── Tab 3: Trajectories
-  html += `<div class="tab-panel" id="detail-tab-3">`;
-  html += renderTrajectories(d);
-  html += `</div>`;
-
-  // ── Tab 4: Log
-  html += `<div class="tab-panel" id="detail-tab-4">`;
-  html += renderLog(d.log);
-  html += `</div>`;
-
-  document.getElementById('app').innerHTML = html;
-}
-
-function renderHypotheses(d) {
   let html = '';
-  const hyps = d.artifacts.hypotheses || [];
-  const validations = d.artifacts.validation || [];
-  const pocs = d.artifacts.poc || [];
-  const reports = d.artifacts.reports || [];
-
-  // Build lookup by hypothesis_id
-  const valMap = {};
-  for (const v of validations) { if (v.data) valMap[v.data.hypothesis_id] = v.data; }
-  const pocMap = {};
-  for (const p of pocs) { if (p.data) pocMap[p.data.hypothesis_id] = p.data; }
-  const repMap = {};
-  for (const r of reports) { if (r.data) repMap[r.data.hypothesis_id] = r.data; }
-
-  for (const hFile of hyps) {
-    if (!hFile.data) continue;
-    const hypotheses = hFile.data.hypotheses || [];
-    html += `<div class="section-title">Vulnerability Hypotheses <span class="count">${hypotheses.length}</span></div>`;
-
-    for (const h of hypotheses) {
-      const val = valMap[h.hypothesis_id];
-      const poc = pocMap[h.hypothesis_id];
-      const rep = repMap[h.hypothesis_id];
-      const hypOut = d.hypothesis_outputs[h.hypothesis_id] || {};
-      const confirmed = val && val.crash_detected;
-
-      html += `<div class="card hyp-card" style="border-left-color:${confirmed ? 'var(--green)' : 'var(--accent)'}">`;
-
-      // Header
-      html += `<div class="hyp-header">`;
-      html += `<div>`;
-      html += `<h3 style="display:flex;align-items:center;gap:.5rem">`;
-      html += `<span class="badge ${confirmed ? 'badge-green' : 'badge-orange'}">${h.hypothesis_id}</span> `;
-      html += esc(h.title);
-      html += `</h3>`;
-      html += `</div>`;
-      html += `<div style="text-align:right">`;
-      html += `<div style="font-size:.72rem;color:var(--text-dim)">Confidence</div>`;
-      html += `<div style="font-size:1.1rem;font-weight:700;color:${h.confidence >= 0.8 ? 'var(--green)' : h.confidence >= 0.5 ? 'var(--orange)' : 'var(--red)'}">${(h.confidence * 100).toFixed(0)}%</div>`;
-      html += `<div class="confidence-bar"><div class="fill" style="width:${h.confidence*100}%;background:${h.confidence >= 0.8 ? 'var(--green)' : h.confidence >= 0.5 ? 'var(--orange)' : 'var(--red)'}"></div></div>`;
-      html += `</div></div>`;
-
-      // Description
-      html += `<p style="margin:.8rem 0;line-height:1.6;font-size:.85rem">${esc(h.description)}</p>`;
-
-      // Details grid
-      html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin:.8rem 0;font-size:.82rem">`;
-      if (h.file_path) html += `<div><span style="color:var(--text-dim)">File:</span> <code>${esc(h.file_path)}</code></div>`;
-      if (h.function) html += `<div><span style="color:var(--text-dim)">Function:</span> <code>${esc(h.function)}</code></div>`;
-      if (h.expected_crash) html += `<div><span style="color:var(--text-dim)">Expected:</span> <span class="badge badge-red">${esc(h.expected_crash)}</span></div>`;
-      if (h.trigger) html += `<div style="grid-column:1/-1"><span style="color:var(--text-dim)">Trigger:</span> ${esc(h.trigger)}</div>`;
-      html += `</div>`;
-
-      // Preconditions
-      if (h.preconditions && h.preconditions.length) {
-        html += `<div style="margin:.5rem 0"><span style="color:var(--text-dim);font-size:.78rem">Preconditions:</span><ul style="padding-left:1.2rem;margin:.3rem 0;font-size:.82rem">`;
-        for (const p of h.preconditions) html += `<li>${esc(p)}</li>`;
-        html += `</ul></div>`;
-      }
-
-      // References
-      if (h.references && h.references.length) {
-        html += `<div style="margin:.5rem 0"><span style="color:var(--text-dim);font-size:.78rem">Code References:</span>`;
-        for (const ref of h.references) {
-          html += `<div style="margin:.3rem 0;padding:.4rem .6rem;background:#0a0a12;border-radius:6px;border:1px solid var(--border);font-size:.78rem">`;
-          html += `<code class="code-ref"><span class="file">${esc(ref.file_path || '')}</span>`;
-          if (ref.line_start) html += `<span class="lines">:${ref.line_start}${ref.line_end ? '-' + ref.line_end : ''}</span>`;
-          html += `</code>`;
-          if (ref.function) html += ` <span style="color:var(--pink)">${esc(ref.function)}</span>`;
-          if (ref.context) html += `<div style="color:var(--text-dim);margin-top:.3rem;font-size:.75rem">${esc(ref.context)}</div>`;
-          html += `</div>`;
-        }
-        html += `</div>`;
-      }
-
-      // ── Sub-sections: Validation, PoC, Report ──
-      const subTabs = [];
-      if (val) subTabs.push('Validation');
-      if (poc) subTabs.push('PoC');
-      if (hypOut.report_md) subTabs.push('Report');
-      if (hypOut.script_py) subTabs.push('Script');
-
-      if (subTabs.length) {
-        const stId = 'subtab-' + h.hypothesis_id;
-        html += `<div class="tabs" style="margin-top:1rem;border-top:1px solid var(--border);padding-top:.5rem">`;
-        subTabs.forEach((st, i) => {
-          html += `<div class="tab ${i===0?'active':''}" onclick="switchTab(${i},'${stId}')">${st}</div>`;
-        });
-        html += `</div>`;
-
-        let si = 0;
-
-        // Validation panel
-        if (val) {
-          html += `<div class="tab-panel ${si===0?'active':''}" id="${stId}-tab-${si}">`;
-          html += `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.8rem">`;
-          html += `<span class="badge ${val.crash_detected ? 'badge-green' : 'badge-red'}">${val.crash_detected ? 'CRASH DETECTED' : 'NO CRASH'}</span>`;
-          if (val.returncode != null) html += `<span class="badge badge-cyan">exit code: ${val.returncode}</span>`;
-          for (const ind of (val.indicators || [])) {
-            html += `<span class="badge badge-orange">${esc(ind)}</span>`;
-          }
-          html += `</div>`;
-          if (val.reproduction_command) html += `<div style="margin-bottom:.5rem;font-size:.82rem"><span style="color:var(--text-dim)">Repro:</span> <code>${esc(val.reproduction_command)}</code></div>`;
-          if (val.output_excerpt) {
-            html += `<div class="asan-output">${formatAsan(val.output_excerpt)}</div>`;
-          }
-          html += `</div>`;
-          si++;
-        }
-
-        // PoC panel
-        if (poc) {
-          html += `<div class="tab-panel ${si===0?'active':''}" id="${stId}-tab-${si}">`;
-          if (poc.generation_steps && poc.generation_steps.length) {
-            html += `<div style="margin-bottom:1rem"><strong style="font-size:.82rem;color:var(--text-bright)">Generation Steps:</strong><ol style="padding-left:1.3rem;margin:.4rem 0;font-size:.82rem">`;
-            for (const s of poc.generation_steps) html += `<li style="margin:.3rem 0">${esc(s)}</li>`;
-            html += `</ol></div>`;
-          }
-          if (poc.expected_signal) html += `<div style="margin-bottom:.5rem;font-size:.82rem"><span style="color:var(--text-dim)">Expected Signal:</span> <span class="badge badge-red">${esc(poc.expected_signal)}</span></div>`;
-          if (poc.reproduction_command) html += `<div style="margin-bottom:.5rem;font-size:.82rem"><span style="color:var(--text-dim)">Repro:</span> <code>${esc(poc.reproduction_command)}</code></div>`;
-          if (hypOut.poc_hex) {
-            html += `<div style="margin-top:.8rem"><strong style="font-size:.82rem;color:var(--text-bright)">PoC Binary (${hypOut.poc_size} bytes):</strong>`;
-            html += `<pre style="margin-top:.4rem">${formatHex(hypOut.poc_hex)}</pre>`;
-            html += `</div>`;
-          }
-          html += `</div>`;
-          si++;
-        }
-
-        // Report panel
-        if (hypOut.report_md) {
-          html += `<div class="tab-panel ${si===0?'active':''}" id="${stId}-tab-${si}">`;
-          html += `<div class="md-render">${renderMarkdown(hypOut.report_md)}</div>`;
-          html += `</div>`;
-          si++;
-        }
-
-        // Script panel
-        if (hypOut.script_py) {
-          html += `<div class="tab-panel ${si===0?'active':''}" id="${stId}-tab-${si}">`;
-          html += `<div class="script-view"><button class="copy-btn" onclick="copyText(this)">Copy</button><pre>${esc(hypOut.script_py)}</pre></div>`;
-          html += `</div>`;
-          si++;
-        }
-      }
-
-      html += `</div>`; // close hyp-card
-    }
-  }
-
-  if (!html) html = '<div class="empty"><p>No hypotheses found.</p></div>';
-  return html;
-}
-
-function renderTrajectories(d) {
-  let html = `<div class="section-title">Agent Trajectories <span class="count">${(d.trajectory_summaries||[]).length}</span></div>`;
-  for (const t of (d.trajectory_summaries || [])) {
-    html += `<div class="agent-row" onclick="loadTrajectory('${encUri(currentRunId)}','${esc(t.path)}','${esc(t.agent_name)}')">`;
-    html += `<div class="name">${esc(t.agent_name)}</div>`;
-    html += `<div class="detail">${t.message_count || '?'} msgs</div>`;
-    html += `<div class="detail">${t.api_calls || '?'} calls</div>`;
-    html += `<div class="detail">$${(t.cost || 0).toFixed(2)}</div>`;
-    html += `</div>`;
-  }
-  html += `<div id="trajectory-viewer"></div>`;
-  return html;
-}
-
-async function loadTrajectory(runId, path, agentName) {
-  const viewer = document.getElementById('trajectory-viewer');
-  viewer.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading trajectory...</div>';
-  try {
-    const traj = await api(`/api/runs/${encodeURIComponent(runId)}/artifact/${path}`);
-    const messages = traj.data?.messages || [];
-    const info = traj.data?.info || {};
-    let html = `<div style="margin-top:1rem">`;
-    html += `<div class="section-title">${esc(agentName)} <span class="badge badge-green">${esc(info.exit_status || '—')}</span></div>`;
-
-    // Config info
-    if (info.config?.environment) {
-      const env = info.config.environment;
-      html += `<div style="font-size:.78rem;color:var(--text-dim);margin-bottom:1rem">Image: <code>${esc(env.image||'—')}</code> | CWD: <code>${esc(env.cwd||'—')}</code> | Timeout: ${env.timeout||'—'}s</div>`;
-    }
-
-    // Messages
-    html += `<div class="section-title">Messages <span class="count">${messages.length}</span></div>`;
-    let agentStepNum = 0;
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i];
-      const role = msg.role || 'unknown';
-      const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2);
-      const hasCmd = msg.command != null;
-      const msgId = `msg-${agentName}-${i}`;
-      const isStep = role === 'assistant' && !hasCmd;
-      if (isStep) agentStepNum++;
-      html += `<div class="traj-msg ${role}">`;
-      html += `<div class="role">${role}${isStep ? ` <span class="step-num">Step ${agentStepNum}</span>` : ''}${msg.timestamp ? ` <span style="font-weight:400;color:var(--text-dim)">${new Date(msg.timestamp).toLocaleTimeString()}</span>` : ''}</div>`;
-
-      if (hasCmd) {
-        // Structured command + output display
-        const rc = msg.command_returncode;
-        const rcCls = rc === 0 ? 'rc-ok' : 'rc-fail';
-        const cmdOut = msg.command_output || '';
-        const cmdOutId = `cmdout-${agentName}-${i}`;
-        const cmdOutLong = cmdOut.length > 800;
-        html += `<div class="cmd-block">`;
-        html += `<div class="cmd-header"><span>Command</span><span class="cmd-rc ${rcCls}">exit ${rc != null ? rc : '?'}</span></div>`;
-        html += `<div class="cmd-cmd">${esc(msg.command)}</div>`;
-        if (cmdOut) {
-          html += `<div class="cmd-output ${cmdOutLong ? 'collapsed' : ''}" id="${cmdOutId}">${esc(cmdOut)}</div>`;
-          if (cmdOutLong) html += `<div style="text-align:center;padding:.3rem"><span class="msg-toggle" onclick="toggleMsg('${cmdOutId}',this)">Show more</span></div>`;
-        }
-        html += `</div>`;
-      } else {
-        const isLong = content.length > 600;
-        html += `<div class="content ${isLong ? 'collapsed' : ''}" id="${msgId}">${esc(content)}</div>`;
-        if (isLong) html += `<span class="msg-toggle" onclick="toggleMsg('${msgId}',this)">Show more</span>`;
-      }
-
-      html += `</div>`;
-    }
-
-    // Submission
-    if (info.submission) {
-      html += `<div class="section-title" style="margin-top:1.5rem">Final Submission</div>`;
-      html += `<pre>${esc(info.submission)}</pre>`;
-    }
-
-    html += `</div>`;
-    viewer.innerHTML = html;
-  } catch (e) {
-    viewer.innerHTML = `<div class="card" style="border-color:var(--red)"><p>Failed to load trajectory: ${esc(e.message)}</p></div>`;
-  }
-}
-
-function renderLog(logText) {
-  if (!logText) return '<div class="empty"><p>No log available.</p></div>';
-  const lines = logText.split('\n');
-  let html = '<div class="log-viewer">';
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    let cls = 'log-line';
-    if (line.includes('finished with')) cls += ' log-finish';
-    else if (line.includes('Starting') || line.includes('Running')) cls += ' log-start';
-
-    // Colorize
-    const parts = line.split(' | ', 2);
-    if (parts.length === 2) {
-      const ts = parts[0];
-      let msg = parts[1];
-      // Highlight agent names
-      msg = msg.replace(/(RepoReviewerAgent|HypothesisGeneratorAgent|PoCBuilderAgent|ValidatorAgent|ReporterAgent)/g, '<span class="log-agent">$1</span>');
-      // Highlight cost
-      msg = msg.replace(/(\$[\d.]+)/g, '<span style="color:var(--yellow)">$1</span>');
-      html += `<span class="${cls}"><span class="log-ts">${esc(ts)}</span> | ${msg}\n</span>`;
-    } else {
-      html += `<span class="${cls}">${esc(line)}\n</span>`;
-    }
-  }
-  html += '</div>';
-  return html;
-}
-
-// ── Tab switching ──────────────────────────────────────────────
-function switchTab(idx, prefix) {
-  const container = prefix === 'detail' ? document.getElementById('app') : document.getElementById('app');
-  const tabs = container.querySelectorAll(`#${prefix === 'detail' ? 'detail-tabs' : prefix} .tab`);
-  tabs.forEach((t, i) => t.classList.toggle('active', i === idx));
-  // Find panels
-  let i = 0;
-  while (true) {
-    const panel = document.getElementById(`${prefix === 'detail' ? 'detail' : prefix}-tab-${i}`);
-    if (!panel) break;
-    panel.classList.toggle('active', i === idx);
-    i++;
-  }
-}
-
-function toggleMsg(id, btn) {
-  const el = document.getElementById(id);
-  const collapsed = el.classList.toggle('collapsed');
-  btn.textContent = collapsed ? 'Show more' : 'Show less';
-}
-
-function copyText(btn) {
-  const pre = btn.parentElement.querySelector('pre');
-  navigator.clipboard.writeText(pre.textContent).then(() => {
-    btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = 'Copy', 1500);
-  });
-}
-
-// ── Inline trajectory renderer (for trajectory-only runs) ──────
-function renderInlineTrajectory(messages) {
-  if (!messages.length) return '<div class="empty"><p>No messages in trajectory.</p></div>';
-  let html = `<div class="section-title">Trajectory <span class="count">${messages.length}</span></div>`;
-
-  let stepNum = 0;
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
+  (traj || []).forEach((msg, i) => {
     const role = msg.role || 'unknown';
-    const hasCmd = msg.command != null;
-    const msgId = `inline-msg-${i}`;
+    const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2);
+    const isLong = content.length > 600;
+    const id = `traj-${i}`;
 
-    // Count assistant steps (text messages only, not tool calls)
-    const isStep = role === 'assistant' && !hasCmd;
-    if (isStep) stepNum++;
+    html += `<div class="traj-msg ${role}">
+      <div class="role">${role.toUpperCase()}</div>`;
 
-    html += `<div class="traj-msg ${role}">`;
-    html += `<div class="role">${role}${isStep ? ` <span class="step-num">Step ${stepNum}</span>` : ''}${msg.timestamp ? ` <span style="font-weight:400;color:var(--text-dim)">${new Date(msg.timestamp).toLocaleTimeString()}</span>` : ''}</div>`;
-
-    if (hasCmd) {
-      const rc = msg.command_returncode;
-      const rcCls = rc === 0 ? 'rc-ok' : 'rc-fail';
-      const cmdOut = msg.command_output || '';
-      const cmdOutId = `inline-cmdout-${i}`;
-      const cmdOutLong = cmdOut.length > 800;
-      html += `<div class="cmd-block">`;
-      html += `<div class="cmd-header"><span>Command</span><span class="cmd-rc ${rcCls}">exit ${rc != null ? rc : '?'}</span></div>`;
-      html += `<div class="cmd-cmd">${esc(msg.command)}</div>`;
-      if (cmdOut) {
-        html += `<div class="cmd-output ${cmdOutLong ? 'collapsed' : ''}" id="${cmdOutId}">${esc(cmdOut)}</div>`;
-        if (cmdOutLong) html += `<div style="text-align:center;padding:.3rem"><span class="msg-toggle" onclick="toggleMsg('${cmdOutId}',this)">Show more</span></div>`;
-      }
-      html += `</div>`;
-    } else {
-      const content = msg.content || '';
-      if (!content.trim()) { html += `</div>`; continue; }
-      const isLong = content.length > 600;
-      html += `<div class="content ${isLong ? 'collapsed' : ''}" id="${msgId}">${esc(content)}</div>`;
-      if (isLong) html += `<span class="msg-toggle" onclick="toggleMsg('${msgId}',this)">Show more</span>`;
+    // Tool calls
+    if (msg.tool_calls) {
+      msg.tool_calls.forEach(tc => {
+        const args = typeof tc.arguments === 'object' ? JSON.stringify(tc.arguments, null, 2) : (tc.arguments || '');
+        html += `<div class="tool-call">
+          <div class="tool-name">${esc(tc.name||'tool')}</div>
+          <div class="tool-args">${esc(args)}</div>
+        </div>`;
+      });
     }
 
-    html += `</div>`;
-  }
-  return html;
-}
-
-// ── Vuln Context ────────────────────────────────────────────────
-let vulnContextData = null;
-let vulnContextLoaded = false;
-
-async function loadVulnContext() {
-  if (vulnContextLoaded) return;
-  vulnContextLoaded = true;
-  const container = document.getElementById('vuln-context-container');
-  if (!container) return;
-  container.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading vulnerability context...</div>';
-  try {
-    vulnContextData = await api(`/api/runs/${encodeURIComponent(currentRunId)}/vuln_context`);
-    renderVulnContext(container);
-  } catch (e) {
-    container.innerHTML = `<div class="empty"><p>No vulnerability context available: ${esc(e.message)}</p></div>`;
-  }
-}
-
-function renderVulnContext(container) {
-  const d = vulnContextData;
-  if (!d) return;
-
-  let html = '';
-
-  // CVE info header
-  if (d.cve_id) {
-    html += `<div class="cve-info-box" style="margin-bottom:1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius)">`;
-    html += `<div class="cve-title">${esc(d.cve_id)}</div>`;
-    if (d.cve_info.description) html += `<div class="cve-desc">${esc(d.cve_info.description)}</div>`;
-    if (d.cve_info.cwe_ids && d.cve_info.cwe_ids.length) {
-      html += `<div style="margin-top:.3rem">${d.cve_info.cwe_ids.map(c => `<span class="badge badge-orange">${esc(c)}</span>`).join(' ')}</div>`;
+    html += `<div class="content ${isLong?'collapsed':''}" id="${id}">${esc(content)}</div>`;
+    if (isLong) {
+      html += `<span class="msg-toggle" onclick="toggleMsg('${id}',this)">Show more</span>`;
     }
-    html += `</div>`;
-  }
-
-  // Reported locations summary
-  if (d.reported_locations.length) {
-    html += `<div class="section-title">Reported Locations <span class="count">${d.reported_locations.length}</span></div>`;
-    html += `<div class="vuln-loc-list" style="margin-bottom:1rem">`;
-    for (let i = 0; i < d.reported_locations.length; i++) {
-      const loc = d.reported_locations[i];
-      html += `<div class="vuln-loc-item" onclick="scrollToVulnLoc(${i})">`;
-      html += `<div class="loc-file">${esc(loc.file_path)}</div>`;
-      html += `<div class="loc-lines">Lines ${loc.line_start}${loc.line_end !== loc.line_start ? '-' + loc.line_end : ''} <span class="badge badge-purple" style="margin-left:.3rem">${esc(loc.source)}</span></div>`;
-      if (loc.function) html += `<div class="loc-fn">${esc(loc.function)}</div>`;
-      if (loc.context) html += `<div class="loc-ctx">${esc(loc.context)}</div>`;
-      html += `</div>`;
-    }
-    html += `</div>`;
-  }
-
-  // Side-by-side panels
-  html += `<div class="vuln-context-panels">`;
-
-  // Left panel: Source files with highlights
-  html += `<div class="vuln-panel">`;
-  html += `<div class="vuln-panel-header">Source Code</div>`;
-
-  const fileNames = Object.keys(d.source_files);
-  if (fileNames.length > 0) {
-    html += `<div class="source-file-selector" id="vuln-file-selector">`;
-    fileNames.forEach((f, i) => {
-      html += `<button class="file-btn ${i===0?'active':''}" onclick="switchVulnFile(${i})">${esc(f.split('/').pop())}</button>`;
-    });
-    html += `</div>`;
-    fileNames.forEach((fp, fi) => {
-      html += `<div class="vuln-panel-body" id="vuln-file-${fi}" style="${fi>0?'display:none':''}">`;
-      html += renderSourceWithHighlights(fp, d.source_files[fp], d.reported_locations);
-      html += `</div>`;
-    });
-  } else {
-    html += `<div class="vuln-panel-body"><div class="empty" style="padding:2rem"><p>No source files available in scripts/repos/</p></div></div>`;
-  }
-  html += `</div>`;
-
-  // Right panel: Patch diff
-  html += `<div class="vuln-panel">`;
-  html += `<div class="vuln-panel-header">Actual Patch</div>`;
-  html += `<div class="vuln-panel-body">`;
-  if (d.patch) {
-    html += renderDiff(d.patch);
-  } else {
-    html += `<div class="empty" style="padding:2rem"><p>No patch file found</p></div>`;
-  }
-  html += `</div></div>`;
-
-  html += `</div>`; // close panels
+    html += '</div>';
+  });
 
   container.innerHTML = html;
 }
 
-function renderSourceWithHighlights(filePath, content, locations) {
-  const lines = content.split('\n');
-  // Build highlight ranges for this file
-  const highlights = {};
-  const annotations = {};
-  for (const loc of locations) {
-    // Match by exact path or by filename suffix
-    const locPath = loc.file_path || '';
-    if (filePath === locPath || filePath.endsWith('/' + locPath) || locPath.endsWith('/' + filePath.split('/').pop())) {
-      const start = loc.line_start || 0;
-      const end = loc.line_end || start;
-      for (let l = start; l <= end; l++) {
-        highlights[l] = true;
-      }
-      // Annotate at the start line
-      if (start && (loc.function || loc.context)) {
-        annotations[start] = { fn: loc.function || '', ctx: loc.context || '' };
-      }
-    }
-  }
-
-  let html = '<div class="source-lines">';
-  for (let i = 0; i < lines.length; i++) {
-    const lineNum = i + 1;
-    const isHL = highlights[lineNum];
-    // Annotation before the highlighted block starts
-    if (annotations[lineNum]) {
-      const ann = annotations[lineNum];
-      html += `<div class="hl-annotation">${ann.fn ? '<strong>' + esc(ann.fn) + '</strong> — ' : ''}${esc(ann.ctx)}</div>`;
-    }
-    html += `<div class="source-line ${isHL ? 'hl' : ''}" id="src-line-${lineNum}">`;
-    html += `<span class="ln">${lineNum}</span>`;
-    html += `<span class="code">${esc(lines[i])}</span>`;
-    html += `</div>`;
-  }
-  html += '</div>';
-  return html;
+function toggleMsg(id, el) {
+  const c = document.getElementById(id);
+  c.classList.toggle('collapsed');
+  el.textContent = c.classList.contains('collapsed') ? 'Show more' : 'Show less';
 }
 
-function renderDiff(patch) {
-  const lines = patch.split('\n');
-  let html = '<div class="diff-lines">';
-  let currentFile = null;
-  for (const line of lines) {
-    let cls = 'diff-line';
-    let extra = '';
-    if (line.startsWith('+') && !line.startsWith('+++')) cls += ' diff-add';
-    else if (line.startsWith('-') && !line.startsWith('---')) cls += ' diff-del';
-    else if (line.startsWith('@@')) {
-      cls += ' diff-hunk';
-      // Parse "+newStart" from "@@ -old,n +new,n @@"
-      const m = line.match(/\+(\d+)/);
-      if (m && currentFile) {
-        const lineNum = parseInt(m[1], 10);
-        const f = currentFile;
-        // JSON.stringify produces double-quotes which would break the onclick="" attribute;
-        // encode them as &quot; so the HTML parser sees a valid attribute value.
-        const fJson = JSON.stringify(f).replace(/"/g, '&quot;');
-        extra = ` <button onclick="jumpToPatchLine(${fJson},${lineNum})" style="float:right;background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);color:var(--accent2);padding:0 6px;border-radius:3px;font-size:.68rem;cursor:pointer;line-height:1.6">↳ jump</button>`;
-      }
-    } else if (line.startsWith('+++')) {
-      cls += ' diff-header';
-      // Extract file path from "+++ b/path"
-      const m = line.match(/^\+\+\+\s+(?:b\/)?(.+)/);
-      if (m) currentFile = m[1].trim();
-    } else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---')) {
-      cls += ' diff-header';
-    }
-    html += `<div class="${cls}">${extra}${esc(line)}</div>`;
-  }
-  html += '</div>';
-  return html;
+// ── Helpers ──
+
+function confidenceBar(val) {
+  const pct = Math.round((val||0)*100);
+  const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--orange)' : 'var(--red)';
+  return `<div class="confidence-bar"><div class="fill" style="width:${pct}%;background:${color}"></div></div>`;
 }
 
-function jumpToPatchLine(filePath, lineNum) {
-  if (!vulnContextData) return;
-  const fileNames = Object.keys(vulnContextData.source_files);
-  let fileIdx = 0;
-  for (let i = 0; i < fileNames.length; i++) {
-    const fn = fileNames[i];
-    if (fn === filePath || fn.endsWith('/' + filePath) || filePath.endsWith('/' + fn) ||
-        fn.split('/').pop() === filePath.split('/').pop()) {
-      fileIdx = i;
-      break;
-    }
-  }
-  switchVulnFile(fileIdx);
-  setTimeout(() => {
-    // Query *within* the specific panel to avoid duplicate src-line-N IDs across files
-    const panel = document.getElementById('vuln-file-' + fileIdx);
-    if (!panel) return;
-    const el = panel.querySelector('[id="src-line-' + lineNum + '"]');
-    if (!el) return;
-    // Scroll the panel's own scroll container (scrollIntoView scrolls the page, not the panel)
-    const elRect = el.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    panel.scrollTop += elRect.top - panelRect.top - panel.clientHeight / 2;
-    // Flash highlight
-    el.classList.remove('jump-flash');
-    void el.offsetWidth; // force reflow to restart animation
-    el.classList.add('jump-flash');
-    el.addEventListener('animationend', () => el.classList.remove('jump-flash'), { once: true });
-  }, 50);
-}
-
-function switchVulnFile(idx) {
-  // Toggle file visibility
-  let i = 0;
-  while (true) {
-    const el = document.getElementById('vuln-file-' + i);
-    if (!el) break;
-    el.style.display = i === idx ? '' : 'none';
-    i++;
-  }
-  // Toggle button active state
-  const selector = document.getElementById('vuln-file-selector');
-  if (selector) {
-    selector.querySelectorAll('.file-btn').forEach((btn, bi) => {
-      btn.classList.toggle('active', bi === idx);
-    });
-  }
-}
-
-function scrollToVulnLoc(locIdx) {
-  if (!vulnContextData) return;
-  const loc = vulnContextData.reported_locations[locIdx];
-  if (!loc) return;
-  const fp = loc.file_path;
-  // Find and activate the matching file tab
-  const fileNames = Object.keys(vulnContextData.source_files);
-  let fileIdx = -1;
-  for (let i = 0; i < fileNames.length; i++) {
-    if (fileNames[i] === fp || fileNames[i].endsWith('/' + fp) || fp.endsWith('/' + fileNames[i].split('/').pop())) {
-      fileIdx = i;
-      break;
-    }
-  }
-  if (fileIdx >= 0) {
-    switchVulnFile(fileIdx);
-    // Scroll to the line
-    setTimeout(() => {
-      const lineEl = document.getElementById('src-line-' + loc.line_start);
-      if (lineEl) lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 100);
-  }
-}
-
-function fmtDuration(seconds) {
-  if (seconds < 60) return Math.round(seconds) + 's';
-  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + Math.round(seconds % 60) + 's';
-  return Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
-}
-
-// ── Formatting helpers ─────────────────────────────────────────
 function esc(s) {
-  if (s == null) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
 }
 
-function encUri(s) { return encodeURIComponent(s); }
-
-function statCard(val, label) {
-  return `<div class="stat-card"><div class="val">${esc(String(val))}</div><div class="lbl">${esc(label)}</div></div>`;
+function setBreadcrumb(items) {
+  const bc = document.getElementById('breadcrumb');
+  bc.innerHTML = items.map((it, i) => {
+    const last = i === items.length - 1;
+    const sep = i > 0 ? '<span class="sep">/</span>' : '';
+    return sep + (it.action && !last
+      ? `<span onclick="(${it.action.toString()})()">${esc(it.label)}</span>`
+      : `<span style="color:var(--text)">${esc(it.label)}</span>`);
+  }).join('');
 }
 
-function formatAsan(text) {
-  return esc(text)
-    .replace(/(ERROR: AddressSanitizer: \S+)/g, '<span class="asan-error">$1</span>')
-    .replace(/(SUMMARY:.*)/g, '<span class="asan-summary">$1</span>')
-    .replace(/(#\d+ 0x[0-9a-f]+ in \S+)/g, '<span class="asan-frame">$1</span>');
-}
-
-function formatHex(hexStr) {
-  let out = '';
-  const bytes = [];
-  for (let i = 0; i < hexStr.length; i += 2) {
-    bytes.push(parseInt(hexStr.substr(i, 2), 16));
-  }
-  for (let i = 0; i < bytes.length; i += 16) {
-    const chunk = bytes.slice(i, i + 16);
-    const offset = i.toString(16).padStart(8, '0');
-    const hex = chunk.map(b => b.toString(16).padStart(2, '0')).join(' ');
-    const ascii = chunk.map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
-    out += `${offset}  ${hex.padEnd(48)}  |${ascii}|\n`;
-  }
-  return esc(out);
-}
-
-// ── Failure Summary page ───────────────────────────────────────
-async function loadFailureSummary() {
-  const app = document.getElementById('app');
-  app.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading failure summary...</div>';
-  try {
-    const text = await api('/api/failure_summary');
-    if (!text || !text.trim()) {
-      app.innerHTML = '<div class="empty"><div class="icon">&#128196;</div><p>No failure_summary.md found in the output directory.</p></div>';
-      return;
-    }
-    app.innerHTML = `<div class="card" style="max-width:960px"><div class="md-render">${renderMarkdown(text)}</div></div>`;
-  } catch (e) {
-    app.innerHTML = `<div class="empty"><div class="icon">!</div><p>Failed to load failure summary: ${esc(e.message)}</p></div>`;
-  }
-}
-
-function stripJsonBlocks(md) {
-  // Remove ```json ... ``` fenced blocks used only for machine parsing
-  return md.replace(/^```json[ \t]*\r?\n[\s\S]*?^```[ \t]*$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function renderMarkdown(md) {
-  // Protect fenced code blocks before escaping
-  const fenced = [];
-  let src = md.replace(/^```[^\n]*\n([\s\S]*?)^```/gm, (_, code) => {
-    const i = fenced.length;
-    fenced.push('<pre><code>' + esc(code) + '</code></pre>');
-    return `\x00FENCE${i}\x00`;
+function initTabs() {
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + target));
+    });
   });
-
-  let html = esc(src);
-
-  // Restore fenced code blocks
-  html = html.replace(/\x00FENCE(\d+)\x00/g, (_, i) => fenced[i]);
-
-  // Indented code blocks (4 spaces)
-  html = html.replace(/^(    .+(\n    .+)*)/gm, (m) => {
-    return '<pre><code>' + m.replace(/^    /gm, '') + '</code></pre>';
-  });
-
-  // Tables (must run before paragraph wrapping)
-  html = _renderMdTables(html);
-
-  // Headers
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-  // Bold
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  // List items
-  html = html.replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>');
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-
-  // Convert newlines to <br>, but preserve whitespace inside block elements
-  const blocks = [];
-  html = html.replace(/<(pre|table)[\s\S]*?<\/\1>/g, m => {
-    const i = blocks.length;
-    blocks.push(m);
-    return `\x00BLOCK${i}\x00`;
-  });
-  html = html.replace(/\n/g, '<br>\n');
-  html = html.replace(/\x00BLOCK(\d+)\x00/g, (_, i) => blocks[i]);
-
-  return html;
 }
 
-function _renderMdTables(html) {
-  const lines = html.split('\n');
-  const out = [];
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i].trim();
-    // A table starts with a pipe and the next line is a separator row
-    if (line.startsWith('|') && i + 1 < lines.length) {
-      const sep = lines[i + 1].trim();
-      if (/^\|[-| :]+\|?\s*$/.test(sep)) {
-        const headerCells = _splitTableRow(lines[i]);
-        const sepCells = _splitTableRow(sep);
-        const aligns = sepCells.map(c => {
-          if (c.startsWith(':') && c.endsWith(':')) return 'center';
-          if (c.endsWith(':')) return 'right';
-          return 'left';
-        });
+// ── Router ──
+window.addEventListener('popstate', () => {
+  state = parseHash();
+  render();
+});
 
-        let t = '<table><thead><tr>';
-        headerCells.forEach((c, j) => {
-          t += `<th style="text-align:${aligns[j]||'left'}">${c}</th>`;
-        });
-        t += '</tr></thead><tbody>';
-
-        i += 2;
-        while (i < lines.length && lines[i].trim().startsWith('|')) {
-          const cells = _splitTableRow(lines[i]);
-          t += '<tr>';
-          headerCells.forEach((_, j) => {
-            t += `<td style="text-align:${aligns[j]||'left'}">${cells[j] || ''}</td>`;
-          });
-          t += '</tr>';
-          i++;
-        }
-        t += '</tbody></table>';
-        out.push(t);
-        continue;
-      }
-    }
-    out.push(lines[i]);
-    i++;
-  }
-  return out.join('\n');
-}
-
-function _splitTableRow(line) {
-  const trimmed = line.trim();
-  const inner = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
-  const body = inner.endsWith('|') ? inner.slice(0, -1) : inner;
-  return body.split('|').map(c => c.trim());
-}
+state = parseHash();
+render();
 </script>
 </body>
 </html>

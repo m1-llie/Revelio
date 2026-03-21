@@ -82,19 +82,18 @@ class FunctionInfo:
         self.end_line = end_line
 
 
-def _ts_parse(source: str, ts_module, func_types: dict[str, str], language_fn: str = "language") -> list[FunctionInfo]:
+def _ts_parse(source: str, ts_module, func_types: dict[str, str]) -> list[FunctionInfo]:
     """Generic tree-sitter parser.
 
     func_types maps node_type -> child_type_that_holds_the_name.
     e.g. {"function_definition": "identifier", "function_item": "identifier"}
-    language_fn: name of the callable on ts_module that returns the language object.
     """
     try:
         from tree_sitter import Language, Parser
     except ImportError:
         return []
 
-    lang = Language(getattr(ts_module, language_fn)())
+    lang = Language(ts_module.language())
     parser = Parser(lang)
     tree = parser.parse(source.encode(errors="replace"))
     lines = source.splitlines()
@@ -194,28 +193,6 @@ def _parse_go(source: str) -> list[FunctionInfo]:
     })
 
 
-def _parse_javascript(source: str) -> list[FunctionInfo]:
-    try:
-        import tree_sitter_javascript as tsj
-    except ImportError:
-        return []
-    return _ts_parse(source, tsj, {
-        "function_declaration": "identifier",
-        "method_definition": "property_identifier",
-    })
-
-
-def _parse_typescript(source: str) -> list[FunctionInfo]:
-    try:
-        import tree_sitter_typescript as tst
-    except ImportError:
-        return []
-    return _ts_parse(source, tst, {
-        "function_declaration": "identifier",
-        "method_definition": "property_identifier",
-    }, language_fn="language_typescript")
-
-
 def _remove_overlapping(funcs: list[FunctionInfo]) -> list[FunctionInfo]:
     """Keep only non-overlapping functions (sorted by start line, greedy)."""
     sorted_funcs = sorted(funcs, key=lambda f: (f.start_line, f.end_line))
@@ -239,13 +216,8 @@ def parse_functions(file_path: Path, source: str) -> list[FunctionInfo]:
         funcs = _parse_rust(source)
     elif ext == ".go":
         funcs = _parse_go(source)
-    elif ext in {".ts", ".tsx"}:
-        funcs = _parse_typescript(source)
-    elif ext in {".mjs", ".js", ".jsx"}:
-        funcs = _parse_javascript(source)
     else:
-        raise ValueError(f"{ext} is not supported yet for parsing.")
-        #return []
+        return []
     return _remove_overlapping(funcs)
 
 
@@ -373,9 +345,9 @@ FOCUSED_PASSES = [
     "For each pointer dereference, check whether a NULL value could reach it and what the consequence would be. "
     "Form hypotheses for any potential NULL pointer dereference vulnerabilities you find.",
 
-    "Good. Now please re-examine the code under the following assumption: **every if condition may be written wrong** — "
-    "i.e. the branch condition could be written wrong. "
-    "For each if statement, check if the branch conditions are written correctly. "
+    "Good. Now please re-examine the code under the following assumption: **every if condition may be wrong** — "
+    "i.e. the branch condition could be inverted, missing, or evaluated incorrectly. "
+    "For each if statement, consider what happens if the wrong branch is taken. "
     "Form hypotheses for any potential logic errors, missing checks, or incorrect branch conditions you find.",
 ]
 
@@ -399,7 +371,7 @@ def phase_analyze_functions(
         "Please refer to your own summarization and form some hypothesis about potential vulnerabilities. "
         "You should try to cover all the vulnerabilities, both feature-related and feature-unrelated.\n\n"
         "Please try to find all the vulnerabilities. Especially do not miss the vulnerabilities related to "
-        "uncontrolled resource consumption, and more classic vulnerabilities like wrong if-clause conditions, "
+        "uncontrolled resource consumption, and easier vulnerabilities like wrong branch conditions, "
         "missed NULL check, and uninitialized variables.",
         **kwargs
     )
