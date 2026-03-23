@@ -49,6 +49,14 @@ agent:
     ## Stopping Criteria
     - Stop as soon as the script and PoC file are written.
     - If you cannot make progress, call `finish` with status 'failure' and explain why.
+    - **Early rejection:** Before writing any PoC, first inspect the relevant source code
+      to verify the hypothesis is plausible. If you determine the hypothesis is WRONG
+      (e.g., the vulnerable code path is unreachable, the condition is always guarded,
+      or the code logic was misread), call `finish` immediately with:
+        - status: 'rejected'
+        - analysis: explain why the hypothesis is incorrect
+        - payload: {"rejected": true, "reason": "one-line explanation"}
+      Do NOT waste time crafting a PoC for a hypothesis you believe is invalid.
 
     ## Context Packet
     The orchestrator will provide `{{context_packet}}` containing the selected hypothesis.

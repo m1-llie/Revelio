@@ -131,7 +131,11 @@ def main(
     pipeline: str = typer.Option(
         "detect",
         "--pipeline",
-        help="Pipeline mode: 'file' (single file hypothesis), 'project' (parallel hypotheses only), 'detect' (full pipeline).",
+        help=(
+            "Pipeline mode: 'file' (single file hypothesis), 'project' (parallel hypotheses only), "
+            "'detect' (full pipeline), 'scan_filter' (multi-pass scan + classify/dedup + filter), "
+            "'scan_filter_detect' (scan_filter then PoC/validate/report)."
+        ),
     ),
     target_file: Optional[str] = typer.Option(
         None,
@@ -159,6 +163,42 @@ def main(
         "--top-n",
         help="Number of hypotheses to generate in the first (hypothesis) stage of multi-agent mode.",
     ),
+    filter_model: Optional[str] = typer.Option(
+        None,
+        "--filter-model",
+        help="Model for scan_filter sub-agent verification (default: same as --model).",
+    ),
+    filter_workers: int = typer.Option(
+        4,
+        "--filter-workers",
+        help="Parallel workers for scan_filter sub-agent filtering.",
+    ),
+    max_functions: int = typer.Option(
+        50,
+        "--max-functions",
+        help="Max functions to analyze per file in scan_filter mode.",
+    ),
+    agent_step_limit: int = typer.Option(
+        20,
+        "--agent-step-limit",
+        help="Max steps per scan_filter sub-agent.",
+    ),
+    agent_cost_limit: float = typer.Option(
+        2.0,
+        "--agent-cost-limit",
+        help="Max cost per scan_filter sub-agent.",
+    ),
+    base_url: Optional[str] = typer.Option(
+        None,
+        "--base-url",
+        help="LiteLLM proxy base URL (used by scan_filter modes).",
+    ),
+    api_key: Optional[str] = typer.Option(
+        None,
+        "--api-key",
+        envvar="MODEL_API_KEY",
+        help="API key for LLM calls (used by scan_filter modes).",
+    ),
 ) -> None:
     """Analyze a target for software vulnerabilities inside Docker.
 
@@ -177,7 +217,7 @@ def main(
         raise typer.Exit(1)
 
     # Validate pipeline mode
-    valid_pipelines = ("file", "project", "detect")
+    valid_pipelines = ("file", "project", "detect", "scan_filter", "scan_filter_detect")
     if pipeline not in valid_pipelines:
         console.print(f"[bold red]Invalid --pipeline value:[/bold red] {pipeline}")
         console.print(f"Valid options: {', '.join(valid_pipelines)}")
@@ -257,13 +297,110 @@ def main(
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
                 "model_name": model_name,
                 "pipeline": pipeline,
-                "top_n": top_n if pipeline != "file" else None,
-                "target_file": target_file if pipeline == "file" else None,
+                "top_n": top_n if pipeline not in ("file",) else None,
+                "target_file": target_file if target_file else None,
                 "max_workers": max_workers if pipeline != "file" else None,
             }
         )
 
-        if pipeline == "file":
+        if pipeline in ("scan_filter", "scan_filter_detect"):
+            from vulagent.orchestrator.scan_filter import ScanFilterOrchestrator
+
+            # Build model_kwargs for litellm direct calls
+            scan_model_kwargs: dict = {"temperature": 1.0, "drop_params": True}
+            if base_url:
+                scan_model_kwargs["base_url"] = base_url
+            if api_key:
+                scan_model_kwargs["api_key"] = api_key
+
+            scan_orch = ScanFilterOrchestrator(
+                env=docker_env,
+                model_name=model_name,
+                store=store,
+                log_fn=log_console.print,
+                max_workers=max_workers,
+                filter_model=filter_model,
+                filter_workers=filter_workers,
+                max_functions=max_functions,
+                agent_step_limit=agent_step_limit,
+                agent_cost_limit=agent_cost_limit,
+                model_kwargs=scan_model_kwargs,
+            )
+
+            log_console.print(f"[bold green]Starting scan_filter pipeline...[/bold green]\n")
+            started_at = datetime.now(timezone.utc)
+
+            hypotheses = scan_orch.run(
+                project_path=str(workspace_project),
+                arvo_mode=arvo_mode,
+                target_file=target_file,
+            )
+            finished_at = datetime.now(timezone.utc)
+            elapsed = (finished_at - started_at).total_seconds()
+            log_console.print(
+                f"[bold cyan]Scan-filter complete:[/bold cyan] "
+                f"{len(hypotheses.hypotheses)} hypotheses "
+                f"({elapsed:.1f}s) — {hypotheses.generation_notes or ''}"
+            )
+            store.write_handoff("hypotheses", hypotheses)
+
+            if pipeline == "scan_filter":
+                # Stop after scan+filter
+                store.append_event("run_complete_scan_filter", {
+                    "hypotheses_count": len(hypotheses.hypotheses),
+                })
+                log_console.print(
+                    f"[bold green]Done (scan_filter mode):[/bold green] "
+                    f"{len(hypotheses.hypotheses)} hypotheses"
+                )
+            else:
+                # scan_filter_detect: continue to PoC/validate/report
+                if not hypotheses.hypotheses:
+                    log_console.print("[bold yellow]No hypotheses survived filtering.[/bold yellow]")
+                else:
+                    agents_dir = agents_config_dir or DEFAULT_AGENTS_DIR
+                    specs = default_agent_specs(agents_dir)
+
+                    copied_during_run = True
+
+                    def copy_on_success_sf(*, hypothesis_id: str, report_path: str, poc_path: str, script_path: str) -> None:
+                        dest_dir = store.layout.deliverables_dir
+                        for path, atype in [
+                            (report_path, "BugReportFile"),
+                            (poc_path, "PoCInput"),
+                            (script_path, "PoCGenerator"),
+                        ]:
+                            if not path:
+                                continue
+                            copied = copy_file_from_container(
+                                docker_env, workspace_project / path, dest_dir / Path(path).name, path, log_console,
+                            )
+                            if copied:
+                                store.register_artifact(copied, artifact_type=atype)
+
+                    orchestrator = MultiAgentOrchestrator(
+                        store=store,
+                        env=docker_env,
+                        model_name=model_name,
+                        project_path=str(workspace_project),
+                        arvo_mode=arvo_mode,
+                        top_n=top_n,
+                        max_poc_attempts=max_poc_attempts,
+                        log_fn=log_console.print,
+                        on_success=copy_on_success_sf,
+                        pipeline_mode="detect",
+                        max_workers=max_workers,
+                        hypotheses_override=hypotheses,
+                    )
+                    result = orchestrator.run(
+                        poc_builder=specs["poc_builder"],
+                        validator=specs["validator"],
+                        reporter=specs["reporter"],
+                    )
+                    log_console.print(f"[bold cyan]Run status:[/bold cyan] {result.status}")
+                    log_console.print(f"\n[bold green]Trajectory saved to:[/bold green] {store.aggregated_trajectory_path}")
+
+        elif pipeline == "file":
             # Single file hypothesis mode
             runner = FileHypothesisRunner(
                 env=docker_env,

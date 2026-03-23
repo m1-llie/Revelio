@@ -200,6 +200,7 @@ class MultiAgentOrchestrator:
         max_workers: int = 4,
         api_keys: list[str] | None = None,
         file_extensions: list[str] | None = None,
+        hypotheses_override: VulnHypotheses | None = None,
     ):
         self.store = store
         self.env = env
@@ -217,6 +218,7 @@ class MultiAgentOrchestrator:
         self.max_workers = max_workers
         self.api_keys = api_keys
         self.file_extensions = file_extensions
+        self.hypotheses_override = hypotheses_override
 
     def _log(self, message: str) -> None:
         if self._log_fn:
@@ -249,6 +251,41 @@ class MultiAgentOrchestrator:
         self._aggregate_trajectories["agents"][key] = run_result.trajectory
         self.store.write_aggregated_trajectory(self._aggregate_trajectories)
 
+    @staticmethod
+    def _is_rejected(result_text: str) -> bool:
+        """Check if the PoC agent rejected the hypothesis as invalid."""
+        try:
+            import yaml
+            parsed = yaml.safe_load(result_text)
+            if isinstance(parsed, dict):
+                # Check status field
+                if str(parsed.get("status", "")).lower() == "rejected":
+                    return True
+                # Check payload.rejected
+                payload = parsed.get("payload", {})
+                if isinstance(payload, dict) and payload.get("rejected"):
+                    return True
+        except Exception:
+            pass
+        # Fallback: check for "rejected": true in raw text
+        return '"rejected": true' in result_text or '"rejected":true' in result_text
+
+    @staticmethod
+    def _extract_reject_reason(result_text: str) -> str:
+        """Extract the rejection reason from agent output."""
+        try:
+            import yaml
+            parsed = yaml.safe_load(result_text)
+            if isinstance(parsed, dict):
+                payload = parsed.get("payload", {})
+                if isinstance(payload, dict) and payload.get("reason"):
+                    return str(payload["reason"])
+                if parsed.get("analysis"):
+                    return str(parsed["analysis"])[:200]
+        except Exception:
+            pass
+        return "hypothesis rejected by PoC agent"
+
     def _check_run_status(self, run_result: AgentRunResult, stage: str) -> OrchestratorResult | None:
         if run_result.exit_status != "Submitted":
             self.store.append_event(
@@ -279,21 +316,25 @@ class MultiAgentOrchestrator:
         self.store.append_event("run_start", {"arvo_mode": self.arvo_mode, "pipeline_mode": self.pipeline_mode})
         common_vars = {"project_path": self.project_path, "arvo_mode": self.arvo_mode, "top_n": self.top_n}
 
-        # Stage 1: Hypothesis generation (parallel file scanning)
-        self._log("Running HypothesisOrchestrator (parallel file scanning)...")
-        hypothesis_orch = HypothesisOrchestrator(
-            env=self.env,
-            model_name=self.model_name,
-            store=self.store,
-            log_fn=self._log_fn,
-            api_keys=self.api_keys,
-            file_extensions=self.file_extensions,
-            max_workers=self.max_workers,
-        )
-        hypotheses = hypothesis_orch.run(
-            project_path=self.project_path,
-            arvo_mode=self.arvo_mode,
-        )
+        # Stage 1: Hypothesis generation (skip if override provided)
+        if self.hypotheses_override is not None:
+            self._log("Using pre-generated hypotheses (override)...")
+            hypotheses = self.hypotheses_override
+        else:
+            self._log("Running HypothesisOrchestrator (parallel file scanning)...")
+            hypothesis_orch = HypothesisOrchestrator(
+                env=self.env,
+                model_name=self.model_name,
+                store=self.store,
+                log_fn=self._log_fn,
+                api_keys=self.api_keys,
+                file_extensions=self.file_extensions,
+                max_workers=self.max_workers,
+            )
+            hypotheses = hypothesis_orch.run(
+                project_path=self.project_path,
+                arvo_mode=self.arvo_mode,
+            )
 
         if not hypotheses.hypotheses:
             self.store.append_event("no_hypotheses", {})
@@ -384,6 +425,19 @@ class MultiAgentOrchestrator:
                         )
                         self._log(f"Hypothesis {item.hypothesis_id} exhausted all attempts (poc_builder failed): {failure.summary}")
                     continue
+
+                # Check for early rejection (PoC agent determined hypothesis is invalid)
+                if self._is_rejected(poc_run.result):
+                    reject_reason = self._extract_reject_reason(poc_run.result)
+                    self.store.append_event(
+                        "hypothesis_rejected",
+                        {"hypothesis_id": item.hypothesis_id, "reason": reject_reason},
+                    )
+                    self._log(
+                        f"Hypothesis {item.hypothesis_id} REJECTED by PoCBuilder: {reject_reason}"
+                    )
+                    break  # skip remaining attempts for this hypothesis
+
                 poc_recipe = parse_poc_recipe(poc_run.result)
                 self._artifacts["poc"] = poc_recipe
                 self.store.write_handoff(
