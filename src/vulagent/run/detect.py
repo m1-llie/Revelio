@@ -26,6 +26,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 
+from vulagent.artifacts.schema import CodeReference, VulnHypotheses, VulnHypothesis
 from vulagent.artifacts.store import ArtifactStore
 from vulagent.config import get_config_path
 from vulagent.environments.docker import DockerEnvironment
@@ -98,6 +99,50 @@ def get_run_name(arvo_image: str | None, project_path: Path | None) -> str:
     return "unknown"
 
 
+def save_hypotheses(hypotheses: VulnHypotheses, path: Path) -> Path:
+    """Save hypotheses to a standalone JSON file for later reuse."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(hypotheses.to_dict(), indent=2))
+    return path
+
+
+def load_hypotheses(path: Path) -> VulnHypotheses:
+    """Load hypotheses from a previously saved JSON file.
+
+    Accepts both standalone format (from save_hypotheses) and
+    handoff-wrapped format (from ArtifactStore.write_handoff).
+    """
+    data = json.loads(path.read_text())
+    # Unwrap handoff envelope if present
+    if "data" in data and "hypotheses" in data["data"]:
+        data = data["data"]
+    hyps = []
+    for h in data.get("hypotheses", []):
+        refs = [
+            CodeReference(
+                file_path=r["file_path"],
+                line_start=r.get("line_start"),
+                line_end=r.get("line_end"),
+                function=r.get("function"),
+                context=r.get("context"),
+            )
+            for r in h.get("references", [])
+        ]
+        hyps.append(VulnHypothesis(
+            hypothesis_id=h["hypothesis_id"],
+            title=h["title"],
+            description=h["description"],
+            file_path=h.get("file_path"),
+            function=h.get("function"),
+            trigger=h.get("trigger"),
+            preconditions=h.get("preconditions", []),
+            expected_crash=h.get("expected_crash"),
+            confidence=h.get("confidence", 0.0),
+            references=refs,
+        ))
+    return VulnHypotheses(hypotheses=hyps, generation_notes=data.get("generation_notes"))
+
+
 @app.command()
 def main(
     arvo: Optional[str] = typer.Option(
@@ -164,9 +209,9 @@ def main(
         help="Number of hypotheses to generate in the first (hypothesis) stage of multi-agent mode.",
     ),
     filter_model: Optional[str] = typer.Option(
-        None,
+        "litellm_proxy/vertex_ai/claude-sonnet-4-6",
         "--filter-model",
-        help="Model for scan_filter sub-agent verification (default: same as --model).",
+        help="Model for scan_filter Stage 3 sub-agent verification (default: Sonnet 4.6).",
     ),
     filter_workers: int = typer.Option(
         4,
@@ -198,6 +243,16 @@ def main(
         "--api-key",
         envvar="MODEL_API_KEY",
         help="API key for LLM calls (used by scan_filter modes).",
+    ),
+    poc_model: Optional[str] = typer.Option(
+        None,
+        "--poc-model",
+        help="Model for PoC/validator/reporter agents (default: same as --model).",
+    ),
+    hypotheses_file: Optional[Path] = typer.Option(
+        None,
+        "--hypotheses-file",
+        help="Load pre-generated hypotheses from JSON file (skip scan_filter, go straight to PoC).",
     ),
 ) -> None:
     """Analyze a target for software vulnerabilities inside Docker.
@@ -303,46 +358,66 @@ def main(
             }
         )
 
-        if pipeline in ("scan_filter", "scan_filter_detect"):
-            from vulagent.orchestrator.scan_filter import ScanFilterOrchestrator
+        if pipeline in ("scan_filter", "scan_filter_detect") or hypotheses_file:
+            # If loading from file, skip scan_filter entirely
+            if hypotheses_file:
+                if not hypotheses_file.exists():
+                    log_console.print(f"[bold red]Hypotheses file not found:[/bold red] {hypotheses_file}")
+                    raise typer.Exit(1)
+                hypotheses = load_hypotheses(hypotheses_file)
+                log_console.print(
+                    f"[bold cyan]Loaded {len(hypotheses.hypotheses)} hypotheses from:[/bold cyan] {hypotheses_file}"
+                )
+                store.write_handoff("hypotheses", hypotheses)
+                # Force into detect mode (skip scan_filter, go straight to PoC)
+                pipeline = "scan_filter_detect"
+            else:
+                from vulagent.orchestrator.scan_filter import ScanFilterOrchestrator
 
-            # Build model_kwargs for litellm direct calls
-            scan_model_kwargs: dict = {"temperature": 1.0, "drop_params": True}
-            if base_url:
-                scan_model_kwargs["base_url"] = base_url
-            if api_key:
-                scan_model_kwargs["api_key"] = api_key
+                # Build model_kwargs for litellm direct calls
+                scan_model_kwargs: dict = {"temperature": 1.0, "drop_params": True}
+                if base_url:
+                    scan_model_kwargs["base_url"] = base_url
+                if api_key:
+                    scan_model_kwargs["api_key"] = api_key
 
-            scan_orch = ScanFilterOrchestrator(
-                env=docker_env,
-                model_name=model_name,
-                store=store,
-                log_fn=log_console.print,
-                max_workers=max_workers,
-                filter_model=filter_model,
-                filter_workers=filter_workers,
-                max_functions=max_functions,
-                agent_step_limit=agent_step_limit,
-                agent_cost_limit=agent_cost_limit,
-                model_kwargs=scan_model_kwargs,
-            )
+                scan_orch = ScanFilterOrchestrator(
+                    env=docker_env,
+                    model_name=model_name,
+                    store=store,
+                    log_fn=log_console.print,
+                    max_workers=max_workers,
+                    filter_model=filter_model,
+                    filter_workers=filter_workers,
+                    max_functions=max_functions,
+                    agent_step_limit=agent_step_limit,
+                    agent_cost_limit=agent_cost_limit,
+                    model_kwargs=scan_model_kwargs,
+                )
 
-            log_console.print(f"[bold green]Starting scan_filter pipeline...[/bold green]\n")
-            started_at = datetime.now(timezone.utc)
+                log_console.print(f"[bold green]Starting scan_filter pipeline...[/bold green]\n")
+                started_at = datetime.now(timezone.utc)
 
-            hypotheses = scan_orch.run(
-                project_path=str(workspace_project),
-                arvo_mode=arvo_mode,
-                target_file=target_file,
-            )
-            finished_at = datetime.now(timezone.utc)
-            elapsed = (finished_at - started_at).total_seconds()
-            log_console.print(
-                f"[bold cyan]Scan-filter complete:[/bold cyan] "
-                f"{len(hypotheses.hypotheses)} hypotheses "
-                f"({elapsed:.1f}s) — {hypotheses.generation_notes or ''}"
-            )
-            store.write_handoff("hypotheses", hypotheses)
+                hypotheses = scan_orch.run(
+                    project_path=str(workspace_project),
+                    arvo_mode=arvo_mode,
+                    target_file=target_file,
+                )
+                finished_at = datetime.now(timezone.utc)
+                elapsed = (finished_at - started_at).total_seconds()
+                log_console.print(
+                    f"[bold cyan]Scan-filter complete:[/bold cyan] "
+                    f"{len(hypotheses.hypotheses)} hypotheses "
+                    f"({elapsed:.1f}s) — {hypotheses.generation_notes or ''}"
+                )
+                store.write_handoff("hypotheses", hypotheses)
+
+                # Save standalone hypotheses.json for later reuse
+                hyp_path = save_hypotheses(hypotheses, run_dir / "hypotheses.json")
+                log_console.print(
+                    f"[bold green]Hypotheses saved to:[/bold green] {hyp_path}\n"
+                    f"  Reuse later with: --hypotheses-file {hyp_path}"
+                )
 
             if pipeline == "scan_filter":
                 # Stop after scan+filter
@@ -378,10 +453,19 @@ def main(
                             if copied:
                                 store.register_artifact(copied, artifact_type=atype)
 
+                    # Build model config for downstream agents (PoC/validator/reporter)
+                    detect_model_config: dict = {}
+                    if base_url:
+                        detect_model_config.setdefault("model_kwargs", {})["base_url"] = base_url
+                    if api_key:
+                        detect_model_config.setdefault("model_kwargs", {})["api_key"] = api_key
+
+                    poc_model_name = poc_model or model_name
+
                     orchestrator = MultiAgentOrchestrator(
                         store=store,
                         env=docker_env,
-                        model_name=model_name,
+                        model_name=poc_model_name,
                         project_path=str(workspace_project),
                         arvo_mode=arvo_mode,
                         top_n=top_n,
@@ -391,6 +475,7 @@ def main(
                         pipeline_mode="detect",
                         max_workers=max_workers,
                         hypotheses_override=hypotheses,
+                        model_config=detect_model_config,
                     )
                     result = orchestrator.run(
                         poc_builder=specs["poc_builder"],
@@ -450,10 +535,17 @@ def main(
                     if copied:
                         store.register_artifact(copied, artifact_type=atype)
 
+            # Build model config for downstream agents if proxy credentials given
+            detect_model_config_main: dict = {}
+            if base_url:
+                detect_model_config_main.setdefault("model_kwargs", {})["base_url"] = base_url
+            if api_key:
+                detect_model_config_main.setdefault("model_kwargs", {})["api_key"] = api_key
+
             orchestrator = MultiAgentOrchestrator(
                 store=store,
                 env=docker_env,
-                model_name=model_name,
+                model_name=poc_model or model_name,
                 project_path=str(workspace_project),
                 arvo_mode=arvo_mode,
                 top_n=top_n,
@@ -462,6 +554,7 @@ def main(
                 on_success=copy_on_success,
                 pipeline_mode=pipeline,
                 max_workers=max_workers,
+                model_config=detect_model_config_main,
             )
             result = orchestrator.run(
                 poc_builder=specs["poc_builder"],

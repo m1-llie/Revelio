@@ -312,12 +312,23 @@ HYPOTHESIS_SCHEMA = json.dumps([{
 FOCUSED_PASSES = [
     "Good. Now please re-examine the code under the following assumption: **every pointer can be NULL**. "
     "For each pointer dereference, check whether a NULL value could reach it and what the consequence "
-    "would be. Form hypotheses for any potential NULL pointer dereference vulnerabilities you find.",
+    "would be. Form hypotheses for any potential NULL pointer dereference vulnerabilities you find.\n\n"
+    "**IMPORTANT:** Only report cases where a NULL pointer is actually DEREFERENCED causing a crash or "
+    "memory corruption. Do NOT report:\n"
+    "- Redundant/meaningless NULL checks (e.g., `&struct->member != NULL` is always true — this is "
+    "dead code, not a vulnerability)\n"
+    "- NULL checks that are merely unnecessary but harmless\n"
+    "- Speculative NULL scenarios that require impossible preconditions",
 
     "Good. Now please re-examine the code under the following assumption: **every if condition may be "
     "written wrong** — i.e. the branch condition could be written wrong. For each if statement, check "
     "if the branch conditions are written correctly. Form hypotheses for any potential logic errors, "
-    "missing checks, or incorrect branch conditions you find.",
+    "missing checks, or incorrect branch conditions you find.\n\n"
+    "**IMPORTANT:** Only report conditions that lead to exploitable consequences (memory corruption, "
+    "crashes, out-of-bounds access). Do NOT report:\n"
+    "- Always-true or always-false conditions that are merely redundant/dead code\n"
+    "- Style issues or misleading code that does not affect security\n"
+    "- Conditions that are technically wrong but whose branches both lead to safe behavior",
 ]
 
 
@@ -332,7 +343,16 @@ def _ask_for_json(
         "following this exact schema (output ONLY valid JSON, no prose before or after):\n\n"
         f"```json\n{HYPOTHESIS_SCHEMA}\n```\n\n"
         "One object per distinct vulnerability hypothesis. "
-        "Return an empty list [] if no vulnerabilities were found.",
+        "Return an empty list [] if no vulnerabilities were found.\n\n"
+        "**IMPORTANT filtering criteria — do NOT include hypotheses that are:**\n"
+        "- Code quality issues (dead code, misleading checks, style problems) that cannot cause crashes\n"
+        "- Always-true or always-false conditions that are merely redundant (e.g., `&(struct->member) != NULL` "
+        "is always true — this is dead code, NOT a vulnerability)\n"
+        "- Speculative issues requiring conditions that are impossible in practice\n"
+        "- Missing error handling that leads to graceful degradation, not memory corruption\n\n"
+        "Only include hypotheses where a concrete input could trigger memory corruption, "
+        "a crash, or undefined behavior (e.g., buffer overflow, use-after-free, NULL deref, "
+        "integer overflow leading to wrong allocation size, out-of-bounds access).",
         kwargs,
         cost_tracker=cost_tracker,
     )
@@ -373,7 +393,10 @@ def phase_analyze_wholefile(
         "vulnerabilities, just cover **all** of the feature-related ones.\n\n"
         "Please review each feature to form hypothesis. Please think very carefully about "
         "the features. Especially do not miss the vulnerabilities related to uncontrolled "
-        "resource consumption.",
+        "resource consumption.\n\n"
+        "**Focus only on real, exploitable vulnerabilities** — issues where a crafted input "
+        "could cause memory corruption, crashes, or undefined behavior. Do NOT report code "
+        "quality issues, dead code, redundant checks, or style problems.",
         kwargs,
         cost_tracker=cost_tracker,
     )
@@ -413,7 +436,13 @@ def phase_analyze_functions(
         "and feature-unrelated.\n\n"
         "Please try to find all the vulnerabilities. Especially do not miss the vulnerabilities "
         "related to uncontrolled resource consumption, and more classic vulnerabilities like "
-        "wrong if-clause conditions, missed NULL check, and uninitialized variables.",
+        "wrong if-clause conditions, missed NULL check, and uninitialized variables.\n\n"
+        "**Only report real, exploitable vulnerabilities** where a crafted input could cause "
+        "memory corruption, crashes, or undefined behavior. Do NOT report:\n"
+        "- Code quality issues or style problems\n"
+        "- Dead code or redundant/always-true checks (e.g., `&(s->member) != NULL`)\n"
+        "- Missing error handling that just causes graceful degradation\n"
+        "- Speculative issues that require impossible preconditions",
         kwargs,
         cost_tracker=cost_tracker,
     )
@@ -486,9 +515,18 @@ def classify_hypothesis(
         "1. What does the code do? What is the hypothesis claiming?\n"
         "2. Is this a genuine security vulnerability, or is it speculative, informational, "
         "a best-practice issue without exploitability, or not a real security bug?\n"
-        "3. If it is a real vulnerability, could a correct PoC trigger an AddressSanitizer "
-        "(ASAN) crash? Consider what memory operations are involved.\n"
+        "3. Could a correct PoC trigger an AddressSanitizer "
+        "(ASAN) crash? The hypothesis MUST BE specific enough to craft a PoC and must point out actual vulnerability.\n"
         "4. What are the most relevant CWE IDs (e.g. CWE-476, CWE-125)? List at most 3.\n\n"
+        "**Mark is_vulnerability=false for ANY of these:**\n"
+        "- Code quality issues: dead code, redundant checks, misleading conditions, style problems\n"
+        "- Always-true or always-false conditions (e.g., `&(struct->member) != NULL` is always true — "
+        "this is dead code, NOT a NULL pointer vulnerability)\n"
+        "- Missing error handling that leads to graceful degradation, not memory corruption\n"
+        "- Speculative issues requiring preconditions that are impossible in practice\n"
+        "- Informational findings that cannot be triggered by any input\n\n"
+        "Only mark is_vulnerability=true if a concrete, crafted input could trigger memory corruption, "
+        "a crash, or undefined behavior.\n\n"
         "First write your reasoning, then output your final judgement as a JSON block:\n"
         "```json\n"
         '{"is_vulnerability": true|false, "is_asan": true|false, '
@@ -505,9 +543,15 @@ def classify_hypothesis(
             "is_asan": bool(result.get("is_asan", False)),
             "cwe_ids": [str(c) for c in result.get("cwe_ids", [])],
             "reason": result.get("reason", ""),
+            "raw_response": raw,
+            "prompt": prompt,
         }
     except (json.JSONDecodeError, AttributeError):
-        return {"is_vulnerability": False, "is_asan": False, "cwe_ids": [], "reason": f"parse error: {raw[:200]}"}
+        return {
+            "is_vulnerability": False, "is_asan": False, "cwe_ids": [],
+            "reason": f"parse error: {raw[:200]}",
+            "raw_response": raw, "prompt": prompt,
+        }
 
 
 def _hotspots(hyp: dict) -> list[dict]:
@@ -527,8 +571,11 @@ def _line_overlap(hs_a: list[dict], hs_b: list[dict]) -> bool:
 
 
 def _llm_same_vuln(hyp_a: dict, hyp_b: dict, model: str, kwargs: dict,
-                   cost_tracker: CostTracker | None = None) -> bool:
-    """Ask the LLM whether two hypotheses describe the same vulnerability."""
+                   cost_tracker: CostTracker | None = None) -> dict:
+    """Ask the LLM whether two hypotheses describe the same vulnerability.
+
+    Returns dict with same_vulnerability (bool), reason, raw_response, prompt.
+    """
     ha = hyp_a.get("hypothesis", hyp_a)
     hb = hyp_b.get("hypothesis", hyp_b)
     prompt = (
@@ -558,9 +605,19 @@ def _llm_same_vuln(hyp_a: dict, hyp_b: dict, model: str, kwargs: dict,
     m = re.search(r"\{[\s\S]*\}", json_str)
     try:
         result = json.loads(m.group(0) if m else raw)
-        return bool(result.get("same_vulnerability", False))
+        return {
+            "same_vulnerability": bool(result.get("same_vulnerability", False)),
+            "reason": result.get("reason", ""),
+            "raw_response": raw,
+            "prompt": prompt,
+        }
     except (json.JSONDecodeError, AttributeError):
-        return False
+        return {
+            "same_vulnerability": False,
+            "reason": f"parse error: {raw[:200]}",
+            "raw_response": raw,
+            "prompt": prompt,
+        }
 
 
 class UnionFind:
@@ -584,18 +641,19 @@ def dedup_hypotheses(
     kwargs: dict,
     workers: int = 8,
     cost_tracker: CostTracker | None = None,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], list[dict]]:
     """Dedup hypotheses using LLM judgement.
 
     Only pairs with overlapping lines AND at least one shared CWE are candidates.
     For each candidate pair, ask the LLM if they are the same vulnerability.
     Merge confirmed duplicates via union-find, keep the one with the most hotspots.
 
-    Returns (kept, removed).
+    Returns (kept, removed, comparisons) where comparisons is a list of
+    per-pair dicts for trace saving.
     """
     n = len(hypotheses)
     if n <= 1:
-        return list(hypotheses), []
+        return list(hypotheses), [], []
 
     hs_cache = [_hotspots(h) for h in hypotheses]
 
@@ -610,11 +668,11 @@ def dedup_hypotheses(
                 candidate_pairs.append((i, j))
 
     if not candidate_pairs:
-        return list(hypotheses), []
+        return list(hypotheses), [], []
 
     logger.info("%d candidate pairs for LLM dedup...", len(candidate_pairs))
 
-    merge_decisions: dict[tuple[int, int], bool] = {}
+    merge_decisions: dict[tuple[int, int], dict] = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(_llm_same_vuln, hypotheses[i], hypotheses[j], model, kwargs, cost_tracker): (i, j)
@@ -624,12 +682,15 @@ def dedup_hypotheses(
             pair = futures[future]
             try:
                 merge_decisions[pair] = future.result()
-            except Exception:
-                merge_decisions[pair] = False
+            except Exception as e:
+                merge_decisions[pair] = {
+                    "same_vulnerability": False, "reason": str(e),
+                    "raw_response": "", "prompt": "",
+                }
 
     uf = UnionFind(n)
-    for (i, j), is_same in merge_decisions.items():
-        if is_same:
+    for (i, j), decision in merge_decisions.items():
+        if decision["same_vulnerability"]:
             uf.union(i, j)
 
     from collections import defaultdict
@@ -648,7 +709,18 @@ def dedup_hypotheses(
                 entry["_removed"] = f"Duplicate of '{best_summary[:80]}' (LLM-confirmed)"
                 removed.append(entry)
 
-    return kept, removed
+    # Build comparisons trace
+    comparisons = []
+    for (i, j), decision in merge_decisions.items():
+        comparisons.append({
+            "hyp_a_index": i,
+            "hyp_b_index": j,
+            "hyp_a_summary": hypotheses[i].get("hypothesis", hypotheses[i]).get("summary", ""),
+            "hyp_b_summary": hypotheses[j].get("hypothesis", hypotheses[j]).get("summary", ""),
+            **decision,
+        })
+
+    return kept, removed, comparisons
 
 
 # ===========================================================================
@@ -669,14 +741,23 @@ A hypothesis is INVALID if:
 - The variable/buffer is always properly bounded before the alleged overflow
 - The hypothesis misreads the code logic (e.g., confuses a safe pattern for an unsafe one)
 - The described preconditions are impossible to satisfy simultaneously
+- The hypothesis describes a CODE QUALITY issue, not a security vulnerability (e.g., dead code, \
+redundant checks, misleading but harmless conditions, style problems)
+- The condition described is always-true or always-false and merely redundant (e.g., \
+`&(struct->member) != NULL` is always true — this is dead code, NOT a vulnerability)
+- The hypothesis is about missing error handling that leads to graceful degradation, not memory corruption
+- No concrete input could trigger the described vulnerability
 
 A hypothesis is VALID (or at least PLAUSIBLE) if:
 - The described code path is reachable
 - The preconditions are satisfiable
 - The alleged missing check or overflow is genuinely present in the code
+- A crafted input could realistically trigger memory corruption, a crash, or undefined behavior
 - You cannot definitively prove it wrong
 
-Be conservative: if you are unsure, mark it as VALID.
+Be conservative: if you are unsure, mark it as VALID. But do NOT mark code quality issues or \
+non-exploitable findings as VALID just because you cannot prove them "wrong" — they are categorically \
+not vulnerabilities.
 
 You interact by calling tools. Every response MUST include BOTH:
 1. A brief description of your observation and next step.

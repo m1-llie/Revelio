@@ -53,17 +53,26 @@ class AgentRunner:
         store: ArtifactStore,
         log_fn: Any | None = None,
         checkpoint_every: int = 5,
+        global_model_config: dict[str, Any] | None = None,
     ):
         self.model_name = model_name
         self.env = env
         self.store = store
         self.log_fn = log_fn
         self.checkpoint_every = checkpoint_every
+        self.global_model_config = global_model_config or {}
 
     def run(self, spec: AgentSpec, *, extra_vars: dict[str, Any]) -> AgentRunResult:
         config_data = _load_yaml(spec.config_path)
         agent_config = config_data.get("agent", {})
         model_config = config_data.get("model", {})
+        # Merge global model config (e.g. api_key/base_url from CLI) into per-agent config
+        if self.global_model_config:
+            for key, val in self.global_model_config.items():
+                if isinstance(val, dict) and isinstance(model_config.get(key), dict):
+                    model_config[key] = {**model_config[key], **val}
+                else:
+                    model_config.setdefault(key, val)
         effective_model_name = spec.model_name or self.model_name
         if spec.api_key:
             model_config.setdefault("model_kwargs", {})["api_key"] = spec.api_key
@@ -201,6 +210,7 @@ class MultiAgentOrchestrator:
         api_keys: list[str] | None = None,
         file_extensions: list[str] | None = None,
         hypotheses_override: VulnHypotheses | None = None,
+        model_config: dict[str, Any] | None = None,
     ):
         self.store = store
         self.env = env
@@ -219,6 +229,7 @@ class MultiAgentOrchestrator:
         self.api_keys = api_keys
         self.file_extensions = file_extensions
         self.hypotheses_override = hypotheses_override
+        self.model_config = model_config or {}
 
     def _log(self, message: str) -> None:
         if self._log_fn:
@@ -311,6 +322,7 @@ class MultiAgentOrchestrator:
             env=self.env,
             store=self.store,
             log_fn=self._log_fn,
+            global_model_config=self.model_config,
         )
 
         self.store.append_event("run_start", {"arvo_mode": self.arvo_mode, "pipeline_mode": self.pipeline_mode})

@@ -114,8 +114,8 @@ agent:
     Every response MUST contain exactly one tool call via the tool-calling API.
     Available tools: `bash` (run a command) and `finish` (submit results).
 
-  step_limit: 120
-  cost_limit: 5
+  step_limit: 200
+  cost_limit: 10
 
 environment:
   timeout: 300

@@ -384,7 +384,7 @@ def run_pipeline(
 
     dedup_kwargs = dict(model_kwargs)
     dedup_kwargs["temperature"] = 0.0
-    kept, removed = dedup_hypotheses(valid_hyps, cwe_map, model_name, dedup_kwargs, workers=workers)
+    kept, removed, _comparisons = dedup_hypotheses(valid_hyps, cwe_map, model_name, dedup_kwargs, workers=workers)
     print(f"  Dedup: {len(valid_hyps)} -> {len(kept)} (removed {len(removed)} duplicates)", file=sys.stderr)
 
     # Mark dedup removals in all_hypotheses

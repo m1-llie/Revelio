@@ -221,8 +221,11 @@ class ScanFilterOrchestrator:
     def _run_stage2(
         self, all_hypotheses: list[dict], source: str,
         cost_tracker: CostTracker | None = None,
-    ) -> list[dict]:
-        """Run Stage 2 (classification & dedup). Returns kept hypotheses."""
+    ) -> tuple[list[dict], list[dict], dict]:
+        """Run Stage 2 (classification & dedup).
+
+        Returns (kept, classify_trace, dedup_trace).
+        """
         source_lines = source.splitlines()
         dedup_kwargs = dict(self.model_kwargs)
         dedup_kwargs["temperature"] = 0.0
@@ -251,8 +254,24 @@ class ScanFilterOrchestrator:
                     )
                 except Exception as e:
                     classifications[idx] = {
-                        "is_vulnerability": False, "is_asan": False, "cwe_ids": [], "reason": f"error: {e}"
+                        "is_vulnerability": False, "is_asan": False, "cwe_ids": [], "reason": f"error: {e}",
+                        "raw_response": "", "prompt": "",
                     }
+
+        # Build classify trace
+        classify_trace = []
+        for i, h in enumerate(all_hypotheses):
+            c = classifications[i]
+            classify_trace.append({
+                "index": i,
+                "summary": h.get("hypothesis", h).get("summary", ""),
+                "is_vulnerability": c["is_vulnerability"],
+                "is_asan": c["is_asan"],
+                "cwe_ids": c["cwe_ids"],
+                "reason": c["reason"],
+                "raw_response": c.get("raw_response", ""),
+                "prompt": c.get("prompt", ""),
+            })
 
         # Filter: keep only ASAN-triggerable vulnerabilities
         valid_indices = [
@@ -276,17 +295,27 @@ class ScanFilterOrchestrator:
         valid_hyps = [all_hypotheses[i] for i in valid_indices]
         cwe_map = {j: classifications[valid_indices[j]]["cwe_ids"] for j in range(len(valid_indices))}
 
-        kept, removed = dedup_hypotheses(valid_hyps, cwe_map, self.model_name, dedup_kwargs,
-                                        workers=self.max_workers, cost_tracker=cost_tracker)
+        kept, removed, comparisons = dedup_hypotheses(valid_hyps, cwe_map, self.model_name, dedup_kwargs,
+                                                      workers=self.max_workers, cost_tracker=cost_tracker)
         self._log(f"  [scan_filter] Dedup: {len(valid_hyps)} -> {len(kept)} (removed {len(removed)})")
 
-        return kept
+        dedup_trace = {
+            "candidate_pairs": len(comparisons),
+            "comparisons": comparisons,
+            "kept_count": len(kept),
+            "removed": [
+                {"summary": r.get("hypothesis", r).get("summary", ""), "reason": r.get("_removed", "")}
+                for r in removed
+            ],
+        }
+
+        return kept, classify_trace, dedup_trace
 
     def _run_stage3(
         self, kept: list[dict], target_file: str,
         cost_tracker: CostTracker | None = None,
-    ) -> list[dict]:
-        """Run Stage 3 (Docker sub-agent filtering). Returns final hypotheses."""
+    ) -> tuple[list[dict], dict[int, dict]]:
+        """Run Stage 3 (Docker sub-agent filtering). Returns (final_hypotheses, filter_results)."""
         self._log(f"  [scan_filter] Stage 3: filtering {len(kept)} hypotheses with sub-agents...")
 
         filter_results: dict[int, dict] = {}
@@ -334,7 +363,7 @@ class ScanFilterOrchestrator:
             f"  [scan_filter] Sub-agent filter: {len(kept)} -> {len(final_hypotheses)} "
             f"(removed {len(kept) - len(final_hypotheses)})"
         )
-        return final_hypotheses
+        return final_hypotheses, filter_results
 
     def run(
         self,
@@ -385,6 +414,9 @@ class ScanFilterOrchestrator:
                 self._log(f"[scan_filter] Skipping empty file: {rel_path}")
                 continue
 
+            # Sanitize filename for trace filenames
+            safe_name = rel_path.replace("/", "__").replace(".", "_")
+
             # Stage 1: Hypothesis generation
             self._log(f"[scan_filter] Stage 1: Hypothesis generation for {rel_path}")
             cost_before = cost_tracker.snapshot()
@@ -399,13 +431,48 @@ class ScanFilterOrchestrator:
                 f"(${s1_cost:.4f}, {s1_calls} calls)"
             )
 
+            # Save Stage 1 trace
+            self.store.save_trace(f"stage1_{safe_name}.json", {
+                "file": rel_path,
+                "wholefile": {
+                    "analysis": wf.get("analysis", ""),
+                    "hypotheses": wf.get("hypotheses", []),
+                    "messages": wf.get("messages", []),
+                },
+                "focused": [
+                    {
+                        "focus_prompt": fr_item.get("focus_prompt", ""),
+                        "analysis": fr_item.get("analysis", ""),
+                        "hypotheses": fr_item.get("hypotheses", []),
+                        "messages": fr_item.get("messages", []),
+                    }
+                    for fr_item in fr
+                ],
+                "functions": [
+                    {
+                        "function": fa_item.get("function", ""),
+                        "functions": fa_item.get("functions", []),
+                        "formulation": fa_item.get("formulation", ""),
+                        "hypotheses": fa_item.get("hypotheses", []),
+                        "messages": fa_item.get("messages_formulation", []),
+                    }
+                    for fa_item in fa
+                ],
+                "aggregated_hypotheses": all_hypotheses,
+                "num_raw_hypotheses": len(all_hypotheses),
+                "cost": s1_cost,
+                "calls": s1_calls,
+            })
+
             if not all_hypotheses:
                 continue
 
             # Stage 2: Classification & dedup
             self._log(f"[scan_filter] Stage 2: Classification & dedup for {rel_path}")
             cost_before = cost_tracker.snapshot()
-            kept = self._run_stage2(all_hypotheses, source, cost_tracker=cost_tracker)
+            kept, classify_trace, dedup_trace = self._run_stage2(
+                all_hypotheses, source, cost_tracker=cost_tracker,
+            )
             s2_cost, s2_calls = cost_tracker.snapshot()
             s2_cost -= cost_before[0]
             s2_calls -= cost_before[1]
@@ -414,6 +481,19 @@ class ScanFilterOrchestrator:
                 f"(${s2_cost:.4f}, {s2_calls} calls)"
             )
 
+            # Save Stage 2 traces
+            self.store.save_trace(f"stage2_classify_{safe_name}.json", {
+                "file": rel_path,
+                "input_count": len(all_hypotheses),
+                "classifications": classify_trace,
+                "cost": s2_cost,
+                "calls": s2_calls,
+            })
+            self.store.save_trace(f"stage2_dedup_{safe_name}.json", {
+                "file": rel_path,
+                **dedup_trace,
+            })
+
             if not kept:
                 self._log(f"[scan_filter] No hypotheses survived classification/dedup for {rel_path}")
                 continue
@@ -421,7 +501,7 @@ class ScanFilterOrchestrator:
             # Stage 3: Docker sub-agent filtering
             self._log(f"[scan_filter] Stage 3: Sub-agent filtering for {rel_path}")
             cost_before = cost_tracker.snapshot()
-            final = self._run_stage3(kept, rel_path, cost_tracker=cost_tracker)
+            final, filter_results = self._run_stage3(kept, rel_path, cost_tracker=cost_tracker)
             s3_cost, s3_calls = cost_tracker.snapshot()
             s3_cost -= cost_before[0]
             s3_calls -= cost_before[1]
@@ -429,6 +509,23 @@ class ScanFilterOrchestrator:
                 f"[scan_filter] Stage 3 done: {len(final)} final "
                 f"(${s3_cost:.4f}, {s3_calls} calls)"
             )
+
+            # Save Stage 3 traces (one file per hypothesis)
+            for i, h in enumerate(kept):
+                fr_item = filter_results.get(i, {})
+                self.store.save_trace(f"stage3_filter/hyp_{i:02d}_{safe_name}.json", {
+                    "file": rel_path,
+                    "hypothesis_index": i,
+                    "summary": h.get("hypothesis", h).get("summary", ""),
+                    "verdict": fr_item.get("verdict", ""),
+                    "confidence": fr_item.get("confidence", 0.0),
+                    "reason": fr_item.get("reason", ""),
+                    "reasoning": fr_item.get("reasoning", ""),
+                    "model_cost": fr_item.get("model_cost", 0),
+                    "model_calls": fr_item.get("model_calls", 0),
+                    "trajectory": fr_item.get("trajectory", []),
+                    "error": fr_item.get("error"),
+                })
 
             # Convert to VulnHypothesis
             for i, hyp in enumerate(final):

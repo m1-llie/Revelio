@@ -41,6 +41,7 @@ class RunLayout:
     artifacts_dir: Path
     handoffs_dir: Path
     deliverables_dir: Path
+    traces_dir: Path = None  # type: ignore[assignment]
 
 
 class ArtifactStore:
@@ -63,8 +64,9 @@ class ArtifactStore:
             artifacts_dir=artifacts,
             handoffs_dir=artifacts / "handoffs",
             deliverables_dir=artifacts / "deliverables",
+            traces_dir=run_dir / "traces",
         )
-        for d in (layout.artifacts_dir, layout.handoffs_dir, layout.deliverables_dir):
+        for d in (layout.artifacts_dir, layout.handoffs_dir, layout.deliverables_dir, layout.traces_dir):
             d.mkdir(parents=True, exist_ok=True)
         return layout
 
@@ -84,6 +86,16 @@ class ArtifactStore:
         }
         with self._lock, self._events_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
+
+    # ── traces (full LLM conversation logs) ──
+
+    def save_trace(self, filename: str, data: Any) -> Path:
+        """Write a JSON trace file to the traces directory."""
+        path = self.layout.traces_dir / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            path.write_text(json.dumps(data, indent=2, default=str))
+        return path
 
     # ── handoffs (deterministic inter-agent data) ──
 
