@@ -22,25 +22,42 @@ A trustworthy and precise vulnerability detection AI agent that discovers softwa
 `--arvo` or `--project` tells detect.py where the code lives (which Docker image to use).
 
 ```
-detect.py  --pipeline [file | project | detect]
+detect.py  --pipeline [file | project | detect | scan_filter | scan_filter_detect]
            --arvo / --project
            --target-file  (required for --pipeline=file)
                 │
                 ├── pipeline=file ──► FileHypothesisRunner (single file, direct)
                 │
-                └── pipeline=project|detect ──► MultiAgentOrchestrator
-                                                    ├── HypothesisOrchestrator
-                                                    │     └── FileHypothesisRunner × N (parallel)
-                                                    ├── PoCBuilderAgent × N  (pipeline=detect only)
-                                                    ├── ValidatorAgent × N   (pipeline=detect only)
-                                                    └── ReporterAgent × N    (pipeline=detect only)
+                ├── pipeline=project|detect ──► MultiAgentOrchestrator
+                │                                   ├── HypothesisOrchestrator
+                │                                   │     └── FileHypothesisRunner × N (parallel)
+                │                                   ├── PoCBuilderAgent × N  (pipeline=detect only)
+                │                                   ├── ValidatorAgent × N   (pipeline=detect only)
+                │                                   └── ReporterAgent × N    (pipeline=detect only)
+                │
+                └── pipeline=scan_filter|scan_filter_detect
+                         ──► ScanFilterOrchestrator (per file)
+                               ├── Stage 1: Multi-pass LLM analysis (tree-sitter + focused passes)
+                               ├── Stage 2: LLM classification + dedup
+                               ├── Stage 3: Docker sub-agent filtering
+                               └── (scan_filter_detect only) ──► MultiAgentOrchestrator
+                                     ├── PoCBuilderAgent × N
+                                     ├── ValidatorAgent × N
+                                     └── ReporterAgent × N
 ```
 
 - **`--pipeline file`** — run hypothesis generation on a single file only
 - **`--pipeline project`** — run parallel hypothesis generation on all source files, stop before PoC related steps
 - **`--pipeline detect`** (default) — full pipeline: hypotheses → PoC validation → report
+- **`--pipeline scan_filter`** — multi-pass scan → classify/dedup → Docker sub-agent filter, stop after hypotheses
+- **`--pipeline scan_filter_detect`** — scan_filter → PoC generation → validation → report
 
 Each `FileHypothesisRunner` wraps a `DefaultAgent` with `file_hypothesis.yaml` config.
+
+The `scan_filter` pipeline uses three separate model tiers:
+- **`--model`** — cheap/fast model for Stage 1-2 hypothesis generation (e.g., Haiku)
+- **`--filter-model`** — mid-tier model for Stage 3 sub-agent verification (e.g., Sonnet)
+- **`--poc-model`** — strongest model for PoC/validation/report (e.g., Opus, only in `scan_filter_detect`)
 
 ## Quick Start
 
@@ -90,6 +107,86 @@ Test the installation with a simple task (no Docker required):
 vul-agent -t "List all files in the current directory and describe what they do"
 ```
 
+## Building OSS-Fuzz Docker Images
+
+To analyze OSS-Fuzz projects, you need to build the fuzzers with ASAN and package them into a Docker image with the `arvo` runner script.
+
+### Step 1: Build fuzzers with OSS-Fuzz
+
+```bash
+# Clone oss-fuzz
+git clone https://github.com/google/oss-fuzz.git ~/oss-fuzz
+cd ~/oss-fuzz
+
+# Build fuzzers for a project (uses address sanitizer by default)
+python infra/helper.py build_fuzzers --sanitizer address <project_name>
+# e.g. python infra/helper.py build_fuzzers --sanitizer address assimp
+
+# Verify the build produced fuzzer binaries
+ls build/out/<project_name>/
+```
+
+### Step 2: Package into a vulagent-ready container
+
+The `scripts/create_ossfuzz_containers.sh` script automates packaging. It:
+1. Starts a container from the OSS-Fuzz base image (`gcr.io/oss-fuzz/<project>`)
+2. Copies the compiled fuzzer binaries into `/out/`
+3. Installs the `arvo` script at `/usr/bin/arvo`
+4. Commits the container as `vulagent/<project>:latest`
+
+```bash
+# Edit the script to add your projects, then run:
+bash scripts/create_ossfuzz_containers.sh
+```
+
+Or do it manually for a single project:
+
+```bash
+PROJECT=assimp
+OSS_FUZZ_DIR=~/oss-fuzz
+
+# Start a container from the oss-fuzz base image
+docker run -d --name setup-${PROJECT} gcr.io/oss-fuzz/${PROJECT}:latest sleep 3600
+
+# Copy compiled fuzzers into /out/
+docker exec setup-${PROJECT} mkdir -p /out
+docker cp ${OSS_FUZZ_DIR}/build/out/${PROJECT}/. setup-${PROJECT}:/out/
+
+# Copy the arvo script (handles ASAN env vars + fuzzer invocation)
+docker cp scripts/arvo_ossfuzz setup-${PROJECT}:/usr/bin/arvo
+docker exec setup-${PROJECT} chmod +x /usr/bin/arvo
+
+# Verify fuzzers are available
+docker exec setup-${PROJECT} arvo list
+
+# Commit as a reusable image
+docker commit setup-${PROJECT} vulagent/${PROJECT}:latest
+docker rm -f setup-${PROJECT}
+```
+
+### The `arvo` script
+
+The `arvo` script inside the container provides a standard interface for running fuzzers:
+
+```bash
+arvo list                    # List available fuzzer binaries in /out/
+arvo run <fuzzer> /tmp/poc   # Run a specific fuzzer with a PoC input
+arvo run <fuzzer>            # Run with /tmp/poc (default)
+```
+
+It sets the standard ASAN/MSAN/UBSAN environment variables so that sanitizer crashes are properly reported.
+
+### Verifying the image
+
+```bash
+# List available fuzzers
+docker run --rm vulagent/assimp:latest arvo list
+
+# Test a PoC (mount it as /tmp/poc)
+docker run --rm -v /path/to/poc:/tmp/poc:ro vulagent/assimp:latest \
+    timeout 30 arvo run assimp_fuzzer
+```
+
 ## Vul-agent for Vulnerability Detection
 
 ### ARVO Targets
@@ -120,6 +217,24 @@ python -m vulagent.run.detect \
 > **Note:** `arvo:xxx-vul-clean` images are produced using `python -m vulagent.run.clean_arvo`
 > to remove pre-existing PoCs, crashers, and seed corpus from ARVO-vul images.
 
+### OSS-Fuzz Targets
+
+For OSS-Fuzz Docker images built with the steps above:
+
+```bash
+# Full pipeline: scan → hypotheses → PoC → validate → report
+python -m vulagent.run.detect \
+    --arvo vulagent/assimp:latest \
+    --model anthropic/claude-opus-4-6
+
+# Scan a specific file
+python -m vulagent.run.detect \
+    --arvo vulagent/assimp:latest \
+    --model anthropic/claude-opus-4-6 \
+    --pipeline file \
+    --target-file code/AssetLib/FBX/FBXBinaryTokenizer.cpp
+```
+
 ### Custom Projects
 
 Example: Single file hypothesis on a custom project
@@ -134,17 +249,86 @@ python -m vulagent.run.detect \
 
 Use `--docker-image` to specify a custom Docker base image (default: `vulagent/memcheck:latest`).
 
+### Scan-and-Filter Pipeline
+
+The `scan_filter` pipeline uses a more thorough multi-pass analysis: tree-sitter function parsing, multiple focused LLM passes, LLM-based classification/dedup, and Docker sub-agent verification. It can be run standalone or as the front-end to the full PoC generation pipeline.
+
+#### Standalone scan_and_filter (via detect.py)
+
+```bash
+# Scan + classify + dedup + filter, stop after hypotheses
+python -m vulagent.run.detect \
+    --arvo vulagent/assimp:latest \
+    --pipeline scan_filter \
+    --model claude-haiku-4-5-20251001 \
+    --filter-model anthropic/claude-sonnet-4-6 \
+    --target-file code/AssetLib/FBX/FBXParser.cpp \
+    --max-workers 8
+
+# Full pipeline: scan_filter → PoC generation → validation → report
+python -m vulagent.run.detect \
+    --arvo vulagent/assimp:latest \
+    --pipeline scan_filter_detect \
+    --model claude-haiku-4-5-20251001 \
+    --filter-model anthropic/claude-sonnet-4-6 \
+    --poc-model anthropic/claude-opus-4-6 \
+    --target-file code/AssetLib/FBX/FBXParser.cpp
+```
+
+#### Standalone scan_and_filter (direct CLI, for local repos)
+
+```bash
+# Analyze a local source file
+python -m vulagent.run.scan_and_filter \
+    -f /path/to/repo/src/parser.c \
+    --repo /path/to/repo \
+    -m claude-haiku-4-5-20251001 \
+    --filter-model anthropic/claude-sonnet-4-6 \
+    --docker-image ubuntu:22.04 \
+    --workers 8
+
+# With a LiteLLM proxy
+python -m vulagent.run.scan_and_filter \
+    -f /path/to/repo/src/parser.c \
+    --repo /path/to/repo \
+    -m litellm_proxy/claude-haiku-4-5-20251001 \
+    --base-url https://your-litellm-proxy \
+    --api-key sk-... \
+    --filter-model litellm_proxy/claude-sonnet-4-6 \
+    --workers 8 --filter-workers 4
+```
+
+#### Resuming from saved hypotheses
+
+The `scan_filter` pipeline saves hypotheses to `output/<run_id>/hypotheses.json`. You can skip the scan stage and go straight to PoC generation:
+
+```bash
+python -m vulagent.run.detect \
+    --arvo vulagent/assimp:latest \
+    --hypotheses-file output/<run_id>/hypotheses.json \
+    --model anthropic/claude-opus-4-6
+```
+
 ### Key Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--pipeline` | `detect` | Pipeline mode: `file`, `project`, or `detect` |
+| `--pipeline` | `detect` | Pipeline mode: `file`, `project`, `detect`, `scan_filter`, or `scan_filter_detect` |
 | `--target-file`, `-t` | — | Target file path (required for `--pipeline=file`) |
 | `--max-workers` | `4` | Parallel workers for hypothesis generation |
 | `--top-n` | `5` | Number of top hypotheses to pursue |
 | `--max-poc-attempts` | `2` | Max PoC build + validation attempts per hypothesis |
 | `--keep-container` | `false` | Keep Docker container after run (for debugging) |
 | `--agents-config-dir` | built-in | Custom directory for per-agent YAML configs |
+| `--filter-model` | Sonnet 4.6 | Model for scan_filter Stage 3 sub-agent verification |
+| `--filter-workers` | `4` | Parallel workers for sub-agent filtering |
+| `--poc-model` | same as `--model` | Model for PoC/validator/reporter agents |
+| `--max-functions` | `50` | Max functions to analyze per file in scan_filter |
+| `--agent-step-limit` | `20` | Max steps per scan_filter sub-agent |
+| `--agent-cost-limit` | `2.0` | Max cost (USD) per scan_filter sub-agent |
+| `--base-url` | — | LiteLLM proxy base URL |
+| `--api-key` | `MODEL_API_KEY` | API key for LLM calls |
+| `--hypotheses-file` | — | Load pre-generated hypotheses, skip scan stage |
 
 ### Validating PoCs
 
