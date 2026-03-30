@@ -116,6 +116,138 @@ def truncate(text: str, max_chars: int = 12_000) -> str:
 
 
 # ===========================================================================
+# Static check analysis (argument validation detection)
+# ===========================================================================
+
+
+def run_check_analysis(source: str, file_path: str = "<stdin>") -> list[dict]:
+    """Run the static check analyzer on source code.
+
+    Returns a list of dicts (one per function) with parameter check information.
+    Returns empty list if the analyzer is not available.
+    """
+    try:
+        from vulagent.analysis.check_analyzer import analyze_source
+    except ImportError:
+        logger.debug("check_analyzer not available, skipping static analysis")
+        return []
+    results = analyze_source(source, file_path)
+    return [r.to_dict() for r in results]
+
+
+def format_check_analysis_context(
+    check_results: list[dict],
+    *,
+    unchecked_only: bool = False,
+    max_functions: int = 80,
+) -> str:
+    """Format check analysis results into a concise context string for LLM prompts.
+
+    Args:
+        check_results: Output of run_check_analysis().
+        unchecked_only: If True, only include functions with unchecked params.
+        max_functions: Maximum functions to include.
+
+    Returns a markdown-formatted string summarising parameter checks per function.
+    """
+    if not check_results:
+        return ""
+
+    # Filter to functions with unchecked params if requested
+    if unchecked_only:
+        check_results = [r for r in check_results if r.get("unchecked_params")]
+
+    if not check_results:
+        return ""
+
+    # Limit output size
+    check_results = check_results[:max_functions]
+
+    lines: list[str] = []
+    lines.append("## Static Argument-Check Analysis")
+    lines.append("")
+    lines.append("The following is an automated static analysis of parameter validation checks ")
+    lines.append("in each function. Parameters marked **UNCHECKED** have no detected validation ")
+    lines.append("(null check, bounds check, assertion, etc.) — these are higher-risk for ")
+    lines.append("exploitable bugs like NULL dereferences, buffer overflows, or integer issues.")
+    lines.append("")
+
+    total_unchecked = sum(len(r.get("unchecked_params", [])) for r in check_results)
+    total_funcs_with_unchecked = sum(1 for r in check_results if r.get("unchecked_params"))
+    lines.append(f"**{total_funcs_with_unchecked} functions with {total_unchecked} unchecked parameters.**")
+    lines.append("")
+
+    for r in check_results:
+        func_name = r.get("name", "?")
+        start = r.get("line", "?")
+        unchecked = r.get("unchecked_params", [])
+        params = r.get("params", [])
+
+        if not params:
+            continue
+
+        param_parts = []
+        for p in params:
+            pname = p.get("name", "?")
+            ptype = p.get("type_str", "")
+            is_ptr = p.get("is_pointer", False)
+            checks = p.get("checks", [])
+            if checks:
+                kinds = sorted({c["kind"] for c in checks})
+                param_parts.append(f"`{pname}` ({ptype}): {', '.join(kinds)}")
+            else:
+                ptr_tag = " [ptr]" if is_ptr else ""
+                param_parts.append(f"`{pname}` ({ptype}{ptr_tag}): **UNCHECKED**")
+
+        marker = " ⚠" if unchecked else ""
+        lines.append(f"- **{func_name}()** (L{start}){marker}: {'; '.join(param_parts)}")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def format_function_check_context(
+    check_results: list[dict],
+    func_names: list[str],
+) -> str:
+    """Format check analysis for specific functions (used in per-function batch analysis).
+
+    Returns a short context block showing parameter checks for the given functions.
+    """
+    if not check_results or not func_names:
+        return ""
+
+    name_set = set(func_names)
+    matching = [r for r in check_results if r.get("name") in name_set]
+    if not matching:
+        return ""
+
+    lines: list[str] = []
+    lines.append("\n**Parameter validation analysis for these functions:**")
+    for r in matching:
+        func_name = r.get("name", "?")
+        unchecked = r.get("unchecked_params", [])
+        params = r.get("params", [])
+        if not params:
+            continue
+        parts = []
+        for p in params:
+            pname = p.get("name", "?")
+            ptype = p.get("type_str", "")
+            checks = p.get("checks", [])
+            if checks:
+                kinds = sorted({c["kind"] for c in checks})
+                parts.append(f"`{pname}`: {', '.join(kinds)}")
+            else:
+                ptr_tag = " [ptr]" if p.get("is_pointer") else ""
+                parts.append(f"`{pname}`{ptr_tag}: **UNCHECKED**")
+        tag = " ⚠ HAS UNCHECKED PARAMS" if unchecked else ""
+        lines.append(f"- `{func_name}()`: {'; '.join(parts)}{tag}")
+
+    return "\n".join(lines)
+
+
+# ===========================================================================
 # Function parsing (tree-sitter)
 # ===========================================================================
 
@@ -331,6 +463,61 @@ FOCUSED_PASSES = [
     "- Conditions that are technically wrong but whose branches both lead to safe behavior",
 ]
 
+# This pass is injected dynamically when check analysis found unchecked params.
+# It is NOT in FOCUSED_PASSES because its prompt depends on the check analysis output.
+UNCHECKED_PARAMS_PASS_TEMPLATE = """\
+Good. A static analysis tool has identified the following functions with **unchecked parameters** — \
+parameters that have no detected validation (no null check, bounds check, assertion, etc.):
+
+{unchecked_summary}
+
+For each unchecked parameter listed above, please carefully examine:
+1. **Is it a pointer?** If so, is it ever dereferenced without a NULL check? Could an attacker supply NULL?
+2. **Is it a size/length/offset?** If so, is it used in memory operations (malloc, memcpy, array index) \
+without bounds validation? Could an attacker supply a very large, negative, or zero value?
+3. **Is it an enum/type field?** If so, is it used in a switch/dispatch without a default case or range check?
+4. **Does the caller validate it?** Trace one or two callers — if the caller already validates, it may be safe.
+
+Form hypotheses for any **real, exploitable vulnerabilities** you find from these unchecked parameters.
+
+**IMPORTANT:** Only report genuinely exploitable issues:
+- A missing NULL check on a pointer that IS dereferenced and CAN be NULL (from untrusted input or allocation failure)
+- A missing bounds check on a size/index that IS used unsafely (buffer overflow, integer overflow, OOB access)
+- Do NOT report missing checks on parameters that are always valid by construction or always validated by callers
+- Do NOT report missing checks on parameters that are never used in a dangerous way"""
+
+
+def build_unchecked_params_pass(check_results: list[dict]) -> str | None:
+    """Build a focused-pass prompt targeting functions with unchecked parameters.
+
+    Returns None if no unchecked parameters were found.
+    """
+    funcs_with_unchecked = [r for r in check_results if r.get("unchecked_params")]
+    if not funcs_with_unchecked:
+        return None
+
+    # Build a concise summary of unchecked params
+    summary_lines: list[str] = []
+    for r in funcs_with_unchecked[:40]:  # cap to keep prompt reasonable
+        func_name = r.get("name", "?")
+        line = r.get("line", "?")
+        unchecked = r.get("unchecked_params", [])
+        params = r.get("params", [])
+        # Build info for each unchecked param
+        unchecked_details = []
+        for pname in unchecked:
+            pinfo = next((p for p in params if p.get("name") == pname), {})
+            ptype = pinfo.get("type_str", "")
+            is_ptr = pinfo.get("is_pointer", False)
+            tag = " [pointer]" if is_ptr else ""
+            unchecked_details.append(f"`{pname}` ({ptype}{tag})")
+        summary_lines.append(
+            f"- **{func_name}()** (line {line}): unchecked → {', '.join(unchecked_details)}"
+        )
+
+    unchecked_summary = "\n".join(summary_lines)
+    return UNCHECKED_PARAMS_PASS_TEMPLATE.format(unchecked_summary=unchecked_summary)
+
 
 def _ask_for_json(
     msgs: list[dict], model: str, kwargs: dict,
@@ -366,17 +553,31 @@ def _ask_for_json(
 def phase_summarize(
     model: str, file_path: Path, source: str, kwargs: dict,
     cost_tracker: CostTracker | None = None,
+    check_analysis_context: str = "",
 ) -> tuple[str, str, list[dict]]:
     msgs: list[dict] = []
-    round1 = chat_send(
-        msgs, model,
+
+    # Build the initial prompt with source + optional check analysis
+    initial_prompt = (
         f"Here is the file `{file_path.name}`:\n\n```\n{truncate(source)}\n```\n\n"
+    )
+    if check_analysis_context:
+        initial_prompt += (
+            f"\n{check_analysis_context}\n\n"
+        )
+    initial_prompt += (
         "Please produce a summary of this file. Note that your summary should explain "
         "**all** of the features and functionalities. Do this by checking whether you "
-        "can address every line of the file to one of the features/functionalities.",
-        kwargs,
-        cost_tracker=cost_tracker,
+        "can address every line of the file to one of the features/functionalities."
     )
+    if check_analysis_context:
+        initial_prompt += (
+            "\n\nAlso note the static analysis results above — parameters marked UNCHECKED "
+            "lack detected validation. Keep these in mind as you summarize; they represent "
+            "potential attack surfaces."
+        )
+
+    round1 = chat_send(msgs, model, initial_prompt, kwargs, cost_tracker=cost_tracker)
     round2 = chat_send(msgs, model, "good. now please summarize into more high-level features.", kwargs, cost_tracker=cost_tracker)
     return round1, round2, msgs
 
@@ -419,6 +620,7 @@ def phase_analyze_functions(
     model: str, file_path: Path, funcs: list[FunctionInfo],
     summary_msgs: list[dict], kwargs: dict,
     cost_tracker: CostTracker | None = None,
+    check_results: list[dict] | None = None,
 ) -> dict:
     combined_snippet = "\n\n".join(
         f"Function `{f.name}` (lines {f.start_line}\u2013{f.end_line}):\n"
@@ -427,24 +629,42 @@ def phase_analyze_functions(
     )
     label = ", ".join(f.name for f in funcs)
 
+    # Add per-function check analysis if available
+    func_check_context = ""
+    if check_results:
+        func_check_context = format_function_check_context(
+            check_results, [f.name for f in funcs],
+        )
+
     msgs = list(summary_msgs)
-    formulation = chat_send(
-        msgs, model,
+    prompt = (
         f"Good. Now please examine the following function(s):\n\n{combined_snippet}\n\n"
+    )
+    if func_check_context:
+        prompt += func_check_context + "\n\n"
+    prompt += (
         "Please refer to your own summarization and form some hypothesis about potential "
         "vulnerabilities. You should try to cover all the vulnerabilities, both feature-related "
         "and feature-unrelated.\n\n"
         "Please try to find all the vulnerabilities. Especially do not miss the vulnerabilities "
         "related to uncontrolled resource consumption, and more classic vulnerabilities like "
         "wrong if-clause conditions, missed NULL check, and uninitialized variables.\n\n"
+    )
+    if func_check_context:
+        prompt += (
+            "Pay special attention to parameters marked **UNCHECKED** in the analysis above — "
+            "these lack validation and are higher risk for exploitable bugs.\n\n"
+        )
+    prompt += (
         "**Only report real, exploitable vulnerabilities** where a crafted input could cause "
         "memory corruption, crashes, or undefined behavior. Do NOT report:\n"
         "- Code quality issues or style problems\n"
         "- Dead code or redundant/always-true checks (e.g., `&(s->member) != NULL`)\n"
         "- Missing error handling that just causes graceful degradation\n"
-        "- Speculative issues that require impossible preconditions",
-        kwargs,
-        cost_tracker=cost_tracker,
+        "- Speculative issues that require impossible preconditions"
+    )
+    formulation = chat_send(
+        msgs, model, prompt, kwargs, cost_tracker=cost_tracker,
     )
     _, hypotheses = _ask_for_json(msgs, model, kwargs, cost_tracker=cost_tracker)
     return {
@@ -801,6 +1021,20 @@ The target file is: {{target_file}}
 {% for hs in hotspots %}- {{hs.file_path}}:{{hs.line_start}}-{{hs.line_end}} ({{hs.function}}): {{hs.context}}
 {% endfor %}{% endif %}
 
+{% if check_analysis_for_hypothesis %}
+## Static Parameter-Check Analysis
+
+An automated static analyzer detected the following parameter validation status \
+for functions relevant to this hypothesis. Use this to quickly determine whether \
+the parameters in question are already validated:
+
+{{check_analysis_for_hypothesis}}
+
+If the hypothesis claims a missing check and the analysis above shows the parameter IS checked, \
+investigate whether that check is sufficient. If the analysis shows UNCHECKED, the hypothesis \
+is more likely valid.
+{% endif %}
+
 ## Instructions
 You have **{{max_rounds}} rounds** to complete your verification. Plan wisely.
 
@@ -863,6 +1097,7 @@ def run_filter_agent(
     model_config: dict,
     agent_step_limit: int = 20,
     agent_cost_limit: float = 2.0,
+    check_results: list[dict] | None = None,
 ) -> dict:
     """Run a DefaultAgent inside the existing Docker container to verify one hypothesis.
 
@@ -874,6 +1109,14 @@ def run_filter_agent(
     h = hyp.get("hypothesis", hyp)
     hotspots = h.get("hotspots", [])
     project_path = env.config.cwd or "/src"
+
+    # Build check analysis context for the hypothesis's functions
+    check_context_for_hyp = ""
+    if check_results:
+        # Collect function names from hotspots
+        hyp_func_names = list({hs.get("function", "") for hs in hotspots if hs.get("function")})
+        if hyp_func_names:
+            check_context_for_hyp = format_function_check_context(check_results, hyp_func_names)
 
     try:
         model = get_model(model_name, model_config)
@@ -913,6 +1156,7 @@ def run_filter_agent(
             hypothesis_trigger=h.get("trigger", ""),
             hypothesis_expected_crash=h.get("expected_crash", ""),
             hotspots=hotspots,
+            check_analysis_for_hypothesis=check_context_for_hyp,
         )
 
         trajectory = agent.messages

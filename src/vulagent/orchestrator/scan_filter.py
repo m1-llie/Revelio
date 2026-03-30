@@ -20,14 +20,17 @@ from vulagent.orchestrator.scan_filter_stages import (
     CostTracker,
     FunctionInfo,
     aggregate_hypotheses,
+    build_unchecked_params_pass,
     classify_hypothesis,
     dedup_hypotheses,
+    format_check_analysis_context,
     make_batches,
     parse_functions,
     phase_analyze_focused,
     phase_analyze_functions,
     phase_analyze_wholefile,
     phase_summarize,
+    run_check_analysis,
     run_filter_agent,
 )
 
@@ -154,6 +157,7 @@ class ScanFilterOrchestrator:
     def _run_stage1_for_file(
         self, rel_path: str, project_path: str, source: str,
         cost_tracker: CostTracker | None = None,
+        check_results: list[dict] | None = None,
     ) -> tuple[list[dict], dict, list[dict], list[dict]]:
         """Run Stage 1 (multi-pass hypothesis generation) for a single file.
 
@@ -161,10 +165,19 @@ class ScanFilterOrchestrator:
         """
         file_path = Path(rel_path)
 
+        # Build check analysis context for the summarize phase
+        check_context = ""
+        if check_results:
+            check_context = format_check_analysis_context(check_results, unchecked_only=True)
+            if check_context:
+                n_unchecked_funcs = sum(1 for r in check_results if r.get("unchecked_params"))
+                self._log(f"  [scan_filter] Check analysis: {n_unchecked_funcs} functions with unchecked params")
+
         self._log(f"  [scan_filter] Summarizing {rel_path}...")
         summary, deep_summary, summary_msgs = phase_summarize(
             self.model_name, file_path, source, self.model_kwargs,
             cost_tracker=cost_tracker,
+            check_analysis_context=check_context,
         )
 
         self._log(f"  [scan_filter] Parsing functions in {rel_path}...")
@@ -175,11 +188,20 @@ class ScanFilterOrchestrator:
         self._log(f"  [scan_filter] Found {total_found} functions (using {len(functions)})")
 
         batches = make_batches(functions)
-        total_tasks = 1 + len(FOCUSED_PASSES) + len(batches)
+
+        # Build focused passes: standard passes + optional unchecked-params pass
+        focused_passes = list(FOCUSED_PASSES)
+        if check_results:
+            unchecked_pass = build_unchecked_params_pass(check_results)
+            if unchecked_pass:
+                focused_passes.append(unchecked_pass)
+                self._log(f"  [scan_filter] Added unchecked-params focused pass")
+
+        total_tasks = 1 + len(focused_passes) + len(batches)
         effective_workers = min(self.max_workers, total_tasks)
 
         wholefile_result: dict = {}
-        focused_results: list[dict] = [{} for _ in FOCUSED_PASSES]
+        focused_results: list[dict] = [{} for _ in focused_passes]
         function_analyses: list[dict] = [{}] * len(batches)
         completed = 0
 
@@ -189,7 +211,7 @@ class ScanFilterOrchestrator:
                 phase_analyze_wholefile, self.model_name, file_path, summary_msgs, self.model_kwargs,
                 cost_tracker=cost_tracker,
             )] = ("wholefile", None)
-            for idx, prompt in enumerate(FOCUSED_PASSES):
+            for idx, prompt in enumerate(focused_passes):
                 futures[executor.submit(
                     phase_analyze_focused, self.model_name, file_path, summary_msgs, prompt, self.model_kwargs,
                     cost_tracker=cost_tracker,
@@ -198,6 +220,7 @@ class ScanFilterOrchestrator:
                 futures[executor.submit(
                     phase_analyze_functions, self.model_name, file_path, batch, summary_msgs, self.model_kwargs,
                     cost_tracker=cost_tracker,
+                    check_results=check_results,
                 )] = ("batch", idx)
 
             for future in as_completed(futures):
@@ -314,6 +337,7 @@ class ScanFilterOrchestrator:
     def _run_stage3(
         self, kept: list[dict], target_file: str,
         cost_tracker: CostTracker | None = None,
+        check_results: list[dict] | None = None,
     ) -> tuple[list[dict], dict[int, dict]]:
         """Run Stage 3 (Docker sub-agent filtering). Returns (final_hypotheses, filter_results)."""
         self._log(f"  [scan_filter] Stage 3: filtering {len(kept)} hypotheses with sub-agents...")
@@ -327,6 +351,7 @@ class ScanFilterOrchestrator:
                     h, self.env, target_file,
                     self.filter_model, self.filter_model_config,
                     self.agent_step_limit, self.agent_cost_limit,
+                    check_results=check_results,
                 )
                 v = filter_results[i]
                 # Accumulate filter agent cost
@@ -417,11 +442,22 @@ class ScanFilterOrchestrator:
             # Sanitize filename for trace filenames
             safe_name = rel_path.replace("/", "__").replace(".", "_")
 
+            # Run static check analysis on the source
+            self._log(f"[scan_filter] Running static check analysis on {rel_path}...")
+            check_results = run_check_analysis(source, rel_path)
+            n_funcs_analyzed = len(check_results)
+            n_with_unchecked = sum(1 for r in check_results if r.get("unchecked_params"))
+            self._log(
+                f"[scan_filter] Check analysis: {n_funcs_analyzed} functions, "
+                f"{n_with_unchecked} with unchecked params"
+            )
+
             # Stage 1: Hypothesis generation
             self._log(f"[scan_filter] Stage 1: Hypothesis generation for {rel_path}")
             cost_before = cost_tracker.snapshot()
             all_hypotheses, wf, fr, fa = self._run_stage1_for_file(
                 rel_path, project_path, source, cost_tracker=cost_tracker,
+                check_results=check_results,
             )
             s1_cost, s1_calls = cost_tracker.snapshot()
             s1_cost -= cost_before[0]
@@ -460,6 +496,11 @@ class ScanFilterOrchestrator:
                 ],
                 "aggregated_hypotheses": all_hypotheses,
                 "num_raw_hypotheses": len(all_hypotheses),
+                "check_analysis": {
+                    "functions_analyzed": n_funcs_analyzed,
+                    "functions_with_unchecked": n_with_unchecked,
+                    "details": check_results[:20],  # save first 20 for trace
+                },
                 "cost": s1_cost,
                 "calls": s1_calls,
             })
@@ -501,7 +542,9 @@ class ScanFilterOrchestrator:
             # Stage 3: Docker sub-agent filtering
             self._log(f"[scan_filter] Stage 3: Sub-agent filtering for {rel_path}")
             cost_before = cost_tracker.snapshot()
-            final, filter_results = self._run_stage3(kept, rel_path, cost_tracker=cost_tracker)
+            final, filter_results = self._run_stage3(
+                kept, rel_path, cost_tracker=cost_tracker, check_results=check_results,
+            )
             s3_cost, s3_calls = cost_tracker.snapshot()
             s3_cost -= cost_before[0]
             s3_calls -= cost_before[1]
