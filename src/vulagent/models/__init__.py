@@ -61,6 +61,10 @@ def get_model(input_model_name: str | None = None, config: dict | None = None) -
 
     model_class = get_model_class(resolved_model_name, config.pop("model_class", ""))
 
+    # Strip openrouter/ prefix — OpenRouterModel sends the name directly to the API
+    if resolved_model_name.startswith("openrouter/"):
+        config["model_name"] = resolved_model_name.removeprefix("openrouter/")
+
     if (from_env := os.getenv("MODEL_API_KEY")) and not str(type(model_class)).endswith("DeterministicModel"):
         config.setdefault("model_kwargs", {}).setdefault("api_key", from_env)
 
@@ -119,7 +123,11 @@ def get_model_class(model_name: str, model_class: str = "") -> type:
             msg = f"Unknown model class: {model_class} (resolved to {full_path}, available: {_MODEL_CLASS_MAPPING})"
             raise ValueError(msg)
 
-    # Default to LitellmModel
+    if model_name.startswith("openrouter/"):
+        from vulagent.models.openrouter_model import OpenRouterModel
+
+        return OpenRouterModel
+
     from vulagent.models.litellm_model import LitellmModel
 
     return LitellmModel
