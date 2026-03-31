@@ -111,16 +111,6 @@ class ContextPacketBuilder:
             sections["run"] = self._compact_section(run)
         elif role == "PoCBuilderAgent":
             sections["hypothesis"] = self._compact_section(hypothesis_dict)
-            if validation_dict:
-                sections["prior_validation"] = self._compact_section({
-                    "crash_detected": validation_dict.get("crash_detected"),
-                    "output_excerpt": validation_dict.get("output_excerpt"),
-                    "indicators": validation_dict.get("indicators"),
-                    "reproduction_command": validation_dict.get("reproduction_command"),
-                })
-        elif role == "ValidatorAgent":
-            sections["hypothesis"] = self._compact_section(hypothesis_dict)
-            sections["poc"] = self._compact_section(poc_dict)
         elif role == "ReporterAgent":
             sections["hypothesis"] = self._compact_section(hypothesis_dict)
             sections["poc"] = self._compact_section(poc_dict)

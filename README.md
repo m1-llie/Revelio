@@ -109,7 +109,7 @@ vul-agent -t "List all files in the current directory and describe what they do"
 
 ## Building OSS-Fuzz Docker Images
 
-To analyze OSS-Fuzz projects, you need to build the fuzzers with ASAN and package them into a Docker image with the `arvo` runner script.
+To analyze OSS-Fuzz projects, you need to build the fuzzers with code sanitizers and package them into a Docker image with the `arvo` runner script.
 
 ### Step 1: Build fuzzers with OSS-Fuzz
 
