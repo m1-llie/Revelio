@@ -11,9 +11,8 @@ A trustworthy and precise vulnerability detection AI agent that discovers softwa
 ### Pipeline Stages
 
 1. **HypothesisOrchestrator** — enumerates source files, runs `FileHypothesisRunner` per file in parallel, merges and ranks hypotheses by confidence
-2. **PoCBuilderAgent** — generates a deterministic PoC input and generator script for each hypothesis
-3. **ValidatorAgent** — runs the PoC against the target and checks for sanitizer/crash output
-4. **ReporterAgent** — writes a final bug report with vulnerability details and reproduction steps
+2. **PoCBuilderAgent** — generates a PoC input, validates it against the harness via a built-in `validate` tool, and iterates until a crash is confirmed or attempts are exhausted
+3. **ReporterAgent** — writes a final bug report with vulnerability details and reproduction steps
 
 ### Pipeline Modes
 
@@ -31,8 +30,7 @@ detect.py  --pipeline [file | project | detect | scan_filter | scan_filter_detec
                 ├── pipeline=project|detect ──► MultiAgentOrchestrator
                 │                                   ├── HypothesisOrchestrator
                 │                                   │     └── FileHypothesisRunner × N (parallel)
-                │                                   ├── PoCBuilderAgent × N  (pipeline=detect only)
-                │                                   ├── ValidatorAgent × N   (pipeline=detect only)
+                │                                   ├── PoCBuilderAgent × N  (pipeline=detect only, uses validate tool)
                 │                                   └── ReporterAgent × N    (pipeline=detect only)
                 │
                 └── pipeline=scan_filter|scan_filter_detect
@@ -41,23 +39,22 @@ detect.py  --pipeline [file | project | detect | scan_filter | scan_filter_detec
                                ├── Stage 2: LLM classification + dedup
                                ├── Stage 3: Docker sub-agent filtering
                                └── (scan_filter_detect only) ──► MultiAgentOrchestrator
-                                     ├── PoCBuilderAgent × N
-                                     ├── ValidatorAgent × N
+                                     ├── PoCBuilderAgent × N (uses validate tool)
                                      └── ReporterAgent × N
 ```
 
 - **`--pipeline file`** — run hypothesis generation on a single file only
 - **`--pipeline project`** — run parallel hypothesis generation on all source files, stop before PoC related steps
-- **`--pipeline detect`** (default) — full pipeline: hypotheses → PoC validation → report
+- **`--pipeline detect`** (default) — full pipeline: hypotheses → PoC building + validation → report
 - **`--pipeline scan_filter`** — multi-pass scan → classify/dedup → Docker sub-agent filter, stop after hypotheses
-- **`--pipeline scan_filter_detect`** — scan_filter → PoC generation → validation → report
+- **`--pipeline scan_filter_detect`** — scan_filter → PoC building + validation → report
 
 Each `FileHypothesisRunner` wraps a `DefaultAgent` with `file_hypothesis.yaml` config.
 
 The `scan_filter` pipeline uses three separate model tiers:
 - **`--model`** — cheap/fast model for Stage 1-2 hypothesis generation (e.g., Haiku)
 - **`--filter-model`** — mid-tier model for Stage 3 sub-agent verification (e.g., Sonnet)
-- **`--poc-model`** — strongest model for PoC/validation/report (e.g., Opus, only in `scan_filter_detect`)
+- **`--poc-model`** — strongest model for PoC building + validation/report (e.g., Opus, only in `scan_filter_detect`)
 
 ## Quick Start
 
@@ -91,6 +88,10 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 # MODEL_NAME=gemini/gemini-3-pro-preview
 # GEMINI_API_KEY=AIza...
+
+# Or use OpenRouter (any model via openrouter.ai)
+# MODEL_NAME=openrouter/google/gemini-2.5-pro
+# OPENROUTER_API_KEY=sk-or-...
 ```
 
 Alternatively, run the interactive setup:
@@ -316,13 +317,13 @@ python -m vulagent.run.detect \
 | `--pipeline` | `detect` | Pipeline mode: `file`, `project`, `detect`, `scan_filter`, or `scan_filter_detect` |
 | `--target-file`, `-t` | — | Target file path (required for `--pipeline=file`) |
 | `--max-workers` | `4` | Parallel workers for hypothesis generation |
-| `--top-n` | `5` | Number of top hypotheses to pursue |
-| `--max-poc-attempts` | `2` | Max PoC build + validation attempts per hypothesis |
+| `--top-n` | `10` | Number of top hypotheses to pursue |
+| `--max-poc-attempts` | `3` | Max validation attempts per hypothesis (PoCBuilder's `validate` tool calls) |
 | `--keep-container` | `false` | Keep Docker container after run (for debugging) |
 | `--agents-config-dir` | built-in | Custom directory for per-agent YAML configs |
 | `--filter-model` | Sonnet 4.6 | Model for scan_filter Stage 3 sub-agent verification |
 | `--filter-workers` | `4` | Parallel workers for sub-agent filtering |
-| `--poc-model` | same as `--model` | Model for PoC/validator/reporter agents |
+| `--poc-model` | same as `--model` | Model for PoC builder/reporter agents |
 | `--max-functions` | `50` | Max functions to analyze per file in scan_filter |
 | `--agent-step-limit` | `20` | Max steps per scan_filter sub-agent |
 | `--agent-cost-limit` | `2.0` | Max cost (USD) per scan_filter sub-agent |
@@ -350,7 +351,7 @@ CLI shortcuts:
 
 | Variable | Description |
 |----------|-------------|
-| `MODEL_NAME` | Default model name, e.g. `anthropic/claude-opus-4-6`, `openai/gpt-5`, `gemini/gemini-2.5-pro`. Always include the provider prefix. Can be overridden with `--model`. |
+| `MODEL_NAME` | Default model name, e.g. `anthropic/claude-opus-4-6`, `openai/gpt-5`, `gemini/gemini-2.5-pro`, `openrouter/google/gemini-2.5-pro`. Always include the provider prefix. Can be overridden with `--model`. |
 
 ### API Keys
 
@@ -361,8 +362,9 @@ CLI shortcuts:
 | `OPENAI_API_KEY` | OpenAI API key (used automatically by litellm for `openai/*` models) |
 | `ANTHROPIC_API_KEY` | Anthropic API key (used automatically by litellm for `anthropic/*` models) |
 | `GEMINI_API_KEY` | Google Gemini API key (used automatically by litellm for `gemini/*` models) |
+| `OPENROUTER_API_KEY` | OpenRouter API key (used when model name starts with `openrouter/`, e.g. `openrouter/google/gemini-2.5-pro`) |
 
-> **Tip:** You only need the provider-specific key for your chosen model (e.g., `ANTHROPIC_API_KEY` for Claude). `MODEL_API_KEY` is an alternative that works across providers via litellm.
+> **Tip:** You only need the provider-specific key for your chosen model (e.g., `ANTHROPIC_API_KEY` for Claude, `OPENROUTER_API_KEY` for OpenRouter). `MODEL_API_KEY` is an alternative that works across providers via litellm.
 
 ### Model Behavior
 
@@ -371,8 +373,8 @@ Temperature and other model parameters are configured **per-agent in YAML config
 | Agent | Temperature | Purpose |
 |-------|-------------|---------|
 | `file_hypothesis.yaml` | 0.4 | Balanced hypothesis generation |
-| `poc_builder.yaml` | 0.2 | Deterministic PoC generation |
-| `validator.yaml` | 0.0 | Strict crash validation |
+| `poc_builder.yaml` | 1.0 | Creative PoC building + validation |
+| `validator.yaml` | 0.0 | Strict crash validation (standalone use) |
 | `reporter.yaml` | 0.2 | Consistent report writing |
 
 Above temperatures work for GPT and Claude model series.
@@ -405,10 +407,10 @@ output/<run_id>/
 ├── log.txt                # Human-readable timestamped log
 ├── trajectory.json        # Aggregated multi-agent trajectories
 └── artifacts/
-    ├── handoffs/          # Inter-agent data (one JSON per stage + hypothesis + attempt)
+    ├── handoffs/          # Inter-agent data (one JSON per stage + hypothesis)
     │   ├── hypotheses.json
-    │   ├── poc_recipe_H01_attempt1.json
-    │   ├── validation_H01_attempt1.json
+    │   ├── poc_recipe_H01.json
+    │   ├── validation_H01.json
     │   └── report_H01.json
     └── deliverables/      # Final outputs (copied from container on success)
         ├── final_report_H01.md
@@ -432,8 +434,9 @@ vulagent/
 ├── config/          # YAML configs: default.yaml, agents/, arvo_targets.json
 ├── environments/    # Execution environments (Local, Docker, Singularity)
 ├── models/          # LLM interfaces (LiteLLM, Anthropic, OpenRouter, Portkey)
-├── orchestrator/    # Multi-agent pipeline + parallel hypothesis orchestration
-├── run/             # CLI entry points (detect, inspector, validators, hello_world)
+├── orchestrator/    # Multi-agent pipeline + parallel hypothesis orchestration + scan-filter
+├── run/             # CLI entry points (detect, scan_and_filter, inspector, validators, hello_world)
+├── tools/           # Agent tools (bash, finish, validate)
 ├── utils/           # Utility functions
 └── website/         # Web-based trace viewer
 ```

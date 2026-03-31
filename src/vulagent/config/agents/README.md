@@ -4,8 +4,8 @@ Each YAML file defines the agent prompt, formatting rules, and model parameters 
 
 Files:
 - `file_hypothesis.yaml` - per-file vulnerability hypothesis generation (used by `FileHypothesisRunner`)
-- `poc_builder.yaml` - PoC generation for a hypothesis
-- `validator.yaml` - crash validation & evidence capture
+- `poc_builder.yaml` - PoC building + validation for a hypothesis. Uses the `validate` tool to test PoCs against the harness and iterate until a crash is confirmed.
+- `validator.yaml` - standalone crash validation & evidence capture (available for direct use, but the main pipeline now uses the `validate` tool within PoCBuilder instead)
 - `reporter.yaml` - final bug report
 
 Note: The old monolithic `hypothesis.yaml` for HypothesisAgent in multi-agent structure v2 has been archived to `src/vulagent/archived/hypothesis_old.yaml`.
