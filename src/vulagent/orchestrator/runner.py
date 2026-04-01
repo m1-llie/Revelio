@@ -36,6 +36,22 @@ def _class_path(obj: Any) -> str:
     return f"{obj.__class__.__module__}.{obj.__class__.__name__}"
 
 
+def _discover_fuzz_targets(env: Any, function: str | None) -> list[str]:
+    """Find fuzz targets whose binary contains the given function symbol.
+
+    Uses ``arvo targets <symbol>`` (nm-based lookup).  Returns an empty
+    list when the arvo script doesn't support the ``targets`` subcommand
+    (e.g. original ARVO images) or when no targets match.
+    """
+    if not function:
+        return []
+    result = env.execute(f"arvo targets {function} 2>/dev/null || true")
+    output = (result.get("output") or "").strip()
+    if not output:
+        return []
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
 def _asdict(obj: Any) -> dict[str, Any]:
     if hasattr(obj, "__dataclass_fields__"):
         return asdict(obj)  # type: ignore[arg-type]
@@ -366,50 +382,81 @@ class MultiAgentOrchestrator:
             self._log(f"Running PoCBuilder for {item.hypothesis_id} ({item.title})...")
             self.store.append_event("poc_start", {"hypothesis_id": item.hypothesis_id})
 
-            poc_context = self._context_builder.build(
-                poc_builder.name,
-                run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
-                hypothesis=hypothesis_dict,
+            # Discover which fuzz targets can reach the hypothesis function.
+            # For multi-target images we iterate targets; for single-target
+            # (ARVO) or non-arvo mode, matched_targets is empty and we fall
+            # through to a single run with no DEFAULT_FUZZER override.
+            matched_targets = (
+                _discover_fuzz_targets(self.env, item.function)
+                if self.arvo_mode else []
             )
-            extra_vars = {
-                **common_vars,
-                "hypothesis_id": item.hypothesis_id,
-                "hypothesis_title": item.title,
-                "hypothesis_description": item.description,
-                "context_packet": render_context_packet(poc_context),
-                "max_validate_attempts": self.max_poc_attempts,
-            }
 
-            poc_run = runner.run(
-                poc_builder, extra_vars=extra_vars, tools=[validate_tool],
-            )
-            self._record_trajectory(poc_run, hypothesis_id=item.hypothesis_id)
-
-            if failure := self._check_run_status(poc_run, "poc_builder"):
-                self.store.append_event(
-                    "poc_builder_failed",
-                    {"hypothesis_id": item.hypothesis_id, "reason": failure.summary},
+            if matched_targets:
+                self._log(
+                    f"  {item.hypothesis_id}: function '{item.function}' found in "
+                    f"{len(matched_targets)} target(s): {', '.join(matched_targets)}"
                 )
-                self._log(f"PoCBuilder failed for {item.hypothesis_id}: {failure.summary}")
-                continue
+                self.store.append_event("targets_matched", {
+                    "hypothesis_id": item.hypothesis_id,
+                    "function": item.function,
+                    "targets": matched_targets,
+                })
 
-            poc_recipe = parse_poc_recipe(poc_run.result)
-            self._artifacts["poc"] = poc_recipe
-            self.store.write_handoff("poc_recipe", poc_recipe, hypothesis_id=item.hypothesis_id)
-            if poc_recipe.input_path:
-                poc_files.append(poc_recipe.input_path)
-            if poc_recipe.script_path:
-                script_files.append(poc_recipe.script_path)
+            # Try each matched target (or a single run with no override).
+            # Stop on first crash.
+            target_attempts = matched_targets or [None]
+            crash_detected = False
+            poc_recipe = None
+            poc_section: dict = {}
 
-            # Check if the PoCBuilder reported a crash in its payload
-            poc_data = _load_structured(poc_run.result)
-            payload = poc_data.get("payload", {})
-            if isinstance(payload, str):
-                payload = _load_structured(payload)
-            poc_section = payload.get("poc", payload)
-            if not isinstance(poc_section, dict):
-                poc_section = {}
-            crash_detected = bool(poc_section.get("crash_detected", False))
+            for fuzz_target in target_attempts:
+                if fuzz_target:
+                    self.env.execute(f"export DEFAULT_FUZZER={fuzz_target}")
+                    self._log(f"  Trying target: {fuzz_target}")
+
+                poc_context = self._context_builder.build(
+                    poc_builder.name,
+                    run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
+                    hypothesis=hypothesis_dict,
+                )
+                extra_vars = {
+                    **common_vars,
+                    "hypothesis_id": item.hypothesis_id,
+                    "hypothesis_title": item.title,
+                    "hypothesis_description": item.description,
+                    "context_packet": render_context_packet(poc_context),
+                    "max_validate_attempts": self.max_poc_attempts,
+                    "fuzz_target": fuzz_target or "",
+                }
+
+                poc_run = runner.run(
+                    poc_builder, extra_vars=extra_vars, tools=[validate_tool],
+                )
+                self._record_trajectory(poc_run, hypothesis_id=item.hypothesis_id)
+
+                if self._check_run_status(poc_run, "poc_builder"):
+                    self._log(f"  PoCBuilder failed for target {fuzz_target or 'default'}")
+                    continue
+
+                poc_recipe = parse_poc_recipe(poc_run.result)
+                self._artifacts["poc"] = poc_recipe
+                self.store.write_handoff("poc_recipe", poc_recipe, hypothesis_id=item.hypothesis_id)
+                if poc_recipe.input_path:
+                    poc_files.append(poc_recipe.input_path)
+                if poc_recipe.script_path:
+                    script_files.append(poc_recipe.script_path)
+
+                poc_data = _load_structured(poc_run.result)
+                payload = poc_data.get("payload", {})
+                if isinstance(payload, str):
+                    payload = _load_structured(payload)
+                poc_section = payload.get("poc", payload)
+                if not isinstance(poc_section, dict):
+                    poc_section = {}
+                crash_detected = bool(poc_section.get("crash_detected", False))
+
+                if crash_detected:
+                    break  # found a crash, no need to try more targets
 
             if not crash_detected:
                 self.store.append_event(

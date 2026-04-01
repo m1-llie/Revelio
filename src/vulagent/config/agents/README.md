@@ -4,7 +4,7 @@ Each YAML file defines the agent prompt, formatting rules, and model parameters 
 
 Files:
 - `file_hypothesis.yaml` - per-file vulnerability hypothesis generation (used by `FileHypothesisRunner`)
-- `poc_builder.yaml` - PoC building + validation for a hypothesis. Uses the `validate` tool to test PoCs against the harness and iterate until a crash is confirmed.
+- `poc_builder.yaml` - PoC building + validation for a hypothesis. Target-aware: when the orchestrator identifies a matching fuzz target, the agent is told which harness to use. Uses the `validate` tool which automatically tests PoCs against all available sanitizers.
 - `validator.yaml` - standalone crash validation & evidence capture (available for direct use, but the main pipeline now uses the `validate` tool within PoCBuilder instead)
 - `reporter.yaml` - final bug report
 

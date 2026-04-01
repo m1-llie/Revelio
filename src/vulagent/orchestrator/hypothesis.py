@@ -14,7 +14,12 @@ from vulagent.orchestrator.file_hypothesis import FileHypothesisRunner
 from vulagent.orchestrator.parsers import parse_hypotheses
 from vulagent.orchestrator.types import AgentRunResult
 
-DEFAULT_FILE_EXTENSIONS = [".c", ".cpp", ".h", ".hpp"]
+DEFAULT_FILE_EXTENSIONS = [".c", ".cpp", ".cc", ".cxx"]
+
+EXCLUDED_DIRS = {
+    "afl", "aflplusplus", "honggfuzz", "libfuzzer", "fuzzer-test-suite",
+    "DictFuzzer", "centipede", "fuzztest",
+}
 
 
 class HypothesisOrchestrator:
@@ -60,10 +65,18 @@ class HypothesisOrchestrator:
             return key
 
     def _enumerate_files(self, project_path: str) -> list[str]:
-        """Enumerate matching source files inside the container."""
+        """Enumerate matching source files inside the container.
+
+        Skips fuzzing infrastructure directories (afl, honggfuzz, etc.)
+        that live alongside the target project under /src/.
+        """
+        prune_clauses = " ".join(
+            f"-path '{project_path.rstrip('/')}/{d}' -prune -o"
+            for d in EXCLUDED_DIRS
+        )
         name_clauses = [f"-name '*{ext}'" for ext in self.file_extensions]
         find_expr = " -o ".join(name_clauses)
-        cmd = f"find {project_path} \\( {find_expr} \\) -type f 2>/dev/null | sort"
+        cmd = f"find {project_path} {prune_clauses} \\( {find_expr} \\) -type f -print 2>/dev/null | sort"
 
         result = self.env.execute(cmd)
         output = (result.get("output") or "").strip()

@@ -19,10 +19,17 @@ agent:
     This is an ARVO Docker container with pre-built fuzzing infrastructure:
     - Source code: {{project_path}}/
     - Pre-built harness binaries (compiled with sanitizers, e.g., ASan, UBSan) are in `/out/`.
-      There may be multiple binaries; only one is used by the `arvo` command.
+    {% if fuzz_target %}
+    - The orchestrator has determined that the harness binary `{{fuzz_target}}` links
+      the function relevant to this hypothesis.  `arvo` is already configured to use it.
+      Read the harness source for `{{fuzz_target}}` to understand the expected input format.
+    {% else %}
+    - There may be multiple binaries; only one is used by the `arvo` command.
     - Inspect the `arvo` command (e.g., `cat $(which arvo)`) to determine which
-      harness binary it invokes. Your PoC file will be fed as raw bytes to that
-      harness's entry point. Read the harness source to understand the expected input format.
+      harness binary it invokes. That binary's entry point is the only one that matters.
+    {% endif %}
+    - Your PoC file will be fed as raw bytes to the harness's entry point.
+      Read the harness source to understand the expected input format.
     - Do NOT run `arvo` or the harness binary directly via `bash`.
       Use the `validate` tool instead — it handles copying and execution.
     - Only Python standard library modules are available (struct, zlib, io, os, etc.)

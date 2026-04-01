@@ -11,7 +11,7 @@ A trustworthy and precise vulnerability detection AI agent that discovers softwa
 ### Pipeline Stages
 
 1. **HypothesisOrchestrator** — enumerates source files, runs `FileHypothesisRunner` per file in parallel, merges and ranks hypotheses by confidence
-2. **PoCBuilderAgent** — generates a PoC input, validates it against the harness via a built-in `validate` tool, and iterates until a crash is confirmed or attempts are exhausted
+2. **PoCBuilderAgent** — for each hypothesis, discovers which fuzz targets link the relevant function (`arvo targets <sym>`), then generates a PoC for each matching target. The `validate` tool automatically tests the PoC against all available sanitizers (asan, ubsan, msan). Stops on first confirmed crash.
 3. **ReporterAgent** — writes a final bug report with vulnerability details and reproduction steps
 
 ### Pipeline Modes
@@ -110,82 +110,53 @@ vul-agent -t "List all files in the current directory and describe what they do"
 
 ## Building OSS-Fuzz Docker Images
 
-To analyze OSS-Fuzz projects, you need to build the fuzzers with code sanitizers and package them into a Docker image with the `arvo` runner script.
-
-### Step 1: Build fuzzers with OSS-Fuzz
+`scripts/prepare_ossfuzz_project.sh` builds any [OSS-Fuzz](https://github.com/google/oss-fuzz) project into a vulagent-ready Docker image with the same interface as [ARVO](https://github.com/n132/ARVO) images.
 
 ```bash
-# Clone oss-fuzz
-git clone https://github.com/google/oss-fuzz.git ~/oss-fuzz
-cd ~/oss-fuzz
-
-# Build fuzzers for a project (uses address sanitizer by default)
-python infra/helper.py build_fuzzers --sanitizer address <project_name>
-# e.g. python infra/helper.py build_fuzzers --sanitizer address assimp
-
-# Verify the build produced fuzzer binaries
-ls build/out/<project_name>/
+scripts/prepare_ossfuzz_project.sh openssl                           # single project
+scripts/prepare_ossfuzz_project.sh openssl assimp curl               # multiple projects
+scripts/prepare_ossfuzz_project.sh --sanitizers asan,ubsan openssl   # skip MSan
+scripts/prepare_ossfuzz_project.sh --oss-fuzz-dir /data/oss-fuzz openssl
 ```
 
-### Step 2: Package into a vulagent-ready container
+The script clones/updates oss-fuzz, builds fuzzers with each sanitizer via `infra/helper.py build_fuzzers`, packages them into a single Docker image, and cleans it for zero-day detection. Sanitizers that fail to build are skipped automatically.
 
-The `scripts/create_ossfuzz_containers.sh` script automates packaging. It:
-1. Starts a container from the OSS-Fuzz base image (`gcr.io/oss-fuzz/<project>`)
-2. Copies the compiled fuzzer binaries into `/out/`
-3. Installs the `arvo` script at `/usr/bin/arvo`
-4. Commits the container as `vulagent/<project>:latest`
+The resulting `vulagent/<project>:latest` image contains:
 
-```bash
-# Edit the script to add your projects, then run:
-bash scripts/create_ossfuzz_containers.sh
+```
+/src/<project>/              source code (from the gcr.io/oss-fuzz/<project> base image)
+/out/asan/<fuzzer_binaries>  AddressSanitizer builds
+/out/ubsan/<fuzzer_binaries> UndefinedBehaviorSanitizer builds
+/out/msan/<fuzzer_binaries>  MemorySanitizer builds
+/usr/bin/arvo                fuzzer runner script (scripts/arvo_ossfuzz)
 ```
 
-Or do it manually for a single project:
-
-```bash
-PROJECT=assimp
-OSS_FUZZ_DIR=~/oss-fuzz
-
-# Start a container from the oss-fuzz base image
-docker run -d --name setup-${PROJECT} gcr.io/oss-fuzz/${PROJECT}:latest sleep 3600
-
-# Copy compiled fuzzers into /out/
-docker exec setup-${PROJECT} mkdir -p /out
-docker cp ${OSS_FUZZ_DIR}/build/out/${PROJECT}/. setup-${PROJECT}:/out/
-
-# Copy the arvo script (handles ASAN env vars + fuzzer invocation)
-docker cp scripts/arvo_ossfuzz setup-${PROJECT}:/usr/bin/arvo
-docker exec setup-${PROJECT} chmod +x /usr/bin/arvo
-
-# Verify fuzzers are available
-docker exec setup-${PROJECT} arvo list
-
-# Commit as a reusable image
-docker commit setup-${PROJECT} vulagent/${PROJECT}:latest
-docker rm -f setup-${PROJECT}
-```
+Re-run the script to pick up upstream source code changes.
 
 ### The `arvo` script
 
-The `arvo` script inside the container provides a standard interface for running fuzzers:
+`scripts/arvo_ossfuzz` is installed at `/usr/bin/arvo` inside the container. It provides the same interface as ARVO images, extended for multi-sanitizer and multi-target support:
 
 ```bash
-arvo list                    # List available fuzzer binaries in /out/
-arvo run <fuzzer> /tmp/poc   # Run a specific fuzzer with a PoC input
-arvo run <fuzzer>            # Run with /tmp/poc (default)
+arvo                         # run default fuzzer with /tmp/poc (SANITIZER=asan)
+arvo list                    # list fuzz targets for current SANITIZER
+arvo list --all              # list fuzz targets across all sanitizers
+arvo run <fuzzer> [poc]      # run a specific fuzzer (default poc: /tmp/poc)
+arvo targets <symbol>        # find which fuzz targets link a given function (nm lookup)
+arvo compile                 # recompile the project
+SANITIZER=ubsan arvo         # switch sanitizer
 ```
 
-It sets the standard ASAN/MSAN/UBSAN environment variables so that sanitizer crashes are properly reported.
+`SANITIZER` env var (default: `asan`) selects which `/out/<sanitizer>/` build to use. `DEFAULT_FUZZER` env var overrides auto-detection when multiple targets exist. Standard ASAN/MSAN/UBSAN env vars are exported automatically.
+
+The orchestrator uses `arvo targets <function>` to match hypotheses to reachable fuzz targets before launching the PoC builder. The validate tool uses `SANITIZER=` to test PoCs against all available sanitizers.
 
 ### Verifying the image
 
 ```bash
-# List available fuzzers
-docker run --rm vulagent/assimp:latest arvo list
-
-# Test a PoC (mount it as /tmp/poc)
-docker run --rm -v /path/to/poc:/tmp/poc:ro vulagent/assimp:latest \
-    timeout 30 arvo run assimp_fuzzer
+docker run --rm vulagent/openssl:latest arvo list --all
+docker run --rm -v /path/to/poc:/tmp/poc:ro vulagent/openssl:latest arvo run openssl_fuzzer
+docker run --rm -v /path/to/poc:/tmp/poc:ro -e SANITIZER=ubsan vulagent/openssl:latest arvo run openssl_fuzzer
 ```
 
 ## Vul-agent for Vulnerability Detection

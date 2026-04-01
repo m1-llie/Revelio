@@ -34,7 +34,7 @@ CLEANUP_COMMANDS = [
     # Remove pre-existing PoC
     "rm -f /tmp/poc",
     # Remove seed corpora (zips and directories) from /out and /src
-    "find /out -maxdepth 1 -type f -name '*seed_corpus*.zip' -delete 2>/dev/null || true",
+    "find /out -maxdepth 2 -type f -name '*seed_corpus*.zip' -delete 2>/dev/null || true",
     "find /src -type f -name '*seed_corpus*' -delete 2>/dev/null || true",
     "find /src -type f -name '*corpus*.zip' -delete 2>/dev/null || true",
     # Remove seed/corpus directories anywhere in source tree
@@ -138,7 +138,7 @@ def main(
             # Check each cleanup target
             check_commands = [
                 ("Pre-existing PoC", "ls -la /tmp/poc 2>/dev/null || echo 'Not found'"),
-                ("Seed corpus", "find /out -maxdepth 1 -type f -name '*seed_corpus*.zip' 2>/dev/null | head -10 || echo 'None'"),
+                ("Seed corpus", "find /out -maxdepth 2 -type f -name '*seed_corpus*.zip' 2>/dev/null | head -10 || echo 'None'"),
                 ("Crashers", "find /src -name 'crash-*' 2>/dev/null | head -10 || echo 'None'"),
                 ("Seeds dirs", "find /src -type d -name 'seeds' 2>/dev/null | head -10 || echo 'None'"),
                 ("Git dirs", "find /src -type d -name '.git' 2>/dev/null | head -10 || echo 'None'"),

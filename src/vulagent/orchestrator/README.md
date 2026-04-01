@@ -20,10 +20,14 @@ Pipeline stages (detect mode):
 1. **Hypothesis generation** - `HypothesisOrchestrator` enumerates source files,
    runs `FileHypothesisRunner` per file in parallel via `ThreadPoolExecutor`,
    then merges and ranks all hypotheses by confidence.
-2. **PoC building + validation** - `PoCBuilderAgent` builds a PoC for each hypothesis
-   and validates it against the harness via the `validate` tool (iterating up to
-   `max_poc_attempts` times).
-3. **Reporting** - `ReporterAgent` writes a bug report for confirmed crashes.
+2. **Target matching** - For each hypothesis, `_discover_fuzz_targets()` runs
+   `arvo targets <function>` (nm-based binary symbol lookup) to find which fuzz
+   targets can reach the hypothesized function. Zero LLM cost.
+3. **PoC building + validation** - For each matched target, `PoCBuilderAgent`
+   builds a PoC and validates it via the `validate` tool. The validate tool
+   automatically tests the PoC against all available sanitizers (asan, ubsan, msan).
+   Stops on first confirmed crash.
+4. **Reporting** - `ReporterAgent` writes a bug report for confirmed crashes.
 
 Pipeline stages (scan_filter / scan_filter_detect):
 1. **Stage 1: Multi-pass hypothesis generation** - Tree-sitter function parsing,
