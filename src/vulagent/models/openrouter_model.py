@@ -53,6 +53,8 @@ class OpenRouterModel:
         self._api_url = "https://openrouter.ai/api/v1/chat/completions"
         self._api_key = os.getenv("OPENROUTER_API_KEY", "")
 
+    _NON_API_KEYS = {"drop_params"}
+
     @retry(
         stop=stop_after_attempt(int(os.getenv("MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT", "10"))),
         wait=wait_exponential(multiplier=1, min=4, max=60),
@@ -70,15 +72,16 @@ class OpenRouterModel:
             "Content-Type": "application/json",
         }
 
+        merged = {k: v for k, v in (self.config.model_kwargs | kwargs).items() if k not in self._NON_API_KEYS}
         payload = {
             "model": self.config.model_name,
             "messages": messages,
             "usage": {"include": True},
-            **(self.config.model_kwargs | kwargs),
+            **merged,
         }
 
         try:
-            response = requests.post(self._api_url, headers=headers, data=json.dumps(payload), timeout=60)
+            response = requests.post(self._api_url, headers=headers, data=json.dumps(payload), timeout=300)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.HTTPError as e:
@@ -92,17 +95,17 @@ class OpenRouterModel:
         except requests.exceptions.RequestException as e:
             raise OpenRouterAPIError(f"Request failed: {e}") from e
 
-    def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
+    def query(self, messages: list[dict[str, str]], tools: list[dict] | None = None, **kwargs) -> dict:
         if self.config.set_cache_control:
             messages = set_cache_control(messages, mode=self.config.set_cache_control)
+        if tools:
+            kwargs["tools"] = tools
         response = self._query(messages, **kwargs)
 
-        # Extract cost from usage information
         usage = response.get("usage", {})
         cost = usage.get("cost", 0.0)
         assert cost >= 0.0, f"Cost is negative: {cost}"
 
-        # If total_cost is not available, raise an error
         if cost == 0.0:
             raise OpenRouterAPIError(
                 f"No cost information available from OpenRouter API for model {self.config.model_name}. "
@@ -113,12 +116,25 @@ class OpenRouterModel:
         self.cost += cost
         GLOBAL_MODEL_STATS.add(cost)
 
-        return {
-            "content": response["choices"][0]["message"]["content"] or "",
-            "extra": {
-                "response": response,  # already is json
-            },
+        msg = response["choices"][0]["message"]
+        result: dict[str, Any] = {
+            "content": msg.get("content") or "",
+            "extra": {"response": response},
         }
+
+        if raw_tool_calls := msg.get("tool_calls"):
+            result["tool_calls"] = [
+                {
+                    "id": tc["id"],
+                    "name": tc["function"]["name"],
+                    "arguments": json.loads(tc["function"]["arguments"])
+                    if isinstance(tc["function"]["arguments"], str)
+                    else tc["function"]["arguments"],
+                }
+                for tc in raw_tool_calls
+            ]
+
+        return result
 
     def get_template_vars(self) -> dict[str, Any]:
         return asdict(self.config) | {"n_model_calls": self.n_calls, "model_cost": self.cost}

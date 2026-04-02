@@ -11,6 +11,8 @@ preds.json
 .env
 traj.json
 
+scripts/run_arvo_parallel.sh
+
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 
