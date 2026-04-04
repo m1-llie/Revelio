@@ -22,16 +22,34 @@ from vulagent.models import get_model
 from vulagent.orchestrator.context import ContextPacketBuilder, render_context_packet
 from vulagent.orchestrator.hypothesis import HypothesisOrchestrator
 from vulagent.orchestrator.parsers import (
+    _load_structured,
     parse_bug_report,
     parse_hypotheses,
     parse_poc_recipe,
     parse_validation_result,
 )
+from vulagent.tools.validate import make_validate_tool
 from vulagent.orchestrator.types import AgentRunResult, AgentSpec, OrchestratorResult
 
 
 def _class_path(obj: Any) -> str:
     return f"{obj.__class__.__module__}.{obj.__class__.__name__}"
+
+
+def _discover_fuzz_targets(env: Any, function: str | None) -> list[str]:
+    """Find fuzz targets whose binary contains the given function symbol.
+
+    Uses ``arvo targets <symbol>`` (nm-based lookup).  Returns an empty
+    list when the arvo script doesn't support the ``targets`` subcommand
+    (e.g. original ARVO images) or when no targets match.
+    """
+    if not function:
+        return []
+    result = env.execute(f"arvo targets {function} 2>/dev/null || true")
+    output = (result.get("output") or "").strip()
+    if not output:
+        return []
+    return [line.strip() for line in output.splitlines() if line.strip()]
 
 
 def _asdict(obj: Any) -> dict[str, Any]:
@@ -62,7 +80,13 @@ class AgentRunner:
         self.checkpoint_every = checkpoint_every
         self.global_model_config = global_model_config or {}
 
-    def run(self, spec: AgentSpec, *, extra_vars: dict[str, Any]) -> AgentRunResult:
+    def run(
+        self,
+        spec: AgentSpec,
+        *,
+        extra_vars: dict[str, Any],
+        tools: list | None = None,
+    ) -> AgentRunResult:
         config_data = _load_yaml(spec.config_path)
         agent_config = config_data.get("agent", {})
         model_config = config_data.get("model", {})
@@ -78,7 +102,7 @@ class AgentRunner:
             model_config.setdefault("model_kwargs", {})["api_key"] = spec.api_key
         model = get_model(effective_model_name, model_config)
 
-        agent = DefaultAgent(model, self.env, **agent_config)
+        agent = DefaultAgent(model, self.env, tools=tools, **agent_config)
 
         step_counter = {"n": 0}
         real_step = agent.step
@@ -156,40 +180,14 @@ class AgentRunner:
         self.store.write_aggregated_trajectory({"agents": {agent_name: trajectory}})
 
 
-CRASH_INDICATORS = frozenset({
-    "addresssanitizer",
-    "memorysanitizer",
-    "threadsanitizer",
-    "leaksanitizer",
-    "ubsan",
-    "undefined behavior",
-    "segmentation fault",
-    "sigsegv",
-    "sigabrt",
-    "sigbus",
-    "sigfpe",
-    "stack-buffer-overflow",
-    "heap-buffer-overflow",
-    "heap-use-after-free",
-    "stack-use-after-free",
-    "double-free",
-    "use-after-poison",
-    "global-buffer-overflow",
-    "stack-overflow",
-    "alloc-dealloc-mismatch",
-    "out of memory",
-    "assertion failed",
-    "runtime error:",
-})
-
-
 def verify_crash(validation: ValidationResult) -> bool:
     """Programmatic cross-check of crash evidence, independent of LLM self-report."""
-    text = " ".join([
-        validation.output_excerpt or "",
-        " ".join(validation.indicators),
-    ]).lower()
-    return any(indicator in text for indicator in CRASH_INDICATORS)
+    from vulagent.tools.validate import check_crash
+
+    return check_crash(
+        " ".join([validation.output_excerpt or "", " ".join(validation.indicators)]),
+        validation.returncode,
+    )
 
 
 class MultiAgentOrchestrator:
@@ -201,7 +199,7 @@ class MultiAgentOrchestrator:
         model_name: str,
         project_path: str,
         arvo_mode: bool,
-        top_n: int = 5,
+        top_n: int = 10,
         max_poc_attempts: int = 2,
         log_fn: Any | None = None,
         on_success: Any | None = None,
@@ -314,7 +312,6 @@ class MultiAgentOrchestrator:
         self,
         *,
         poc_builder: AgentSpec,
-        validator: AgentSpec,
         reporter: AgentSpec,
     ) -> OrchestratorResult:
         runner = AgentRunner(
@@ -324,6 +321,7 @@ class MultiAgentOrchestrator:
             log_fn=self._log_fn,
             global_model_config=self.model_config,
         )
+        validate_tool = make_validate_tool(self.env)
 
         self.store.append_event("run_start", {"arvo_mode": self.arvo_mode, "pipeline_mode": self.pipeline_mode})
         common_vars = {"project_path": self.project_path, "arvo_mode": self.arvo_mode, "top_n": self.top_n}
@@ -373,239 +371,182 @@ class MultiAgentOrchestrator:
                 run_dir=self.store.run_dir,
             )
 
-        # Stages 2-4: PoC -> Validator -> Reporter (detect mode)
+        # Stages 2-3: PoC building + validation (per hypothesis)
         report_files: list[str] = []
         poc_files: list[str] = []
         script_files: list[str] = []
-        validation_files: list[str] = []
         success_count = 0
 
         for item in hypotheses.hypotheses:
             hypothesis_dict = item.to_dict()
-            hypothesis_success = False
-            prior_validation: ValidationResult | None = None
-            prior_poc_recipe: PoCRecipe | None = None
-            for attempt in range(1, self.max_poc_attempts + 1):
-                self._log(f"PoC attempt {attempt} for {item.hypothesis_id} ({item.title})...")
-                self.store.append_event(
-                    "poc_attempt",
-                    {"hypothesis_id": item.hypothesis_id, "attempt": attempt},
+            self._log(f"Running PoCBuilder for {item.hypothesis_id} ({item.title})...")
+            self.store.append_event("poc_start", {"hypothesis_id": item.hypothesis_id})
+
+            # Discover which fuzz targets can reach the hypothesis function.
+            # For multi-target images we iterate targets; for single-target
+            # (ARVO) or non-arvo mode, matched_targets is empty and we fall
+            # through to a single run with no DEFAULT_FUZZER override.
+            matched_targets = (
+                _discover_fuzz_targets(self.env, item.function)
+                if self.arvo_mode else []
+            )
+
+            if matched_targets:
+                self._log(
+                    f"  {item.hypothesis_id}: function '{item.function}' found in "
+                    f"{len(matched_targets)} target(s): {', '.join(matched_targets)}"
                 )
+                self.store.append_event("targets_matched", {
+                    "hypothesis_id": item.hypothesis_id,
+                    "function": item.function,
+                    "targets": matched_targets,
+                })
+
+            # Try each matched target (or a single run with no override).
+            # Stop on first crash.
+            target_attempts = matched_targets or [None]
+            crash_detected = False
+            poc_recipe = None
+            poc_section: dict = {}
+
+            for fuzz_target in target_attempts:
+                if fuzz_target:
+                    self.env.execute(f"export DEFAULT_FUZZER={fuzz_target}")
+                    self._log(f"  Trying target: {fuzz_target}")
+
                 poc_context = self._context_builder.build(
                     poc_builder.name,
                     run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
                     hypothesis=hypothesis_dict,
-                    validation=prior_validation,
                 )
-                prior_feedback = ""
-                if prior_validation:
-                    lines = [
-                        "Previous attempt did NOT trigger a crash.",
-                        f"  Reproduction command: {prior_validation.reproduction_command or 'N/A'}",
-                        f"  Output excerpt: {prior_validation.output_excerpt or 'N/A'}",
-                        f"  Indicators: {', '.join(prior_validation.indicators) or 'none'}",
-                    ]
-                    if prior_poc_recipe and prior_poc_recipe.generation_steps:
-                        lines.append(f"  Prior PoC approach: {'; '.join(prior_poc_recipe.generation_steps)}")
-                    prior_feedback = "\n".join(lines)
                 extra_vars = {
                     **common_vars,
                     "hypothesis_id": item.hypothesis_id,
                     "hypothesis_title": item.title,
                     "hypothesis_description": item.description,
                     "context_packet": render_context_packet(poc_context),
-                    "poc_attempt": attempt,
-                    "max_poc_attempts": self.max_poc_attempts,
-                    "prior_validation_feedback": prior_feedback,
+                    "max_validate_attempts": self.max_poc_attempts,
+                    "fuzz_target": fuzz_target or "",
                 }
 
-                poc_run = runner.run(poc_builder, extra_vars=extra_vars)
-                self._record_trajectory(poc_run, hypothesis_id=item.hypothesis_id, attempt=attempt)
-                if failure := self._check_run_status(poc_run, "poc_builder"):
-                    self.store.append_event(
-                        "poc_builder_failed",
-                        {"hypothesis_id": item.hypothesis_id, "attempt": attempt, "reason": failure.summary},
-                    )
-                    self._log(
-                        f"PoCBuilder failed for {item.hypothesis_id} "
-                        f"(attempt {attempt}/{self.max_poc_attempts}): {failure.summary}"
-                    )
-                    if attempt == self.max_poc_attempts:
-                        self.store.append_event(
-                            "hypothesis_exhausted",
-                            {"hypothesis_id": item.hypothesis_id, "stage": "poc_builder", "reason": failure.summary},
-                        )
-                        self._log(f"Hypothesis {item.hypothesis_id} exhausted all attempts (poc_builder failed): {failure.summary}")
-                    continue
+                poc_run = runner.run(
+                    poc_builder, extra_vars=extra_vars, tools=[validate_tool],
+                )
+                self._record_trajectory(poc_run, hypothesis_id=item.hypothesis_id)
 
-                # Check for early rejection (PoC agent determined hypothesis is invalid)
-                if self._is_rejected(poc_run.result):
-                    reject_reason = self._extract_reject_reason(poc_run.result)
-                    self.store.append_event(
-                        "hypothesis_rejected",
-                        {"hypothesis_id": item.hypothesis_id, "reason": reject_reason},
-                    )
-                    self._log(
-                        f"Hypothesis {item.hypothesis_id} REJECTED by PoCBuilder: {reject_reason}"
-                    )
-                    break  # skip remaining attempts for this hypothesis
+                if self._check_run_status(poc_run, "poc_builder"):
+                    self._log(f"  PoCBuilder failed for target {fuzz_target or 'default'}")
+                    continue
 
                 poc_recipe = parse_poc_recipe(poc_run.result)
                 self._artifacts["poc"] = poc_recipe
-                self.store.write_handoff(
-                    "poc_recipe", poc_recipe, hypothesis_id=item.hypothesis_id, attempt=attempt
-                )
+                self.store.write_handoff("poc_recipe", poc_recipe, hypothesis_id=item.hypothesis_id)
                 if poc_recipe.input_path:
                     poc_files.append(poc_recipe.input_path)
                 if poc_recipe.script_path:
                     script_files.append(poc_recipe.script_path)
 
-                self._log(f"Validating PoC for {item.hypothesis_id}...")
-                validation_context = self._context_builder.build(
-                    validator.name,
+                poc_data = _load_structured(poc_run.result)
+                payload = poc_data.get("payload", {})
+                if isinstance(payload, str):
+                    payload = _load_structured(payload)
+                poc_section = payload.get("poc", payload)
+                if not isinstance(poc_section, dict):
+                    poc_section = {}
+                crash_detected = bool(poc_section.get("crash_detected", False))
+
+                if crash_detected:
+                    break  # found a crash, no need to try more targets
+
+            if not crash_detected:
+                self.store.append_event(
+                    "hypothesis_exhausted",
+                    {"hypothesis_id": item.hypothesis_id, "stage": "poc_builder", "reason": "no_crash_detected"},
+                )
+                self._log(f"No crash detected for {item.hypothesis_id}, moving to next hypothesis.")
+                continue
+
+            # Stage 3: Report generation
+            self._log(f"Crash confirmed for {item.hypothesis_id}. Generating report...")
+            validation = ValidationResult(
+                hypothesis_id=item.hypothesis_id,
+                crash_detected=True,
+                returncode=poc_section.get("returncode"),
+                output_excerpt=poc_section.get("output_excerpt", ""),
+                indicators=list(poc_section.get("indicators") or []),
+                reproduction_command=poc_section.get("reproduction_command"),
+            )
+            self._artifacts["validation"] = validation
+            self.store.write_handoff("validation", validation, hypothesis_id=item.hypothesis_id)
+
+            reporter_hint = ""
+            report = None
+            for r_attempt in range(1, 3):
+                reporter_context = self._context_builder.build(
+                    reporter.name,
                     run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
                     hypothesis=hypothesis_dict,
                     poc=poc_recipe,
+                    validation=validation,
                 )
-                validation_run = runner.run(
-                    validator,
-                    extra_vars={**extra_vars, "context_packet": render_context_packet(validation_context)},
+                reporter_run = runner.run(
+                    reporter,
+                    extra_vars={
+                        **extra_vars,
+                        "context_packet": render_context_packet(reporter_context),
+                        "reporter_hint": reporter_hint,
+                    },
                 )
-                self._record_trajectory(validation_run, hypothesis_id=item.hypothesis_id, attempt=attempt)
-                if failure := self._check_run_status(validation_run, "validator"):
+                self._record_trajectory(reporter_run, hypothesis_id=item.hypothesis_id, attempt=r_attempt)
+                if failure := self._check_run_status(reporter_run, "reporter"):
                     self.store.append_event(
-                        "validator_failed",
-                        {"hypothesis_id": item.hypothesis_id, "attempt": attempt, "reason": failure.summary},
+                        "reporter_failed",
+                        {"hypothesis_id": item.hypothesis_id, "reason": failure.summary},
                     )
-                    self._log(
-                        f"Validator failed for {item.hypothesis_id} "
-                        f"(attempt {attempt}/{self.max_poc_attempts}): {failure.summary}"
-                    )
-                    if attempt == self.max_poc_attempts:
-                        self.store.append_event(
-                            "hypothesis_exhausted",
-                            {"hypothesis_id": item.hypothesis_id, "stage": "validator", "reason": failure.summary},
-                        )
-                        self._log(f"Hypothesis {item.hypothesis_id} exhausted all attempts (validator failed): {failure.summary}")
-                    continue
-                validation = parse_validation_result(validation_run.result)
-                evidence = verify_crash(validation)
-                if validation.crash_detected != evidence:
-                    self.store.append_event(
-                        "crash_override",
-                        {
-                            "hypothesis_id": item.hypothesis_id,
-                            "llm_reported": validation.crash_detected,
-                            "evidence_based": evidence,
-                        },
-                    )
-                    self._log(
-                        f"Crash override for {item.hypothesis_id}: "
-                        f"LLM said {validation.crash_detected}, evidence says {evidence}"
-                    )
-                    validation.crash_detected = evidence
-                self._artifacts["validation"] = validation
-                validation_path = self.store.write_handoff(
-                    "validation", validation, hypothesis_id=item.hypothesis_id, attempt=attempt
-                )
-                validation_files.append(str(validation_path))
-
-                if not validation.crash_detected:
-                    prior_validation = validation
-                    prior_poc_recipe = poc_recipe
-                    self.store.append_event(
-                        "validation_failed",
-                        {"hypothesis_id": item.hypothesis_id, "attempt": attempt},
-                    )
-                    self._log(
-                        f"Validation failed (no crash) for {item.hypothesis_id} "
-                        f"(attempt {attempt}/{self.max_poc_attempts})."
-                    )
-                    if attempt == self.max_poc_attempts:
-                        self.store.append_event(
-                            "hypothesis_exhausted",
-                            {"hypothesis_id": item.hypothesis_id, "stage": "validation", "reason": "no_crash_detected"},
-                        )
-                        self._log(f"Hypothesis {item.hypothesis_id} exhausted all attempts (no crash detected)")
-                    continue
-
-                self._log(
-                    f"Validation success for {item.hypothesis_id} "
-                    f"(attempt {attempt}/{self.max_poc_attempts})."
-                )
-                self._log(f"Crash confirmed for {item.hypothesis_id}. Generating report...")
-                reporter_hint = ""
-                report = None
-                for attempt in range(1, 3):
-                    reporter_context = self._context_builder.build(
-                        reporter.name,
-                        run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
-                        hypothesis=hypothesis_dict,
-                        poc=poc_recipe,
-                        validation=validation,
-                    )
-                    reporter_run = runner.run(
-                        reporter,
-                        extra_vars={
-                            **extra_vars,
-                            "context_packet": render_context_packet(reporter_context),
-                            "reporter_hint": reporter_hint,
-                        },
-                    )
-                    self._record_trajectory(reporter_run, hypothesis_id=item.hypothesis_id, attempt=attempt)
-                    if failure := self._check_run_status(reporter_run, "reporter"):
-                        self.store.append_event(
-                            "reporter_failed",
-                            {"hypothesis_id": item.hypothesis_id, "reason": failure.summary},
-                        )
-                        break
-                    report = parse_bug_report(reporter_run.result)
-                    self.store.save_report_meta(
-                        report,
-                        hypothesis_id=item.hypothesis_id,
-                        meta=ArtifactMeta(
-                            artifact_type="BugReport",
-                            agent_name=reporter.name,
-                            hypothesis_id=item.hypothesis_id,
-                        ),
-                    )
-                    self.store.write_handoff("report", report, hypothesis_id=item.hypothesis_id)
-                    if report and report.report_path:
-                        report_files.append(report.report_path)
-                    if self._report_exists(item.hypothesis_id):
-                        break
-                    self.store.append_event(
-                        "report_missing",
-                        {"hypothesis_id": item.hypothesis_id, "attempt": attempt},
-                    )
-                    reporter_hint = (
-                        f"WARNING: The previous run did not create /src/final_report_{item.hypothesis_id}.md. "
-                        "You MUST write the report file before calling finish. "
-                        f"Verify it exists with `test -f /src/final_report_{item.hypothesis_id}.md`."
-                    )
-
-                if not self._report_exists(item.hypothesis_id):
-                    self.store.append_event(
-                        "hypothesis_exhausted",
-                        {"hypothesis_id": item.hypothesis_id, "stage": "reporter", "reason": "report_file_missing"},
-                    )
-                    self._log(f"Hypothesis {item.hypothesis_id} exhausted all attempts (report file not written)")
                     break
-                self.store.append_event("run_success", {"hypothesis_id": item.hypothesis_id})
-                self._log(f"Hypothesis {item.hypothesis_id} confirmed and reported.")
-                if self._on_success:
-                    self._on_success(
+                report = parse_bug_report(reporter_run.result)
+                self.store.save_report_meta(
+                    report,
+                    hypothesis_id=item.hypothesis_id,
+                    meta=ArtifactMeta(
+                        artifact_type="BugReport",
+                        agent_name=reporter.name,
                         hypothesis_id=item.hypothesis_id,
-                        report_path=(report.report_path if report else ""),
-                        poc_path=(poc_recipe.input_path if poc_recipe else ""),
-                        script_path=(poc_recipe.script_path if poc_recipe else ""),
-                    )
-                success_count += 1
-                hypothesis_success = True
-                break
+                    ),
+                )
+                self.store.write_handoff("report", report, hypothesis_id=item.hypothesis_id)
+                if report and report.report_path:
+                    report_files.append(report.report_path)
+                if self._report_exists(item.hypothesis_id):
+                    break
+                self.store.append_event(
+                    "report_missing",
+                    {"hypothesis_id": item.hypothesis_id, "attempt": r_attempt},
+                )
+                reporter_hint = (
+                    f"WARNING: The previous run did not create /src/final_report_{item.hypothesis_id}.md. "
+                    "You MUST write the report file before calling finish. "
+                    f"Verify it exists with `test -f /src/final_report_{item.hypothesis_id}.md`."
+                )
 
-            if not hypothesis_success:
+            if not self._report_exists(item.hypothesis_id):
+                self.store.append_event(
+                    "hypothesis_exhausted",
+                    {"hypothesis_id": item.hypothesis_id, "stage": "reporter", "reason": "report_file_missing"},
+                )
+                self._log(f"Hypothesis {item.hypothesis_id}: report file not written")
                 continue
+
+            self.store.append_event("run_success", {"hypothesis_id": item.hypothesis_id})
+            self._log(f"Hypothesis {item.hypothesis_id} confirmed and reported.")
+            if self._on_success:
+                self._on_success(
+                    hypothesis_id=item.hypothesis_id,
+                    report_path=(report.report_path if report else ""),
+                    poc_path=(poc_recipe.input_path if poc_recipe else ""),
+                    script_path=(poc_recipe.script_path if poc_recipe else ""),
+                )
+            success_count += 1
 
         report_files = list(dict.fromkeys(report_files))
         poc_files = list(dict.fromkeys(poc_files))
@@ -621,7 +562,6 @@ class MultiAgentOrchestrator:
                 report_paths=report_files,
                 poc_paths=poc_files,
                 script_paths=script_files,
-                validation_paths=validation_files,
             )
 
         self.store.append_event("run_failure", {})

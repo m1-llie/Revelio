@@ -16,13 +16,7 @@ def default_agent_specs(config_dir: Path) -> dict[str, AgentSpec]:
         "poc_builder": AgentSpec(
             name="PoCBuilderAgent",
             config_path=config_dir / "poc_builder.yaml",
-            task="Build a deterministic PoC generator for the assigned hypothesis.",
-            max_attempts=2,
-        ),
-        "validator": AgentSpec(
-            name="ValidatorAgent",
-            config_path=config_dir / "validator.yaml",
-            task="Validate the PoC by running the reproduction command and capturing crash evidence.",
+            task="Build and validate a PoC for the assigned hypothesis.",
         ),
         "reporter": AgentSpec(
             name="ReporterAgent",

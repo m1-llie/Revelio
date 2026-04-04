@@ -11,9 +11,8 @@ A trustworthy and precise vulnerability detection AI agent that discovers softwa
 ### Pipeline Stages
 
 1. **HypothesisOrchestrator** — enumerates source files, runs `FileHypothesisRunner` per file in parallel, merges and ranks hypotheses by confidence
-2. **PoCBuilderAgent** — generates a deterministic PoC input and generator script for each hypothesis
-3. **ValidatorAgent** — runs the PoC against the target and checks for sanitizer/crash output
-4. **ReporterAgent** — writes a final bug report with vulnerability details and reproduction steps
+2. **PoCBuilderAgent** — for each hypothesis, discovers which fuzz targets link the relevant function (`arvo targets <sym>`), then generates a PoC for each matching target. The `validate` tool automatically tests the PoC against all available sanitizers (asan, ubsan, msan). Stops on first confirmed crash.
+3. **ReporterAgent** — writes a final bug report with vulnerability details and reproduction steps
 
 ### Pipeline Modes
 
@@ -31,8 +30,7 @@ detect.py  --pipeline [file | project | detect | scan_filter | scan_filter_detec
                 ├── pipeline=project|detect ──► MultiAgentOrchestrator
                 │                                   ├── HypothesisOrchestrator
                 │                                   │     └── FileHypothesisRunner × N (parallel)
-                │                                   ├── PoCBuilderAgent × N  (pipeline=detect only)
-                │                                   ├── ValidatorAgent × N   (pipeline=detect only)
+                │                                   ├── PoCBuilderAgent × N  (pipeline=detect only, uses validate tool)
                 │                                   └── ReporterAgent × N    (pipeline=detect only)
                 │
                 └── pipeline=scan_filter|scan_filter_detect
@@ -41,23 +39,22 @@ detect.py  --pipeline [file | project | detect | scan_filter | scan_filter_detec
                                ├── Stage 2: LLM classification + dedup
                                ├── Stage 3: Docker sub-agent filtering
                                └── (scan_filter_detect only) ──► MultiAgentOrchestrator
-                                     ├── PoCBuilderAgent × N
-                                     ├── ValidatorAgent × N
+                                     ├── PoCBuilderAgent × N (uses validate tool)
                                      └── ReporterAgent × N
 ```
 
 - **`--pipeline file`** — run hypothesis generation on a single file only
 - **`--pipeline project`** — run parallel hypothesis generation on all source files, stop before PoC related steps
-- **`--pipeline detect`** (default) — full pipeline: hypotheses → PoC validation → report
+- **`--pipeline detect`** (default) — full pipeline: hypotheses → PoC building + validation → report
 - **`--pipeline scan_filter`** — multi-pass scan → classify/dedup → Docker sub-agent filter, stop after hypotheses
-- **`--pipeline scan_filter_detect`** — scan_filter → PoC generation → validation → report
+- **`--pipeline scan_filter_detect`** — scan_filter → PoC building + validation → report
 
 Each `FileHypothesisRunner` wraps a `DefaultAgent` with `file_hypothesis.yaml` config.
 
 The `scan_filter` pipeline uses three separate model tiers:
 - **`--model`** — cheap/fast model for Stage 1-2 hypothesis generation (e.g., Haiku)
 - **`--filter-model`** — mid-tier model for Stage 3 sub-agent verification (e.g., Sonnet)
-- **`--poc-model`** — strongest model for PoC/validation/report (e.g., Opus, only in `scan_filter_detect`)
+- **`--poc-model`** — strongest model for PoC building + validation/report (e.g., Opus, only in `scan_filter_detect`)
 
 ## Quick Start
 
@@ -91,6 +88,10 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 # MODEL_NAME=gemini/gemini-3-pro-preview
 # GEMINI_API_KEY=AIza...
+
+# Or use OpenRouter (any model via openrouter.ai)
+# MODEL_NAME=openrouter/google/gemini-2.5-pro
+# OPENROUTER_API_KEY=sk-or-...
 ```
 
 Alternatively, run the interactive setup:
@@ -109,82 +110,53 @@ vul-agent -t "List all files in the current directory and describe what they do"
 
 ## Building OSS-Fuzz Docker Images
 
-To analyze OSS-Fuzz projects, you need to build the fuzzers with ASAN and package them into a Docker image with the `arvo` runner script.
-
-### Step 1: Build fuzzers with OSS-Fuzz
+`scripts/prepare_ossfuzz_project.sh` builds any [OSS-Fuzz](https://github.com/google/oss-fuzz) project into a vulagent-ready Docker image with the same interface as [ARVO](https://github.com/n132/ARVO) images.
 
 ```bash
-# Clone oss-fuzz
-git clone https://github.com/google/oss-fuzz.git ~/oss-fuzz
-cd ~/oss-fuzz
-
-# Build fuzzers for a project (uses address sanitizer by default)
-python infra/helper.py build_fuzzers --sanitizer address <project_name>
-# e.g. python infra/helper.py build_fuzzers --sanitizer address assimp
-
-# Verify the build produced fuzzer binaries
-ls build/out/<project_name>/
+scripts/prepare_ossfuzz_project.sh openssl                           # single project
+scripts/prepare_ossfuzz_project.sh openssl assimp curl               # multiple projects
+scripts/prepare_ossfuzz_project.sh --sanitizers asan,ubsan openssl   # skip MSan
+scripts/prepare_ossfuzz_project.sh --oss-fuzz-dir /data/oss-fuzz openssl
 ```
 
-### Step 2: Package into a vulagent-ready container
+The script clones/updates oss-fuzz, builds fuzzers with each sanitizer via `infra/helper.py build_fuzzers`, packages them into a single Docker image, and cleans it for zero-day detection. Sanitizers that fail to build are skipped automatically.
 
-The `scripts/create_ossfuzz_containers.sh` script automates packaging. It:
-1. Starts a container from the OSS-Fuzz base image (`gcr.io/oss-fuzz/<project>`)
-2. Copies the compiled fuzzer binaries into `/out/`
-3. Installs the `arvo` script at `/usr/bin/arvo`
-4. Commits the container as `vulagent/<project>:latest`
+The resulting `vulagent/<project>:latest` image contains:
 
-```bash
-# Edit the script to add your projects, then run:
-bash scripts/create_ossfuzz_containers.sh
+```
+/src/<project>/              source code (from the gcr.io/oss-fuzz/<project> base image)
+/out/asan/<fuzzer_binaries>  AddressSanitizer builds
+/out/ubsan/<fuzzer_binaries> UndefinedBehaviorSanitizer builds
+/out/msan/<fuzzer_binaries>  MemorySanitizer builds
+/usr/bin/arvo                fuzzer runner script (scripts/arvo_ossfuzz)
 ```
 
-Or do it manually for a single project:
-
-```bash
-PROJECT=assimp
-OSS_FUZZ_DIR=~/oss-fuzz
-
-# Start a container from the oss-fuzz base image
-docker run -d --name setup-${PROJECT} gcr.io/oss-fuzz/${PROJECT}:latest sleep 3600
-
-# Copy compiled fuzzers into /out/
-docker exec setup-${PROJECT} mkdir -p /out
-docker cp ${OSS_FUZZ_DIR}/build/out/${PROJECT}/. setup-${PROJECT}:/out/
-
-# Copy the arvo script (handles ASAN env vars + fuzzer invocation)
-docker cp scripts/arvo_ossfuzz setup-${PROJECT}:/usr/bin/arvo
-docker exec setup-${PROJECT} chmod +x /usr/bin/arvo
-
-# Verify fuzzers are available
-docker exec setup-${PROJECT} arvo list
-
-# Commit as a reusable image
-docker commit setup-${PROJECT} vulagent/${PROJECT}:latest
-docker rm -f setup-${PROJECT}
-```
+Re-run the script to pick up upstream source code changes.
 
 ### The `arvo` script
 
-The `arvo` script inside the container provides a standard interface for running fuzzers:
+`scripts/arvo_ossfuzz` is installed at `/usr/bin/arvo` inside the container. It provides the same interface as ARVO images, extended for multi-sanitizer and multi-target support:
 
 ```bash
-arvo list                    # List available fuzzer binaries in /out/
-arvo run <fuzzer> /tmp/poc   # Run a specific fuzzer with a PoC input
-arvo run <fuzzer>            # Run with /tmp/poc (default)
+arvo                         # run default fuzzer with /tmp/poc (SANITIZER=asan)
+arvo list                    # list fuzz targets for current SANITIZER
+arvo list --all              # list fuzz targets across all sanitizers
+arvo run <fuzzer> [poc]      # run a specific fuzzer (default poc: /tmp/poc)
+arvo targets <symbol>        # find which fuzz targets link a given function (nm lookup)
+arvo compile                 # recompile the project
+SANITIZER=ubsan arvo         # switch sanitizer
 ```
 
-It sets the standard ASAN/MSAN/UBSAN environment variables so that sanitizer crashes are properly reported.
+`SANITIZER` env var (default: `asan`) selects which `/out/<sanitizer>/` build to use. `DEFAULT_FUZZER` env var overrides auto-detection when multiple targets exist. Standard ASAN/MSAN/UBSAN env vars are exported automatically.
+
+The orchestrator uses `arvo targets <function>` to match hypotheses to reachable fuzz targets before launching the PoC builder. The validate tool uses `SANITIZER=` to test PoCs against all available sanitizers.
 
 ### Verifying the image
 
 ```bash
-# List available fuzzers
-docker run --rm vulagent/assimp:latest arvo list
-
-# Test a PoC (mount it as /tmp/poc)
-docker run --rm -v /path/to/poc:/tmp/poc:ro vulagent/assimp:latest \
-    timeout 30 arvo run assimp_fuzzer
+docker run --rm vulagent/openssl:latest arvo list --all
+docker run --rm -v /path/to/poc:/tmp/poc:ro vulagent/openssl:latest arvo run openssl_fuzzer
+docker run --rm -v /path/to/poc:/tmp/poc:ro -e SANITIZER=ubsan vulagent/openssl:latest arvo run openssl_fuzzer
 ```
 
 ## Vul-agent for Vulnerability Detection
@@ -316,13 +288,13 @@ python -m vulagent.run.detect \
 | `--pipeline` | `detect` | Pipeline mode: `file`, `project`, `detect`, `scan_filter`, or `scan_filter_detect` |
 | `--target-file`, `-t` | — | Target file path (required for `--pipeline=file`) |
 | `--max-workers` | `4` | Parallel workers for hypothesis generation |
-| `--top-n` | `5` | Number of top hypotheses to pursue |
-| `--max-poc-attempts` | `2` | Max PoC build + validation attempts per hypothesis |
+| `--top-n` | `10` | Number of top hypotheses to pursue |
+| `--max-poc-attempts` | `3` | Max validation attempts per hypothesis (PoCBuilder's `validate` tool calls) |
 | `--keep-container` | `false` | Keep Docker container after run (for debugging) |
 | `--agents-config-dir` | built-in | Custom directory for per-agent YAML configs |
 | `--filter-model` | Sonnet 4.6 | Model for scan_filter Stage 3 sub-agent verification |
 | `--filter-workers` | `4` | Parallel workers for sub-agent filtering |
-| `--poc-model` | same as `--model` | Model for PoC/validator/reporter agents |
+| `--poc-model` | same as `--model` | Model for PoC builder/reporter agents |
 | `--max-functions` | `50` | Max functions to analyze per file in scan_filter |
 | `--agent-step-limit` | `20` | Max steps per scan_filter sub-agent |
 | `--agent-cost-limit` | `2.0` | Max cost (USD) per scan_filter sub-agent |
@@ -350,7 +322,7 @@ CLI shortcuts:
 
 | Variable | Description |
 |----------|-------------|
-| `MODEL_NAME` | Default model name, e.g. `anthropic/claude-opus-4-6`, `openai/gpt-5`, `gemini/gemini-2.5-pro`. Always include the provider prefix. Can be overridden with `--model`. |
+| `MODEL_NAME` | Default model name, e.g. `anthropic/claude-opus-4-6`, `openai/gpt-5`, `gemini/gemini-2.5-pro`, `openrouter/google/gemini-2.5-pro`. Always include the provider prefix. Can be overridden with `--model`. |
 
 ### API Keys
 
@@ -361,8 +333,9 @@ CLI shortcuts:
 | `OPENAI_API_KEY` | OpenAI API key (used automatically by litellm for `openai/*` models) |
 | `ANTHROPIC_API_KEY` | Anthropic API key (used automatically by litellm for `anthropic/*` models) |
 | `GEMINI_API_KEY` | Google Gemini API key (used automatically by litellm for `gemini/*` models) |
+| `OPENROUTER_API_KEY` | OpenRouter API key (used when model name starts with `openrouter/`, e.g. `openrouter/google/gemini-2.5-pro`) |
 
-> **Tip:** You only need the provider-specific key for your chosen model (e.g., `ANTHROPIC_API_KEY` for Claude). `MODEL_API_KEY` is an alternative that works across providers via litellm.
+> **Tip:** You only need the provider-specific key for your chosen model (e.g., `ANTHROPIC_API_KEY` for Claude, `OPENROUTER_API_KEY` for OpenRouter). `MODEL_API_KEY` is an alternative that works across providers via litellm.
 
 ### Model Behavior
 
@@ -371,8 +344,8 @@ Temperature and other model parameters are configured **per-agent in YAML config
 | Agent | Temperature | Purpose |
 |-------|-------------|---------|
 | `file_hypothesis.yaml` | 0.4 | Balanced hypothesis generation |
-| `poc_builder.yaml` | 0.2 | Deterministic PoC generation |
-| `validator.yaml` | 0.0 | Strict crash validation |
+| `poc_builder.yaml` | 1.0 | Creative PoC building + validation |
+| `validator.yaml` | 0.0 | Strict crash validation (standalone use) |
 | `reporter.yaml` | 0.2 | Consistent report writing |
 
 Above temperatures work for GPT and Claude model series.
@@ -405,10 +378,10 @@ output/<run_id>/
 ├── log.txt                # Human-readable timestamped log
 ├── trajectory.json        # Aggregated multi-agent trajectories
 └── artifacts/
-    ├── handoffs/          # Inter-agent data (one JSON per stage + hypothesis + attempt)
+    ├── handoffs/          # Inter-agent data (one JSON per stage + hypothesis)
     │   ├── hypotheses.json
-    │   ├── poc_recipe_H01_attempt1.json
-    │   ├── validation_H01_attempt1.json
+    │   ├── poc_recipe_H01.json
+    │   ├── validation_H01.json
     │   └── report_H01.json
     └── deliverables/      # Final outputs (copied from container on success)
         ├── final_report_H01.md
@@ -432,8 +405,9 @@ vulagent/
 ├── config/          # YAML configs: default.yaml, agents/, arvo_targets.json
 ├── environments/    # Execution environments (Local, Docker, Singularity)
 ├── models/          # LLM interfaces (LiteLLM, Anthropic, OpenRouter, Portkey)
-├── orchestrator/    # Multi-agent pipeline + parallel hypothesis orchestration
-├── run/             # CLI entry points (detect, inspector, validators, hello_world)
+├── orchestrator/    # Multi-agent pipeline + parallel hypothesis orchestration + scan-filter
+├── run/             # CLI entry points (detect, scan_and_filter, inspector, validators, hello_world)
+├── tools/           # Agent tools (bash, finish, validate)
 ├── utils/           # Utility functions
 └── website/         # Web-based trace viewer
 ```

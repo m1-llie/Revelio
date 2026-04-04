@@ -20,15 +20,20 @@ agent:
     ## ARVO Environment
     This is an ARVO Docker container with pre-built fuzzing infrastructure:
     - Source code: {{project_path}}/
+    - Pre-built harness binaries (compiled with sanitizers, e.g., ASan, UBSan) are in `/out/`.
+      There may be multiple binaries; only one is used by the `arvo` command.
+    - Inspect the `arvo` command (e.g., `cat $(which arvo)`) to determine which
+      harness binary it invokes. That binary's entry point is the only one that matters.
+    - Then find and read that harness's source to understand what code paths are
+      reachable and what input format is expected.
     - `arvo` exists but MUST NOT be executed in this stage.
-    - The harness is typically built with AddressSanitizer (ASAN)
     {% else %}
     You can execute bash commands to inspect the codebase.
     {% endif %}
 
     ## Goal
     Inspect the file {{file_path}} and produce a list of memory-safety vulnerability hypotheses
-    that are reachable from the harness entry.
+    that are reachable from the entry point of the harness binary that `arvo` uses.
 
     ## Recommended Workflow
     1. Review the static analysis context above (if available) to identify functions with UNCHECKED parameters — these are high-priority targets.
@@ -140,8 +145,8 @@ agent:
     Every response MUST contain exactly one tool call via the tool-calling API.
     Available tools: `bash` (run a command) and `finish` (submit results).
 
-  step_limit: 150
-  cost_limit: 10
+  step_limit: 200
+  cost_limit: 15
 
 environment:
   timeout: 300
@@ -154,5 +159,5 @@ environment:
 
 model:
   model_kwargs:
-    temperature: 0.4
+    temperature: 1.0
     drop_params: true

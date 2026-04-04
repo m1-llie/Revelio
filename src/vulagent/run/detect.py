@@ -199,12 +199,12 @@ def main(
         help="Directory containing per-agent YAML configs (default: config/agents).",
     ),
     max_poc_attempts: int = typer.Option(
-        2,
+        3,
         "--max-poc-attempts",
         help="Max PoC attempts per hypothesis in multi-agent mode.",
     ),
     top_n: int = typer.Option(
-        5,
+        10,
         "--top-n",
         help="Number of hypotheses to generate in the first (hypothesis) stage of multi-agent mode.",
     ),
@@ -316,7 +316,8 @@ def main(
 
     # Prepare timestamped output paths
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    run_id = f"{run_name}_{timestamp}"
+    model_slug = model_name.replace("/", "_").replace(":", "_")
+    run_id = f"{run_name}_{model_slug}_{timestamp}"
     store = ArtifactStore(Path("output"), run_id=run_id)
     run_dir = store.run_dir
 
@@ -479,7 +480,6 @@ def main(
                     )
                     result = orchestrator.run(
                         poc_builder=specs["poc_builder"],
-                        validator=specs["validator"],
                         reporter=specs["reporter"],
                     )
                     log_console.print(f"[bold cyan]Run status:[/bold cyan] {result.status}")
@@ -564,7 +564,6 @@ def main(
             )
             result = orchestrator.run(
                 poc_builder=specs["poc_builder"],
-                validator=specs["validator"],
                 reporter=specs["reporter"],
             )
             finished_at = datetime.now(timezone.utc)

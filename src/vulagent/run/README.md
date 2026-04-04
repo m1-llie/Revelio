@@ -9,12 +9,17 @@
 * `detect.py` - Detect memory-safety vulnerabilities using Docker sandbox. Supports:
   - `--arvo <image>` - ARVO targets with pre-built fuzzing infrastructure
   - `--project <path>` - Custom local C/C++ projects
-  - `--pipeline <mode>` - Pipeline mode: `file` (single file hypothesis), `project` (parallel hypotheses only), `detect` (full pipeline, default)
+  - `--pipeline <mode>` - Pipeline mode: `file` (single file hypothesis), `project` (parallel hypotheses only), `detect` (full pipeline, default), `scan_filter` (multi-pass scan + filter), `scan_filter_detect` (scan_filter then PoC + report)
   - `--target-file <path>` - Target file path relative to project root (required for `--pipeline file`)
   - `--max-workers <n>` - Number of parallel workers for hypothesis generation (default: 4)
   - `--agents-config-dir <path>` - Directory for per-agent prompt configs (default: config/agents)
-  - `--top-n <n>` - Number of hypotheses to use from the hypothesis stage
-  - `--max-poc-attempts <n>` - Max PoC attempts per hypothesis
+  - `--top-n <n>` - Number of hypotheses to use from the hypothesis stage (default: 10)
+  - `--max-poc-attempts <n>` - Max validate tool calls per hypothesis (default: 3)
+  - `--filter-model` - Model for scan_filter Stage 3 sub-agent verification
+  - `--poc-model` - Model for PoC builder/reporter agents
+  - `--hypotheses-file` - Load pre-generated hypotheses, skip scan stage
+
+* `scan_and_filter.py` - Standalone scan-and-filter CLI for local repos (without Docker-based PoC generation). Runs multi-pass LLM analysis, classification/dedup, and Docker sub-agent filtering on individual source files.
 
 * `validate_if_target_singleAgent.py` - Validate a PoC against both ARVO versions:
   - Pulls `-fix` image if not cached locally
