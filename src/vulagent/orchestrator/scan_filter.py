@@ -24,6 +24,7 @@ from vulagent.orchestrator.scan_filter_stages import (
     classify_hypothesis,
     dedup_hypotheses,
     format_check_analysis_context,
+    format_constraint_context,
     make_batches,
     parse_functions,
     phase_analyze_focused,
@@ -31,6 +32,7 @@ from vulagent.orchestrator.scan_filter_stages import (
     phase_analyze_wholefile,
     phase_summarize,
     run_check_analysis,
+    run_constraint_analysis,
     run_filter_agent,
 )
 
@@ -154,10 +156,44 @@ class ScanFilterOrchestrator:
         result = self.env.execute(f"cat '{full_path}'")
         return result.get("output") or ""
 
+    def _discover_harness(self, project_path: str) -> tuple[str, str]:
+        """Find and read the fuzzer harness (LLVMFuzzerTestOneInput) source.
+
+        Returns (markdown_context, raw_source). Both empty strings if not found.
+        """
+        # Search for LLVMFuzzerTestOneInput in fuzz-related directories
+        cmd = (
+            f"grep -rl 'LLVMFuzzerTestOneInput' {project_path} "
+            f"--include='*.cpp' --include='*.c' --include='*.cc' 2>/dev/null "
+            f"| head -10"
+        )
+        result = self.env.execute(cmd)
+        paths = (result.get("output") or "").strip().splitlines()
+        if not paths:
+            return "", ""
+
+        # Prefer files in fuzz/fuzzer directories, or the shortest path
+        fuzz_paths = [p for p in paths if "fuzz" in p.lower()]
+        chosen = fuzz_paths[0] if fuzz_paths else paths[0]
+
+        result = self.env.execute(f"cat '{chosen.strip()}'")
+        source = (result.get("output") or "").strip()
+        if source:
+            prefix = project_path.rstrip("/") + "/"
+            rel = chosen.strip()
+            if rel.startswith(prefix):
+                rel = rel[len(prefix):]
+            self._log(f"[scan_filter] Found harness: {rel} ({len(source)} chars)")
+            md = f"## Fuzzer Harness (`{rel}`)\n```cpp\n{source}\n```"
+            return md, source
+        return "", ""
+
     def _run_stage1_for_file(
         self, rel_path: str, project_path: str, source: str,
         cost_tracker: CostTracker | None = None,
         check_results: list[dict] | None = None,
+        harness_context: str = "",
+        harness_source: str = "",
     ) -> tuple[list[dict], dict, list[dict], list[dict]]:
         """Run Stage 1 (multi-pass hypothesis generation) for a single file.
 
@@ -166,18 +202,37 @@ class ScanFilterOrchestrator:
         file_path = Path(rel_path)
 
         # Build check analysis context for the summarize phase
+        # Pass ALL functions (not just unchecked) so the model knows which params
+        # ARE validated and avoids generating hypotheses about already-checked params
         check_context = ""
         if check_results:
-            check_context = format_check_analysis_context(check_results, unchecked_only=True)
+            check_context = format_check_analysis_context(check_results, unchecked_only=False)
             if check_context:
                 n_unchecked_funcs = sum(1 for r in check_results if r.get("unchecked_params"))
                 self._log(f"  [scan_filter] Check analysis: {n_unchecked_funcs} functions with unchecked params")
+
+        # Run constraint analysis (call-site args, bounds, harness params)
+        constraint_analysis = run_constraint_analysis(
+            source, rel_path,
+            harness_source=harness_source,
+            check_results=check_results,
+        )
+        constraint_ctx = format_constraint_context(constraint_analysis)
+        if constraint_ctx:
+            n_constraints = len(constraint_analysis.get("constraints", {}))
+            n_summaries = len(constraint_analysis.get("summaries", {}))
+            self._log(
+                f"  [scan_filter] Constraint analysis: {n_summaries} functions with call-site info, "
+                f"{n_constraints} with bounds constraints"
+            )
+            check_context = (check_context + "\n\n" + constraint_ctx) if check_context else constraint_ctx
 
         self._log(f"  [scan_filter] Summarizing {rel_path}...")
         summary, deep_summary, summary_msgs = phase_summarize(
             self.model_name, file_path, source, self.model_kwargs,
             cost_tracker=cost_tracker,
             check_analysis_context=check_context,
+            harness_context=harness_context,
         )
 
         self._log(f"  [scan_filter] Parsing functions in {rel_path}...")
@@ -417,6 +472,12 @@ class ScanFilterOrchestrator:
 
         cost_tracker = CostTracker()
 
+        # Discover fuzzer harness for reachability context
+        harness_context = ""
+        harness_source = ""
+        if arvo_mode:
+            harness_context, harness_source = self._discover_harness(project_path)
+
         # Determine files to scan
         if target_file:
             files = [target_file]
@@ -458,6 +519,8 @@ class ScanFilterOrchestrator:
             all_hypotheses, wf, fr, fa = self._run_stage1_for_file(
                 rel_path, project_path, source, cost_tracker=cost_tracker,
                 check_results=check_results,
+                harness_context=harness_context,
+                harness_source=harness_source,
             )
             s1_cost, s1_calls = cost_tracker.snapshot()
             s1_cost -= cost_before[0]

@@ -487,9 +487,15 @@ def main(
 
         elif pipeline == "file":
             # Single file hypothesis mode
+            file_model_config: dict = {}
+            if base_url:
+                file_model_config.setdefault("model_kwargs", {})["base_url"] = base_url
+            if api_key:
+                file_model_config.setdefault("model_kwargs", {})["api_key"] = api_key
             runner = FileHypothesisRunner(
                 env=docker_env,
                 model_name=model_name,
+                model_config=file_model_config,
                 store=store,
                 log_fn=log_console.print,
             )

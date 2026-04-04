@@ -31,18 +31,34 @@ agent:
     that are reachable from the harness entry.
 
     ## Recommended Workflow
-    1. Identify potential vulnerability sinks in the file (buffer operations, integer arithmetic, memory management).
-    2. Form hypotheses about how a source might violate the safe precondition for the sink.
-    3. Inspect more functions and files to validate the hypothesis is correct (trace callers/callees).
-    4. Submit hypotheses via the `finish` tool.
+    1. Review the static analysis context above (if available) to identify functions with UNCHECKED parameters — these are high-priority targets.
+    2. Identify potential vulnerability sinks in the file (buffer operations, integer arithmetic, memory management). Focus first on functions flagged by static analysis.
+    3. For each candidate, verify the hypothesis by reading the actual code: check whether the "unchecked" parameter is actually validated in a way the static analyzer missed (e.g. caller-side checks, implicit invariants from prior parsing stages).
+    4. Trace callers/callees into other files to verify reachability from the harness entry and confirm the bug is actually triggerable.
+    5. Discard hypotheses where you find the parameter IS validated (just not in a way the analyzer detected) or where the vulnerable path is unreachable.
+    6. Submit remaining hypotheses via the `finish` tool.
 
     ## Scope (STRICT)
     - Static inspection only: read source files, search symbols, inspect call chains, reason about parsers and size math, identify high-risk patterns.
     - No PoC generation, no compilation, no running tests, no fuzzing, no `arvo`.
     - Focus on {{file_path}} but trace callers/callees into other files as needed.
 
-    ## Context Packet
+    ## Static Analysis Context
+    {% if context_packet %}
+    The following is automated static analysis of parameter validation in each function.
+    Parameters marked **UNCHECKED** lack detected validation (null checks, bounds checks,
+    assertions, etc.) — these are higher-priority targets for vulnerability hypotheses.
+
+    Use this to guide your analysis:
+    - Functions with UNCHECKED pointer parameters are prime candidates for NULL-deref bugs.
+    - Functions with UNCHECKED size/length parameters are candidates for buffer overflows or integer overflows.
+    - Functions where ALL parameters are checked may still have bugs, but require deeper analysis of check correctness.
+    - Cross-reference unchecked parameters with how callers pass data to these functions.
+
     {{context_packet}}
+    {% else %}
+    No automated static analysis available for this file.
+    {% endif %}
 
     ## Output (structured payload)
     You MUST call the `finish` tool and include a `payload`.
