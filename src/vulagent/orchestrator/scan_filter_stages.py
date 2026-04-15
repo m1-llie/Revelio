@@ -248,6 +248,194 @@ def format_function_check_context(
 
 
 # ===========================================================================
+# Constraint analysis (call-site arguments & bounds)
+# ===========================================================================
+
+
+def _collect_call_sites(root_node: Any, func_names: set[str]) -> dict[str, list[list[str]]]:
+    """Walk AST and collect argument expressions for calls to known functions."""
+    call_sites: dict[str, list[list[str]]] = {}
+
+    def walk(node: Any) -> None:
+        if node.type == "call_expression":
+            callee = None
+            args: list[str] = []
+            for child in node.children:
+                if child.type == "identifier":
+                    callee = child.text.decode()
+                elif child.type == "argument_list":
+                    args = [
+                        a.text.decode(errors="replace").strip()
+                        for a in child.children
+                        if a.type not in ("(", ")", ",")
+                    ]
+            if callee and callee in func_names:
+                call_sites.setdefault(callee, []).append(args)
+        for child in node.children:
+            walk(child)
+
+    walk(root_node)
+    return call_sites
+
+
+def run_constraint_analysis(
+    source: str,
+    file_path: str = "<stdin>",
+    *,
+    harness_source: str = "",
+    check_results: list[dict] | None = None,
+) -> dict:
+    """Analyze call-site constraints and parameter bounds in C/C++ source.
+
+    Extracts what expressions are passed at each call site for functions
+    defined in the file, optionally including calls from the fuzzer harness.
+
+    Returns dict with "constraints" and "summaries" keys (both dicts keyed
+    by function name).  Returns empty dicts when tree-sitter is unavailable.
+    """
+    try:
+        import tree_sitter_c as tsc
+        from tree_sitter import Language, Parser
+    except ImportError:
+        return {"constraints": {}, "summaries": {}}
+
+    lang = Language(tsc.language())
+    parser = Parser(lang)
+    tree = parser.parse(source.encode(errors="replace"))
+
+    # Pass 1: collect function definitions and their parameter names
+    func_params: dict[str, list[str]] = {}
+
+    def _func_name(node: Any) -> str | None:
+        for child in node.children:
+            if child.type == "function_declarator":
+                for c in child.children:
+                    if c.type == "identifier":
+                        return c.text.decode()
+            if child.type == "pointer_declarator":
+                for c in node.children:
+                    for cc in c.children if hasattr(c, "children") else []:
+                        if cc.type == "function_declarator":
+                            for ccc in cc.children:
+                                if ccc.type == "identifier":
+                                    return ccc.text.decode()
+        return None
+
+    def _param_names(node: Any) -> list[str]:
+        names: list[str] = []
+        for child in node.children:
+            if child.type == "function_declarator":
+                for c in child.children:
+                    if c.type == "parameter_list":
+                        for p in c.children:
+                            if p.type == "parameter_declaration":
+                                for pp in p.children:
+                                    if pp.type == "identifier":
+                                        names.append(pp.text.decode())
+                                        break
+                                    if pp.type == "pointer_declarator":
+                                        for ppp in pp.children:
+                                            if ppp.type == "identifier":
+                                                names.append(ppp.text.decode())
+                                                break
+        return names
+
+    def collect_defs(node: Any) -> None:
+        if node.type == "function_definition":
+            name = _func_name(node)
+            if name:
+                func_params[name] = _param_names(node)
+        for child in node.children:
+            collect_defs(child)
+
+    collect_defs(tree.root_node)
+
+    if not func_params:
+        return {"constraints": {}, "summaries": {}}
+
+    known = set(func_params)
+    call_sites = _collect_call_sites(tree.root_node, known)
+
+    if harness_source:
+        try:
+            htree = parser.parse(harness_source.encode(errors="replace"))
+            for fname, arg_lists in _collect_call_sites(htree.root_node, known).items():
+                call_sites.setdefault(fname, []).extend(arg_lists)
+        except Exception:
+            pass
+
+    # Build summaries: map each parameter to the set of argument expressions passed
+    summaries: dict[str, dict] = {}
+    for fname, arg_lists in call_sites.items():
+        params = func_params.get(fname, [])
+        param_args: dict[str, list[str]] = {}
+        for args in arg_lists:
+            for i, expr in enumerate(args):
+                if i < len(params):
+                    param_args.setdefault(params[i], []).append(expr)
+        if param_args:
+            summaries[fname] = {"call_count": len(arg_lists), "param_args": param_args}
+
+    # Build constraints: for unchecked params, note whether call-site args are bounded
+    constraints: dict[str, dict[str, str]] = {}
+    if check_results:
+        for r in check_results:
+            fname = r.get("name", "")
+            unchecked = r.get("unchecked_params", [])
+            if not unchecked or fname not in summaries:
+                continue
+            pc: dict[str, str] = {}
+            for pname in unchecked:
+                exprs = summaries[fname].get("param_args", {}).get(pname, [])
+                if not exprs:
+                    continue
+                unique = sorted(set(exprs))
+                all_bounded = all(
+                    e.isdigit() or e.startswith("sizeof") or e.isupper()
+                    for e in unique
+                )
+                pc[pname] = (
+                    f"always bounded ({', '.join(unique)})"
+                    if all_bounded
+                    else f"varies ({', '.join(unique[:5])})"
+                )
+            if pc:
+                constraints[fname] = pc
+
+    return {"constraints": constraints, "summaries": summaries}
+
+
+def format_constraint_context(constraint_analysis: dict) -> str:
+    """Format constraint analysis results into markdown context for LLM prompts."""
+    constraints = constraint_analysis.get("constraints", {})
+    summaries = constraint_analysis.get("summaries", {})
+    if not summaries and not constraints:
+        return ""
+
+    lines: list[str] = [
+        "## Call-Site Constraint Analysis",
+        "",
+        "The following summarizes how each function is called in this file, "
+        "showing what expressions are passed as arguments at each call site.",
+        "",
+    ]
+    for fname in sorted(summaries):
+        info = summaries[fname]
+        n = info["call_count"]
+        lines.append(f"- **{fname}()** ({n} call site{'s' if n != 1 else ''}):")
+        for pname, exprs in info.get("param_args", {}).items():
+            unique = sorted(set(exprs))
+            cstr = constraints.get(fname, {}).get(pname, "")
+            suffix = f" — {cstr}" if cstr else ""
+            if len(unique) <= 5:
+                lines.append(f"  - `{pname}`: {', '.join(f'`{e}`' for e in unique)}{suffix}")
+            else:
+                lines.append(f"  - `{pname}`: {len(unique)} distinct expressions{suffix}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+# ===========================================================================
 # Function parsing (tree-sitter)
 # ===========================================================================
 
