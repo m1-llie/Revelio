@@ -516,6 +516,32 @@ def main(
             store.write_aggregated_trajectory({"agents": {traj_key: run_result.trajectory}})
             log_console.print(f"\n[bold green]Trajectory saved to:[/bold green] {store.aggregated_trajectory_path}")
 
+            try:
+                messages = run_result.trajectory.get("messages", [])
+                hypotheses_payload = None
+                
+                for msg in reversed(messages):
+                    if msg.get("role") == "assistant" and "tool_calls" in msg:
+                        for tc in msg["tool_calls"]:
+                            if tc.get("name") == "finish":
+                                args_str = tc.get("arguments", "{}")
+                                args_dict = json.loads(args_str) if isinstance(args_str, str) else args_str
+                                hypotheses_payload = args_dict.get("payload")
+                                break
+                    if hypotheses_payload:
+                        break
+
+                if hypotheses_payload:
+                    hyp_path = run_dir / "hypotheses.json"
+                    with open(hyp_path, "w", encoding="utf-8") as f:
+                        json.dump(hypotheses_payload, f, indent=2, ensure_ascii=False)
+                    log_console.print(f"[bold green]Hypotheses extracted and saved to:[/bold green] {hyp_path}")
+                else:
+                    log_console.print("[bold yellow]Could not extract 'payload' from finish tool call in trajectory.[/bold yellow]")
+
+            except Exception as e:
+                log_console.print(f"[bold red]Failed to save hypotheses.json:[/bold red] {e}")
+
         else:
             # Project or detect pipeline mode
             agents_dir = agents_config_dir or DEFAULT_AGENTS_DIR

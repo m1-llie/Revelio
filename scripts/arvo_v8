@@ -1,0 +1,88 @@
+#!/bin/bash
+# Drop-in replacement for the ARVO in-container script (`/usr/bin/arvo`),
+# Customized specifically for V8 engine (Pure Execution Version).
+
+export ASAN_OPTIONS="alloc_dealloc_mismatch=0:allocator_may_return_null=1:allocator_release_to_os_interval_ms=500:check_malloc_usable_size=0:detect_container_overflow=1:detect_odr_violation=0:detect_leaks=0:detect_stack_use_after_return=1:fast_unwind_on_fatal=0:handle_abort=1:handle_segv=1:handle_sigill=1:max_uar_stack_size_log=16:print_scariness=1:quarantine_size_mb=10:strict_memcmp=1:strip_path_prefix=/workspace/:symbolize=1:use_sigaltstack=1:dedup_token_length=3"
+export MSAN_OPTIONS="print_stats=1:strip_path_prefix=/workspace/:symbolize=1:dedup_token_length=3"
+export UBSAN_OPTIONS="print_stacktrace=1:print_summary=1:silence_unsigned_overflow=1:strip_path_prefix=/workspace/:symbolize=1:dedup_token_length=3"
+
+SANITIZER="${SANITIZER:-asan}"
+OUT_DIR="/out"
+TARGET_BIN="d8"
+V8_EXEC="$OUT_DIR/$SANITIZER/$TARGET_BIN"
+
+case "${1:-}" in
+    list)
+        if [ "${2:-}" = "--all" ]; then
+            for san_dir in "$OUT_DIR"/*/; do
+                san=$(basename "$san_dir")
+                if [ -x "$san_dir/$TARGET_BIN" ]; then
+                    printf "[%s]\n" "$san"
+                    printf "  %s\n" "$TARGET_BIN"
+                fi
+            done
+        else
+            echo "$TARGET_BIN"
+        fi
+        ;;
+        
+    run)
+        if [ -n "${3:-}" ]; then
+            POC_FILE="$3"
+        else
+            if [ -n "${2:-}" ] && [ -f "$2" ]; then
+                POC_FILE="$2"
+            else
+                POC_FILE="/tmp/poc"
+            fi
+        fi
+
+        if [ ! -f "$POC_FILE" ]; then
+            echo "[-] Error: PoC file not found at $POC_FILE" >&2
+            exit 1
+        fi
+
+        EXTRA_FLAGS=$(awk '/^\/\/ Flags:/ { $1=""; $2=""; print $0 }' "$POC_FILE")
+
+        run_v8_pass() {
+            local pass_name="$1"
+            shift
+            
+            timeout 10s "$V8_EXEC" "$@" $EXTRA_FLAGS "$POC_FILE"
+            
+            local ret=$?
+            if [ $ret -ne 0 ] && [ $ret -ne 124 ]; then 
+                echo "[+] Crash triggered in pass: $pass_name (exit code: $ret)"
+                exit $ret
+            fi
+        }
+
+        run_v8_pass "Maglev Default" --allow-natives-syntax --maglev
+        run_v8_pass "Maglev Stress" --allow-natives-syntax --maglev --stress-maglev --stress-background-compile --future
+        run_v8_pass "Turboshaft" --allow-natives-syntax --always-turbofan --turboshaft
+        run_v8_pass "GC Stress" --allow-natives-syntax --stress-gc --gc-interval=500
+
+        exit 0
+        ;;
+        
+    targets)
+        symbol="${2:?Usage: arvo targets <symbol>}"
+        echo "$TARGET_BIN"
+        ;;
+        
+    compile)
+        echo "V8 compile stub: skipped."
+        exit 0
+        ;;
+        
+    "")
+        exec "$V8_EXEC" --allow-natives-syntax "$POC_FILE"
+        ;;
+        
+    *)
+        echo "Unknown command: $1" >&2
+        echo "Usage: arvo [list [--all] | run [<fuzzer>] <poc> | targets <sym> | compile]" >&2
+        echo "Environment: SANITIZER=asan|ubsan|msan (default: asan)" >&2
+        exit 1
+        ;;
+esac

@@ -14,7 +14,6 @@ set -euo pipefail
 
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ARVO_SCRIPT="${SCRIPT_DIR}/arvo_ossfuzz"
 
 OSS_FUZZ_DIR="${OSS_FUZZ_DIR:-$HOME/oss-fuzz}"
 SANITIZERS="asan,ubsan,msan"
@@ -52,11 +51,6 @@ done
 if [[ ${#PROJECTS[@]} -eq 0 ]]; then
     echo "ERROR: no projects specified" >&2
     usage
-fi
-
-if [[ ! -f "$ARVO_SCRIPT" ]]; then
-    echo "ERROR: arvo_ossfuzz script not found at ${ARVO_SCRIPT}" >&2
-    exit 1
 fi
 
 # Map sanitizer short names to oss-fuzz --sanitizer values
@@ -144,6 +138,18 @@ for PROJECT in "${PROJECTS[@]}"; do
         docker exec "$CONTAINER" mkdir -p "/out/${san}"
         docker cp "${SAN_OUT}/." "${CONTAINER}:/out/${san}/"
     done
+
+    if [[ "$PROJECT" == "v8" ]]; then
+        ARVO_SCRIPT="${SCRIPT_DIR}/arvo_v8"
+    else
+        ARVO_SCRIPT="${SCRIPT_DIR}/arvo_ossfuzz"
+    fi
+
+    if [[ ! -f "$ARVO_SCRIPT" ]]; then
+        echo "ERROR: arvo script not found at ${ARVO_SCRIPT}" >&2
+        docker rm -f "$CONTAINER"
+        exit 1
+    fi
 
     # Install the arvo runner script
     docker cp "$ARVO_SCRIPT" "${CONTAINER}:/usr/bin/arvo"
