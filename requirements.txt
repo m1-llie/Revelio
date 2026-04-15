@@ -12,4 +12,5 @@ prompt_toolkit>=3.0.0
 textual>=0.40.0
 tree-sitter>=0.23.0
 tree-sitter-c>=0.23.0
+tree-sitter-cpp>=0.23.0
 

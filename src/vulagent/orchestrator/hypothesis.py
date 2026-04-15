@@ -123,7 +123,14 @@ class HypothesisOrchestrator:
             self._log(f"FileHypothesisRunner[{file_path}]: non-submitted status {run_result.exit_status}")
             return file_path, run_result, None
 
-        hypotheses = parse_hypotheses(run_result.result)
+        try:
+            hypotheses = parse_hypotheses(run_result.result)
+        except ValueError as e:
+            self._log(
+                f"FileHypothesisRunner[{file_path}]: failed to parse hypotheses: {e}\n"
+                f"Raw result (first 500 chars): {run_result.result[:500]}"
+            )
+            return file_path, run_result, None
         return file_path, run_result, hypotheses
 
     def run(

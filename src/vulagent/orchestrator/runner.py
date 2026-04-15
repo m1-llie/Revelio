@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -358,7 +359,9 @@ class MultiAgentOrchestrator:
         hypotheses.hypotheses = hypotheses.hypotheses[:self.top_n]
         self._artifacts["hypotheses"] = hypotheses
         self.store.write_handoff("hypotheses", hypotheses)
-        self._log(f"HypothesisOrchestrator produced {len(hypotheses.hypotheses)} hypotheses (top {self.top_n})")
+        hyp_path = self.store.run_dir / "hypotheses.json"
+        hyp_path.write_text(json.dumps(hypotheses.to_dict(), indent=2))
+        self._log(f"HypothesisOrchestrator produced {len(hypotheses.hypotheses)} hypotheses (top {self.top_n}), saved to {hyp_path}")
 
         # If pipeline_mode is "project", stop after hypothesis generation
         if self.pipeline_mode == "project":

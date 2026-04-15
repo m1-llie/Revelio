@@ -135,6 +135,127 @@ def run_check_analysis(source: str, file_path: str = "<stdin>") -> list[dict]:
     return [r.to_dict() for r in results]
 
 
+# Size-semantic token whitelist for parameter-name classification.
+# Matched only against properly tokenized names (snake_case + camelCase split),
+# never substrings — so "filename" will NOT match "len", "admin" will NOT match "min", etc.
+_SIZE_TOKENS = frozenset({
+    "size", "sz", "bytes", "nbytes", "nmemb",
+    "len", "length",
+    "count", "cnt", "num", "number",
+    "buf", "buffer",
+    "cap", "capacity",
+    "limit", "lim", "max", "min", "bound",
+    "offset", "off", "idx", "index", "pos", "position",
+    "stride", "pitch", "width", "height", "depth",
+    "n",  # single-letter token only matches exactly "n", not "name"/"num"
+})
+
+# Tokenize both snake_case and camelCase into lowercase words.
+_CAMEL_BOUNDARY_1 = re.compile(r"([a-z0-9])([A-Z])")
+_CAMEL_BOUNDARY_2 = re.compile(r"([A-Z])([A-Z][a-z])")
+
+
+def _tokenize_param_name(name: str) -> list[str]:
+    s = _CAMEL_BOUNDARY_1.sub(r"\1_\2", name)
+    s = _CAMEL_BOUNDARY_2.sub(r"\1_\2", s)
+    return [t for t in s.lower().split("_") if t]
+
+
+def _is_size_like_name(name: str) -> bool:
+    """True only if a full tokenized word (not a substring) matches a size-semantic keyword."""
+    return any(t in _SIZE_TOKENS for t in _tokenize_param_name(name))
+
+
+# Word-boundary regex for integer-type detection: matches whole words only.
+_SIGNED_INT_RE = re.compile(r"\b(int|short|long|int8_t|int16_t|int32_t|int64_t|ssize_t|ptrdiff_t)\b")
+_UNSIGNED_INT_RE = re.compile(r"\b(unsigned|uint8_t|uint16_t|uint32_t|uint64_t|uintptr_t)\b")
+
+
+def _type_risk_multiplier(type_str: str) -> float:
+    """Risk multiplier based on declared type.
+
+    - size_t/ssize_t/ptrdiff_t: wraparound + negative-size coercion risk
+    - signed integers used as indices/sizes: sign-extension bugs
+    - unsigned integers: wrap-around risk
+    - everything else: neutral
+    """
+    if not type_str:
+        return 1.0
+    t = type_str.lower()
+    if "size_t" in t or "ssize_t" in t or "ptrdiff_t" in t:
+        return 1.5
+    # Signed before unsigned so "unsigned int" doesn't get the signed multiplier
+    if _UNSIGNED_INT_RE.search(t):
+        return 1.1
+    if _SIGNED_INT_RE.search(t):
+        return 1.3
+    return 1.0
+
+
+def _is_critical_param(p: dict) -> bool:
+    """A parameter is 'critical' for memory safety if it's a pointer or a size-like scalar."""
+    return bool(p.get("is_pointer")) or _is_size_like_name(p.get("name", ""))
+
+
+def _score_function(func: dict) -> float:
+    """Score a single function for memory-vulnerability risk."""
+    unchecked: set[str] = set(func.get("unchecked_params", []))
+    if not unchecked:
+        return 0.0
+
+    params: list[dict] = func.get("params", [])
+    score = 0.0
+
+    for p in params:
+        name = p.get("name", "")
+        if name not in unchecked:
+            continue
+
+        is_ptr = bool(p.get("is_pointer"))
+        is_size_like = _is_size_like_name(name)
+        type_str = p.get("type_str", "")
+
+        base = 3.0 if is_ptr else 1.0
+        if is_size_like:
+            base += 2.0
+        base *= _type_risk_multiplier(type_str)
+        score += base
+
+    # Bonus only if a critical parameter (pointer or size-like) is unchecked AND
+    # no critical parameter in this function is checked. Prevents a harmless check
+    # on an unrelated bool/enum parameter from masking an unvalidated pointer.
+    critical_unchecked = any(p.get("name") in unchecked and _is_critical_param(p) for p in params)
+    critical_checked = any(_is_critical_param(p) and p.get("checks") for p in params)
+    if critical_unchecked and not critical_checked:
+        score += 1.0
+
+    return score
+
+
+def score_file_for_memory_vulns(check_results: list[dict]) -> float:
+    """Score a file for memory vulnerability likelihood using pure static analysis.
+
+    Strategy avoids file-volume bias by using a weighted top-K aggregate rather than
+    a raw sum: a bug lives in one (or a few) functions, not spread uniformly across
+    a file. A file with 100 harmless short functions will score near zero; a file
+    with one severely-risky function will rank appropriately high.
+
+    File score = 1.0*top1 + 0.5*top2 + 0.25*top3  (diminishing weights on top-3 funcs)
+    """
+    if not check_results:
+        return 0.0
+
+    func_scores = sorted(
+        (s for s in (_score_function(f) for f in check_results) if s > 0),
+        reverse=True,
+    )
+    if not func_scores:
+        return 0.0
+
+    weights = (1.0, 0.5, 0.25)
+    return sum(w * s for w, s in zip(weights, func_scores))
+
+
 def format_check_analysis_context(
     check_results: list[dict],
     *,
@@ -742,6 +863,7 @@ def phase_summarize(
     model: str, file_path: Path, source: str, kwargs: dict,
     cost_tracker: CostTracker | None = None,
     check_analysis_context: str = "",
+    harness_context: str = "",
 ) -> tuple[str, str, list[dict]]:
     msgs: list[dict] = []
 
@@ -749,6 +871,10 @@ def phase_summarize(
     initial_prompt = (
         f"Here is the file `{file_path.name}`:\n\n```\n{truncate(source)}\n```\n\n"
     )
+    if harness_context:
+        initial_prompt += (
+            f"\n## Fuzzing Harness Context\n{harness_context}\n\n"
+        )
     if check_analysis_context:
         initial_prompt += (
             f"\n{check_analysis_context}\n\n"

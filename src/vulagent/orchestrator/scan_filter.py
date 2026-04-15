@@ -34,6 +34,7 @@ from vulagent.orchestrator.scan_filter_stages import (
     run_check_analysis,
     run_constraint_analysis,
     run_filter_agent,
+    score_file_for_memory_vulns,
 )
 
 logger = logging.getLogger("scan_filter")
@@ -202,6 +203,85 @@ class ScanFilterOrchestrator:
             md = f"## Fuzzer Harness (`{rel}`)\n```cpp\n{source}\n```"
             return md, source
         return "", ""
+
+    def _triage_files(
+        self,
+        files: list[str],
+        project_path: str,
+        top_n: int,
+    ) -> list[str]:
+        """Score every file with pure static analysis (no LLM) and return the top_n most risky.
+
+        Reads each file from the container, runs run_check_analysis (tree-sitter based,
+        zero LLM cost), computes a memory-vulnerability risk score, then returns the
+        top_n files sorted by descending score.  Files that cannot be read or are empty
+        receive a score of 0 and will only appear in the output if top_n exceeds the
+        number of non-empty files.
+
+        Raises RuntimeError if static analysis is unavailable or cannot parse any file —
+        callers should fall back to processing all files rather than silently producing
+        meaningless (all-zero) rankings.
+        """
+        # Early availability check: if tree-sitter grammar is missing or broken,
+        # run_check_analysis() silently returns []. Detect this by probing a known-good
+        # snippet before we waste cycles reading 400+ files from the container.
+        probe = "void __triage_probe__(int *p, int n) { if (p) { for (int i=0;i<n;i++); } }"
+        if not run_check_analysis(probe, "__probe__.c"):
+            raise RuntimeError(
+                "static check_analyzer is unavailable (tree-sitter-c not importable). "
+                "Install with: pip install tree-sitter-c tree-sitter-cpp"
+            )
+
+        self._log(
+            f"[triage] Scoring {len(files)} files for memory vulnerability risk "
+            f"(static analysis only, no LLM)..."
+        )
+
+        scored: list[tuple[float, str]] = []
+        parse_failures = 0
+        for rel_path in files:
+            source = self._read_file_from_container(project_path, rel_path)
+            if not source.strip():
+                continue
+            check_results = run_check_analysis(source, rel_path)
+            if not check_results:
+                parse_failures += 1
+            score = score_file_for_memory_vulns(check_results)
+            scored.append((score, rel_path))
+
+        # Sanity check: if nothing scored above zero, the analyzer can't understand
+        # this codebase (e.g., C++ code parsed with C-only grammar). Don't pretend
+        # the first 30 alphabetic files are "top risky".
+        if scored and all(s == 0 for s, _ in scored):
+            raise RuntimeError(
+                f"triage produced all-zero scores across {len(scored)} files "
+                f"({parse_failures} with no parseable functions). "
+                f"The check_analyzer likely cannot parse this codebase — for C++ heavy "
+                f"projects install tree-sitter-cpp and ensure the analyzer dispatches "
+                f"on file extension."
+            )
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        top = [path for _, path in scored[:top_n]]
+        self._log(
+            f"[triage] Top {len(top)} files selected from {len(scored)} non-empty files "
+            f"({parse_failures} files had no parseable functions):"
+        )
+        for rank, (score, path) in enumerate(scored[:top_n], 1):
+            self._log(f"[triage]   #{rank:3d}  score={score:6.1f}  {path}")
+
+        self.store.append_event("triage_complete", {
+            "total_files": len(files),
+            "non_empty_files": len(scored),
+            "parse_failures": parse_failures,
+            "top_n": top_n,
+            "selected": [
+                {"rank": i + 1, "score": scored[i][0], "file": scored[i][1]}
+                for i in range(len(top))
+            ],
+        })
+        return top
 
     def _run_stage1_for_file(
         self, rel_path: str, project_path: str, source: str,
@@ -465,6 +545,7 @@ class ScanFilterOrchestrator:
         project_path: str,
         arvo_mode: bool = False,
         target_file: str | None = None,
+        top_files: int | None = None,
     ) -> VulnHypotheses:
         """Run the scan-and-filter pipeline.
 
@@ -473,6 +554,8 @@ class ScanFilterOrchestrator:
             arvo_mode: Whether this is an ARVO target.
             target_file: If given, scan only this file (relative to project_path).
                          Otherwise scan all matching files.
+            top_files: If given, run a zero-LLM static triage first and keep only
+                       the top_files highest-risk files before entering Stage 1.
 
         Returns:
             VulnHypotheses with filtered, converted hypotheses.
@@ -503,6 +586,11 @@ class ScanFilterOrchestrator:
         if not files:
             self._log("[scan_filter] No matching source files found")
             return VulnHypotheses(hypotheses=[], generation_notes="No matching source files found.")
+
+        # Static triage: rank all files by memory-vulnerability risk, keep top_n
+        if top_files and not target_file and len(files) > top_files:
+            files = self._triage_files(files, project_path, top_files)
+            self._log(f"[triage] Proceeding with {len(files)} file(s) after static triage")
 
         all_vuln_hypotheses: list[VulnHypothesis] = []
 

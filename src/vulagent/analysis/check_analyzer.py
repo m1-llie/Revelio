@@ -17,7 +17,28 @@ from typing import Any
 import tree_sitter_c as tsc
 from tree_sitter import Language, Parser, Node
 
-LANG = Language(tsc.language())
+LANG_C = Language(tsc.language())
+
+# C++ grammar is optional — fall back to C grammar if not installed.
+try:
+    import tree_sitter_cpp as tscpp
+    LANG_CPP = Language(tscpp.language())
+except ImportError:
+    LANG_CPP = None
+
+# Default grammar (kept for backwards compatibility with callers that reference LANG)
+LANG = LANG_C
+
+_CPP_SUFFIXES = {".cpp", ".cc", ".cxx", ".cxx", ".hpp", ".hh", ".hxx"}
+
+
+def _pick_language(file_path: str) -> "Language":
+    """Dispatch to C++ grammar for C++ files if available, else fall back to C."""
+    from pathlib import Path as _Path
+    suffix = _Path(file_path).suffix.lower()
+    if suffix in _CPP_SUFFIXES and LANG_CPP is not None:
+        return LANG_CPP
+    return LANG_C
 
 # ── Check categories ────────────────────────────────────────────────────────
 
@@ -526,8 +547,13 @@ def analyze_function(func_node: Node, file_path: str) -> FunctionChecks | None:
 
 
 def analyze_source(source: str, file_path: str = "<stdin>") -> list[FunctionChecks]:
-    """Analyze all functions in a C/C++ source string."""
-    parser = Parser(LANG)
+    """Analyze all functions in a C/C++ source string.
+
+    Dispatches to the C++ grammar for .cpp/.cc/.cxx/.hpp/.hh/.hxx files when
+    tree-sitter-cpp is installed; otherwise falls back to the C grammar (which
+    can parse simple C-like C++ but breaks on namespaces, classes, templates).
+    """
+    parser = Parser(_pick_language(file_path))
     tree = parser.parse(source.encode(errors="replace"))
     results: list[FunctionChecks] = []
 

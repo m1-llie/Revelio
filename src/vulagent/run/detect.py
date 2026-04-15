@@ -223,6 +223,15 @@ def main(
         "--max-functions",
         help="Max functions to analyze per file in scan_filter mode.",
     ),
+    top_files: Optional[int] = typer.Option(
+        None,
+        "--top-files",
+        help=(
+            "Static pre-triage: before scan_filter, score all files with pure static "
+            "analysis (no LLM) and keep only the top N highest-risk files. "
+            "Useful for large projects to reduce LLM cost."
+        ),
+    ),
     agent_step_limit: int = typer.Option(
         20,
         "--agent-step-limit",
@@ -403,6 +412,7 @@ def main(
                     project_path=str(workspace_project),
                     arvo_mode=arvo_mode,
                     target_file=target_file,
+                    top_files=top_files,
                 )
                 finished_at = datetime.now(timezone.utc)
                 elapsed = (finished_at - started_at).total_seconds()
