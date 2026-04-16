@@ -5,43 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-CRASH_INDICATORS = frozenset({
-    "addresssanitizer",
-    "memorysanitizer",
-    "threadsanitizer",
-    "leaksanitizer",
-    "ubsan",
-    "undefined behavior",
-    "segmentation fault",
-    "sigsegv",
-    "sigabrt",
-    "sigbus",
-    "sigfpe",
-    "stack-buffer-overflow",
-    "heap-buffer-overflow",
-    "heap-use-after-free",
-    "stack-use-after-free",
-    "double-free",
-    "use-after-poison",
-    "global-buffer-overflow",
-    "stack-overflow",
-    "alloc-dealloc-mismatch",
-    "out of memory",
-    "assertion failed",
-    "runtime error:",
-})
+from vulagent.run.crash_signals import (
+    CRASH_SIGNATURES as CRASH_INDICATORS,
+    CRASH_SIGNAL_RETURN_CODES as CRASH_RETURN_CODES,
+    check_crash,
+)
 
-CRASH_RETURN_CODES = {1, 134, 136, 139}
-
-
-def check_crash(output: str, returncode: int | None) -> bool:
-    """Check output text and return code for crash indicators."""
-    text = output.lower()
-    if any(indicator in text for indicator in CRASH_INDICATORS):
-        return True
-    if returncode is not None and (returncode >= 128 or returncode in CRASH_RETURN_CODES):
-        return True
-    return False
+__all__ = ["CRASH_INDICATORS", "CRASH_RETURN_CODES", "check_crash", "make_validate_tool"]
 
 
 def _truncate_output(output: str, max_lines: int = 200) -> str:

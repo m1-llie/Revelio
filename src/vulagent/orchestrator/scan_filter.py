@@ -135,6 +135,117 @@ class ScanFilterOrchestrator:
         if self.log_fn:
             self.log_fn(message)
 
+    @staticmethod
+    def _file_slug(file_path: str) -> str:
+        return file_path.replace("/", "_").replace(".", "_")
+
+    def _save_incremental(
+        self,
+        file_path: str,
+        file_hypotheses: list[VulnHypothesis],
+        aggregate_hypotheses: list[VulnHypothesis],
+        *,
+        files_done: int,
+        files_total: int,
+    ) -> None:
+        """Persist per-file and running-aggregate progress after each file.
+
+        Writes are idempotent (overwrite) so an interrupted run retains the
+        latest snapshot on disk. Exceptions are swallowed so that I/O hiccups
+        cannot abort the in-progress scan.
+        """
+        slug = self._file_slug(file_path)
+        try:
+            per_file = VulnHypotheses(
+                hypotheses=list(file_hypotheses),
+                generation_notes=(
+                    f"scan_filter results for {file_path}: "
+                    f"{len(file_hypotheses)} final hypotheses."
+                ),
+            )
+            self.store.write_handoff("file_hypothesis", per_file, hypothesis_id=slug)
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"[scan_filter] failed to save per-file handoff for {file_path}: {exc}")
+
+        try:
+            partial = VulnHypotheses(
+                hypotheses=list(aggregate_hypotheses),
+                generation_notes=(
+                    f"PARTIAL: {files_done}/{files_total} files processed, "
+                    f"{len(aggregate_hypotheses)} hypotheses so far."
+                ),
+            )
+            self.store.write_handoff("hypotheses_partial", partial)
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"[scan_filter] failed to save partial aggregate: {exc}")
+
+        self.store.append_event(
+            "file_hypothesis_completed",
+            {
+                "file_path": file_path,
+                "hypotheses_count": len(file_hypotheses),
+                "aggregate_count": len(aggregate_hypotheses),
+                "progress": f"{files_done}/{files_total}",
+            },
+        )
+
+    def _persist_stage3_trace(
+        self,
+        index: int,
+        hypothesis: dict,
+        filter_result: dict,
+        rel_path: str,
+        safe_name: str,
+    ) -> None:
+        """Write a single sub-agent's trace + verdict to disk.
+
+        Called once per hypothesis right after its filter agent returns so that
+        a crash or interrupt in a later hypothesis never discards the work of
+        completed ones. I/O errors are logged and swallowed.
+        """
+        summary = hypothesis.get("hypothesis", hypothesis).get("summary", "")
+        try:
+            self.store.save_trace(
+                f"stage3_filter/hyp_{index:02d}_{safe_name}.json",
+                {
+                    "file": rel_path,
+                    "hypothesis_index": index,
+                    "summary": summary,
+                    "verdict": filter_result.get("verdict", ""),
+                    "confidence": filter_result.get("confidence", 0.0),
+                    "reason": filter_result.get("reason", ""),
+                    "reasoning": filter_result.get("reasoning", ""),
+                    "model_cost": filter_result.get("model_cost", 0),
+                    "model_calls": filter_result.get("model_calls", 0),
+                    "trajectory": filter_result.get("trajectory", []),
+                    "error": filter_result.get("error"),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._log(
+                f"[scan_filter] failed to save stage3 trace for hyp {index} "
+                f"in {rel_path}: {exc}"
+            )
+            return
+
+        try:
+            self.store.append_event(
+                "filter_agent_completed",
+                {
+                    "file_path": rel_path,
+                    "hypothesis_index": index,
+                    "verdict": filter_result.get("verdict", ""),
+                    "confidence": filter_result.get("confidence", 0.0),
+                    "model_cost": filter_result.get("model_cost", 0),
+                    "model_calls": filter_result.get("model_calls", 0),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._log(
+                f"[scan_filter] failed to append filter_agent_completed event "
+                f"for hyp {index} in {rel_path}: {exc}"
+            )
+
     def _enumerate_files(self, project_path: str) -> list[str]:
         """Enumerate matching source files inside the container.
 
@@ -408,8 +519,15 @@ class ScanFilterOrchestrator:
         self, kept: list[dict], target_file: str,
         cost_tracker: CostTracker | None = None,
         check_results: list[dict] | None = None,
+        safe_name: str | None = None,
     ) -> tuple[list[dict], dict[int, dict]]:
-        """Run Stage 3 (Docker sub-agent filtering). Returns (final_hypotheses, filter_results)."""
+        """Run Stage 3 (Docker sub-agent filtering). Returns (final_hypotheses, filter_results).
+
+        When ``safe_name`` is provided, each sub-agent's trace is persisted to
+        ``stage3_filter/hyp_<i>_<safe_name>.json`` immediately after the agent
+        returns, so a crash or interrupt mid-stage never loses the work of
+        already-completed sub-agents.
+        """
         self._log(f"  [scan_filter] Stage 3: filtering {len(kept)} hypotheses with sub-agents...")
 
         filter_results: dict[int, dict] = {}
@@ -424,7 +542,6 @@ class ScanFilterOrchestrator:
                     check_results=check_results,
                 )
                 v = filter_results[i]
-                # Accumulate filter agent cost
                 if cost_tracker is not None:
                     cost_tracker.add(v.get("model_cost", 0), v.get("model_calls", 0))
                 self._log(
@@ -437,6 +554,11 @@ class ScanFilterOrchestrator:
                     "verdict": "VALID", "confidence": 0.0, "reason": str(e),
                     "reasoning": "", "error": str(e),
                 }
+
+            # Persist this sub-agent's trace immediately so partial progress
+            # survives an interrupt or later crash in the same stage.
+            if safe_name:
+                self._persist_stage3_trace(i, h, filter_results[i], target_file, safe_name)
 
         final_hypotheses = []
         for i, h in enumerate(kept):
@@ -505,9 +627,11 @@ class ScanFilterOrchestrator:
             return VulnHypotheses(hypotheses=[], generation_notes="No matching source files found.")
 
         all_vuln_hypotheses: list[VulnHypothesis] = []
+        files_completed = 0
 
         for rel_path in files:
             self._log(f"\n[scan_filter] === Processing {rel_path} ===")
+            files_completed += 1
 
             # Read source from container
             source = self._read_file_from_container(project_path, rel_path)
@@ -617,11 +741,14 @@ class ScanFilterOrchestrator:
                 self._log(f"[scan_filter] No hypotheses survived classification/dedup for {rel_path}")
                 continue
 
-            # Stage 3: Docker sub-agent filtering
+            # Stage 3: Docker sub-agent filtering.
+            # Traces are persisted per-hypothesis inside _run_stage3 as each
+            # sub-agent returns, so partial progress survives an interrupt.
             self._log(f"[scan_filter] Stage 3: Sub-agent filtering for {rel_path}")
             cost_before = cost_tracker.snapshot()
             final, filter_results = self._run_stage3(
                 kept, rel_path, cost_tracker=cost_tracker, check_results=check_results,
+                safe_name=safe_name,
             )
             s3_cost, s3_calls = cost_tracker.snapshot()
             s3_cost -= cost_before[0]
@@ -631,27 +758,23 @@ class ScanFilterOrchestrator:
                 f"(${s3_cost:.4f}, {s3_calls} calls)"
             )
 
-            # Save Stage 3 traces (one file per hypothesis)
-            for i, h in enumerate(kept):
-                fr_item = filter_results.get(i, {})
-                self.store.save_trace(f"stage3_filter/hyp_{i:02d}_{safe_name}.json", {
-                    "file": rel_path,
-                    "hypothesis_index": i,
-                    "summary": h.get("hypothesis", h).get("summary", ""),
-                    "verdict": fr_item.get("verdict", ""),
-                    "confidence": fr_item.get("confidence", 0.0),
-                    "reason": fr_item.get("reason", ""),
-                    "reasoning": fr_item.get("reasoning", ""),
-                    "model_cost": fr_item.get("model_cost", 0),
-                    "model_calls": fr_item.get("model_calls", 0),
-                    "trajectory": fr_item.get("trajectory", []),
-                    "error": fr_item.get("error"),
-                })
-
             # Convert to VulnHypothesis
+            file_vuln_hypotheses: list[VulnHypothesis] = []
             for i, hyp in enumerate(final):
                 vh = _convert_hypothesis(hyp, len(all_vuln_hypotheses) + 1, rel_path)
                 all_vuln_hypotheses.append(vh)
+                file_vuln_hypotheses.append(vh)
+
+            # Real-time persistence: save per-file hypotheses and the
+            # running aggregate after every file so that an interrupted
+            # run retains completed progress on disk.
+            self._save_incremental(
+                rel_path,
+                file_vuln_hypotheses,
+                all_vuln_hypotheses,
+                files_done=files_completed,
+                files_total=len(files),
+            )
 
         # Sort by confidence descending and re-number
         all_vuln_hypotheses.sort(key=lambda h: h.confidence, reverse=True)

@@ -26,20 +26,14 @@ from rich.console import Console
 from rich.table import Table
 
 from vulagent.environments.docker import DockerEnvironment
+from vulagent.run.crash_signals import (
+    CRASH_SIGNATURES as CRASH_MARKERS,
+    CRASH_SIGNAL_RETURN_CODES as CRASH_RETURN_CODES,
+    check_crash as is_crash_detected,
+)
 
 console = Console()
 app = typer.Typer(rich_markup_mode="rich")
-
-# Markers indicating a crash in sanitizer output
-CRASH_MARKERS = [
-    "AddressSanitizer", "SEGV", "heap-buffer-overflow",
-    "stack-buffer-overflow", "use-after-free", "ABORTING",
-    "LeakSanitizer", "MemorySanitizer", "UndefinedBehaviorSanitizer",
-    "SUMMARY: ", "==ERROR:", "DEADLYSIGNAL",
-]
-
-# Return codes that indicate a crash
-CRASH_RETURN_CODES = {1, 134, 136, 139}  # ASAN, SIGABRT, SIGFPE, SIGSEGV
 
 
 def _summarize_output(output: str, limit: int = 2000) -> str:
@@ -50,17 +44,6 @@ def _summarize_output(output: str, limit: int = 2000) -> str:
     head = output[:1000]
     tail = output[-1000:]
     return f"{head}\n...\n{tail}"
-
-
-def is_crash_detected(output: str, returncode: int | None) -> bool:
-    has_crash_marker = any(marker in output for marker in CRASH_MARKERS)
-    has_crash_returncode = False
-    if returncode is not None:
-        if returncode >= 128:
-            has_crash_returncode = True
-        elif returncode in CRASH_RETURN_CODES:
-            has_crash_returncode = True
-    return has_crash_marker or has_crash_returncode
 
 
 def get_fix_image(vul_image: str) -> str:

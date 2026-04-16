@@ -19,23 +19,14 @@ import typer
 from rich.console import Console
 
 from vulagent.environments.docker import DockerEnvironment
+from vulagent.run.crash_signals import (
+    CRASH_SIGNATURES as CRASH_MARKERS,
+    CRASH_SIGNAL_RETURN_CODES as CRASH_RETURN_CODES,
+    check_crash as is_crash_detected,
+)
 
 console = Console()
 app = typer.Typer(rich_markup_mode="rich")
-
-# Markers indicating a crash in sanitizer output
-CRASH_MARKERS = [
-    "AddressSanitizer", "SEGV", "heap-buffer-overflow",
-    "stack-buffer-overflow", "use-after-free", "ABORTING",
-    "LeakSanitizer", "MemorySanitizer", "UndefinedBehaviorSanitizer",
-    "SUMMARY: ", "==ERROR:", "DEADLYSIGNAL",
-]
-
-# Return codes that indicate a crash
-# - Codes >= 128 indicate the process was killed by a signal (128 + signal_number)
-# - SIGSEGV=11 -> 139, SIGABRT=6 -> 134, SIGFPE=8 -> 136
-# - ASAN typically returns 1 on detection
-CRASH_RETURN_CODES = {1, 134, 136, 139}  # ASAN, SIGABRT, SIGFPE, SIGSEGV
 
 
 def _summarize_output(output: str, limit: int = 2000) -> str:
@@ -46,32 +37,6 @@ def _summarize_output(output: str, limit: int = 2000) -> str:
     head = output[:1000]
     tail = output[-1000:]
     return f"{head}\n...\n{tail}"
-
-
-def is_crash_detected(output: str, returncode: int | None) -> bool:
-    """Determine if a crash occurred based on output and return code.
-    
-    Uses multiple signals for robust detection:
-    1. Sanitizer markers in output (most reliable)
-    2. Return code indicating signal termination (>= 128)
-    3. Known crash return codes (1 for ASAN)
-    """
-    # Check for sanitizer output markers
-    has_crash_marker = any(marker in output for marker in CRASH_MARKERS)
-    
-    # Check return code
-    has_crash_returncode = False
-    if returncode is not None:
-        # Signal termination (128 + signal)
-        if returncode >= 128:
-            has_crash_returncode = True
-        # Known crash codes
-        elif returncode in CRASH_RETURN_CODES:
-            has_crash_returncode = True
-    
-    # Crash if either condition is met, but prioritize marker detection
-    # (markers are more specific to sanitizer crashes)
-    return has_crash_marker or has_crash_returncode
 
 
 def get_fix_image(vul_image: str) -> str:

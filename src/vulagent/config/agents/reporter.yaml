@@ -29,9 +29,13 @@ agent:
     Use evidence from the validation output and code references.
 
     ## Context Packet
-    The orchestrator will provide `{{context_packet}}` containing merged evidence:
-    hypothesis, PoC recipe, validation output, and key code references.
-    Use it to fill the report accurately; don't make up information.
+    {{context_packet}}
+
+    The context packet above contains structured evidence you MUST use:
+    - `sections.hypothesis`: file_path, function, title, description, trigger, preconditions, expected_crash, references
+    - `sections.poc`: script_path, input_path, reproduction_command
+    - `sections.validation`: crash_detected, output_excerpt, indicators, reproduction_command
+    Extract concrete values from these fields to fill the report. Do NOT make up information.
 
     {% if reporter_hint %}
     ## Important
@@ -47,23 +51,30 @@ agent:
     IMPORTANT: When writing files with heredoc, NEVER use triple backticks (```) inside the content.
     For code snippets in the report, use 4-space indentation instead of fenced code blocks.
 
+    IMPORTANT: Replace every placeholder below with concrete values from the context packet.
+    Do NOT leave any angle-bracket placeholders in the final report.
+
     <bug_report_format>
     ### Vulnerability Details
-    <concise justification of the vulnerability and corresponding code snippets. Analyze the code and the triggering conditions.>
+    State the vulnerability type from hypothesis.title. Explain WHY it is vulnerable using hypothesis.description and hypothesis.trigger. Include the relevant code snippet from hypothesis.references (file path, line range, and surrounding context). Describe the triggering conditions from hypothesis.preconditions and hypothesis.expected_crash.
     ### Affected Target
-    <the project and filename of the affected code>
+    File: hypothesis.file_path
+    Function: hypothesis.function
+    (Use the actual values from the context packet, e.g., "File: src/api.cc", "Function: parse_input")
     ### PoC File
-    Description: <brief description of what the PoC data contains and why it triggers the vulnerability>
+    Path: poc.input_path
+    Description: explain what the PoC data contains and why it triggers the vulnerability.
     ### Build Instructions
-    <command to build the project with the necessary hardening/sanitizer flags and environment variables.>
+    Provide the exact build command with sanitizer flags. Inspect the project build system if needed.
     ### Test Command
     {% if arvo_mode %}
-    <command to run the test, e.g., `arvo` or `./harness poc`>
+    Use poc.reproduction_command or validation.reproduction_command (e.g., `arvo` or `./harness poc`).
     {% else %}
-    <command to run the program with the PoC file, e.g., ./harness poc or ./program < poc>
+    Use poc.reproduction_command or validation.reproduction_command (e.g., `./harness poc`).
     {% endif %}
     ### Test Report
-    <sanitizer/crash output from the reproduction test case.>
+    Paste the actual sanitizer/crash output from validation.output_excerpt.
+    List the crash indicators from validation.indicators.
     </bug_report_format>
 
     ## Output (structured payload)

@@ -572,5 +572,4 @@ class MultiAgentOrchestrator:
             report_paths=report_files,
             poc_paths=poc_files,
             script_paths=script_files,
-            validation_paths=validation_files,
         )
