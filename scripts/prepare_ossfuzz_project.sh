@@ -49,6 +49,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+OSS_FUZZ_DIR="$(cd "$OSS_FUZZ_DIR" && pwd)"
+
 if [[ ${#PROJECTS[@]} -eq 0 ]]; then
     echo "ERROR: no projects specified" >&2
     usage
@@ -111,9 +113,10 @@ for PROJECT in "${PROJECTS[@]}"; do
                 --sanitizer "$oss_san" "$PROJECT"; then
 
             # Save build output before next sanitizer build overwrites it
+            # Files may be root-owned (created by Docker), so use docker to copy/remove
             SAN_OUT="${OSS_FUZZ_DIR}/build/out/${PROJECT}_${san}"
-            rm -rf "$SAN_OUT"
-            cp -r "${OSS_FUZZ_DIR}/build/out/${PROJECT}" "$SAN_OUT"
+            docker run --rm -v "${OSS_FUZZ_DIR}/build/out:/mnt" alpine \
+                sh -c 'rm -rf "/mnt/${1}_${2}" && cp -r "/mnt/${1}" "/mnt/${1}_${2}"' _ "$PROJECT" "$san"
             built_sanitizers+=("$san")
             echo "--- ${san}: OK (saved to ${SAN_OUT}) ---"
         else
@@ -126,8 +129,8 @@ for PROJECT in "${PROJECTS[@]}"; do
         continue
     fi
 
-    # Clean up the generic build dir
-    rm -rf "${OSS_FUZZ_DIR}/build/out/${PROJECT}"
+    # Clean up the generic build dir (root-owned files from Docker)
+    docker run --rm -v "${OSS_FUZZ_DIR}/build/out:/mnt" alpine rm -rf "/mnt/${PROJECT}"
 
     # ── Step 2: Package into a Docker image ──────────────────────────────
 
@@ -173,9 +176,9 @@ for PROJECT in "${PROJECTS[@]}"; do
     docker commit "$CONTAINER" "$IMAGE_TAG"
     docker rm -f "$CONTAINER"
 
-    # Clean up saved build artifacts
+    # Clean up saved build artifacts (root-owned files from Docker)
     for san in "${built_sanitizers[@]}"; do
-        rm -rf "${OSS_FUZZ_DIR}/build/out/${PROJECT}_${san}"
+        docker run --rm -v "${OSS_FUZZ_DIR}/build/out:/mnt" alpine rm -rf "/mnt/${PROJECT}_${san}"
     done
 
     echo ""
