@@ -1,9 +1,9 @@
 /*
- * PoC: SF01 — NULL pointer dereference in SSL_CTX_use_PrivateKey()
- * Target: OpenSSL 3.3 (openssl33/ssl/ssl_rsa.c)
+ * PoC: NULL pointer dereference in SSL_CTX_use_PrivateKey()
+ * Confirmed on: OpenSSL master, commit 6983b5c (2026-04-16)
  *
- * Trigger: call SSL_CTX_use_PrivateKey(NULL, valid_pkey)
- * Crash:   ssl_rsa.c:371 — ctx->cert deref with NULL ctx
+ * Trigger: SSL_CTX_use_PrivateKey(NULL, valid_pkey)
+ * Crash:   ssl_rsa.c:390 — ctx->cert member access through NULL ctx
  */
 
 #include <openssl/ssl.h>

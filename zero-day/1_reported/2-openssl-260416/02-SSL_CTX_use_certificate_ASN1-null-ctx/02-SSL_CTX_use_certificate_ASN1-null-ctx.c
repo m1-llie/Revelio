@@ -1,9 +1,9 @@
 /*
- * PoC: SF04 — NULL pointer dereference in SSL_CTX_use_certificate_ASN1()
- * Target: OpenSSL 3.3 (openssl33/ssl/ssl_rsa.c)
+ * PoC: NULL pointer dereference in SSL_CTX_use_certificate_ASN1()
+ * Confirmed on: OpenSSL master, commit 6983b5c (2026-04-16)
  *
- * Trigger: call SSL_CTX_use_certificate_ASN1(NULL, len, data)
- * Crash:   ssl_rsa.c:348 — X509_new_ex(ctx->libctx, ctx->propq) with NULL ctx
+ * Trigger: SSL_CTX_use_certificate_ASN1(NULL, len, data)
+ * Crash:   ssl_rsa.c:367 — ctx->libctx member access through NULL ctx
  */
 
 #include <openssl/ssl.h>

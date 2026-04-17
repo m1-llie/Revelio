@@ -1,9 +1,9 @@
 /*
- * PoC: SF06 — NULL pointer dereference in SSL_CTX_use_PrivateKey_ASN1()
- * Target: OpenSSL 3.3 (openssl33/ssl/ssl_rsa.c)
+ * PoC: NULL pointer dereference in SSL_CTX_use_PrivateKey_ASN1()
+ * Confirmed on: OpenSSL master, commit 6983b5c (2026-04-16)
  *
- * Trigger: call SSL_CTX_use_PrivateKey_ASN1(type, NULL, data, len)
- * Crash:   ssl_rsa.c:422 — ctx->libctx deref with NULL ctx
+ * Trigger: SSL_CTX_use_PrivateKey_ASN1(type, NULL, data, len)
+ * Crash:   ssl_rsa.c:446 — ctx->libctx member access through NULL ctx
  */
 
 #include <openssl/ssl.h>

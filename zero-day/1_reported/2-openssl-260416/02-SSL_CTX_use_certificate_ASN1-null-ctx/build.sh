@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Build and run the SF01 PoC inside vulagent/openssl:latest
+# Compile and run PoC 02: null ctx in SSL_CTX_use_certificate_ASN1()
+# Builds OpenSSL from /src/openssl with ASAN/UBSAN if not already built.
 # Usage: bash build.sh
 set -e
 
-OPENSSL_SRC="/src/openssl33"
-POC_C="/tmp/sf01_poc.c"
-POC_BIN="/tmp/sf01_poc"
+OPENSSL_SRC="/src/openssl"
+POC_BIN="/tmp/poc02"
 
-# ── 1. Build openssl33 with ASAN if not already built ──────────────────────
+# ── 1. Build OpenSSL with ASAN/UBSAN if not already built ─────────────────
 if [ ! -f "$OPENSSL_SRC/libssl.a" ]; then
-    echo "[*] Configuring openssl33 ..."
+    echo "[*] Configuring OpenSSL ..."
     cd "$OPENSSL_SRC"
     ./config no-shared no-tests no-apps --debug \
-        -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1
-    echo "[*] Building libraries (this takes ~5 min) ..."
+        CC=clang -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1
+    echo "[*] Building libraries ..."
     make -j"$(nproc)" build_libs
 fi
 
@@ -21,7 +21,7 @@ fi
 echo "[*] Compiling PoC ..."
 clang -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1 \
     -I"$OPENSSL_SRC/include" \
-    "$POC_C" \
+    "$(dirname "$0")/02-SSL_CTX_use_certificate_ASN1-null-ctx.c" \
     "$OPENSSL_SRC/libssl.a" "$OPENSSL_SRC/libcrypto.a" \
     -lpthread -ldl -o "$POC_BIN"
 
