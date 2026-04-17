@@ -83,7 +83,7 @@ class ScanFilterOrchestrator:
 
     Stages:
     1. Multi-pass hypothesis generation (summarize + whole-file + focused + per-function)
-    2. LLM classification & dedup (is_vulnerability, is_asan, CWE, then LLM dedup)
+    2. LLM classification & dedup (is_vulnerability, sanitizers{asan,ubsan,msan}, CWE, then LLM dedup)
     3. Docker sub-agent filtering (verify VALID/INVALID via code inspection)
     """
 
@@ -276,11 +276,58 @@ class ScanFilterOrchestrator:
                 relative.append(rel)
         return relative
 
-    def _read_file_from_container(self, project_path: str, rel_path: str) -> str:
-        """Read a file's contents from the Docker container."""
-        full_path = f"{project_path.rstrip('/')}/{rel_path}"
-        result = self.env.execute(f"cat '{full_path}'")
-        return result.get("output") or ""
+    def _read_file_from_container(self, project_path: str, rel_path: str) -> tuple[str, str]:
+        """Read a file's contents from the Docker container.
+
+        Returns ``(source, resolved_rel_path)``. If the direct path
+        ``{project_path}/{rel_path}`` is not a regular file (e.g. because the
+        project sits under a subdirectory like ``/src/openssl/``), fall back
+        to searching for any file matching the relative path beneath
+        ``project_path`` and use the first hit. On failure both return values
+        are empty strings and a warning is logged.
+
+        Previously this method blindly ``cat``ed the composed path and merged
+        stderr into stdout, so a missing-file error message ended up being fed
+        into the tree-sitter parser and the summarizer as if it were source
+        code (producing "0 functions" and harness-only hypotheses).
+        """
+        project_root = project_path.rstrip("/")
+        direct = f"{project_root}/{rel_path}"
+
+        check = self.env.execute(f"test -f '{direct}' && echo OK || echo NO")
+        status = (check.get("output") or "").strip().splitlines()
+        resolved = direct if status and status[-1] == "OK" else ""
+
+        if not resolved:
+            # File isn't at the naive path. Try to locate it under project_root.
+            safe_rel = rel_path.replace("'", "'\\''")
+            locate_cmd = (
+                f"find {project_root} -path '*/{safe_rel}' -type f "
+                f"2>/dev/null | head -1"
+            )
+            found = (self.env.execute(locate_cmd).get("output") or "").strip().splitlines()
+            candidate = found[0].strip() if found else ""
+            if candidate:
+                resolved = candidate
+                self._log(
+                    f"[scan_filter] target-file {rel_path!r} not at {direct!r}; "
+                    f"using discovered path {resolved!r}"
+                )
+
+        if not resolved:
+            self._log(
+                f"[scan_filter] WARNING: could not locate {rel_path!r} under "
+                f"{project_root!r}; skipping file"
+            )
+            return "", ""
+
+        cat = self.env.execute(f"cat '{resolved}'")
+        source = cat.get("output") or ""
+
+        # Recompute rel_path relative to project_root so downstream artefacts
+        # point at the real location the model/PoC stages will see.
+        new_rel = resolved[len(project_root) + 1:] if resolved.startswith(project_root + "/") else rel_path
+        return source, new_rel
 
     def _discover_harness(self, project_path: str) -> tuple[str, str]:
         """Find and read the fuzzer harness (LLVMFuzzerTestOneInput) source.
@@ -449,16 +496,23 @@ class ScanFilterOrchestrator:
                 done += 1
                 try:
                     classifications[idx] = future.result()
-                    is_vuln = classifications[idx]["is_vulnerability"]
-                    is_asan = classifications[idx]["is_asan"]
+                    c = classifications[idx]
+                    is_vuln = c["is_vulnerability"]
+                    sans = c.get("sanitizers", [])
+                    if is_vuln and sans:
+                        tag = "+".join(s.upper() for s in sans)
+                    elif is_vuln:
+                        tag = "VUL(no-san)"
+                    else:
+                        tag = "NOT"
                     self._log(
                         f"  [scan_filter] [{done}/{len(all_hypotheses)}] "
-                        f"{('ASAN' if is_asan else 'VUL') if is_vuln else 'NOT'} — "
-                        f"{classifications[idx]['reason'][:70]}"
+                        f"{tag} — {c['reason'][:70]}"
                     )
                 except Exception as e:
                     classifications[idx] = {
-                        "is_vulnerability": False, "is_asan": False, "cwe_ids": [], "reason": f"error: {e}",
+                        "is_vulnerability": False, "sanitizers": [], "is_asan": False,
+                        "cwe_ids": [], "reason": f"error: {e}",
                         "raw_response": "", "prompt": "",
                     }
 
@@ -470,31 +524,38 @@ class ScanFilterOrchestrator:
                 "index": i,
                 "summary": h.get("hypothesis", h).get("summary", ""),
                 "is_vulnerability": c["is_vulnerability"],
-                "is_asan": c["is_asan"],
+                "sanitizers": c.get("sanitizers", []),
+                "is_asan": c.get("is_asan", False),  # back-compat
                 "cwe_ids": c["cwe_ids"],
                 "reason": c["reason"],
                 "raw_response": c.get("raw_response", ""),
                 "prompt": c.get("prompt", ""),
             })
 
-        # Filter: keep only ASAN-triggerable vulnerabilities
+        # Filter: keep vulnerabilities triggerable by ANY supported sanitizer
+        # (ASAN/UBSAN/MSAN — matches what tools/validate.py actually tests
+        # and what crash_signals.py recognizes).
         valid_indices = [
             i for i in range(len(all_hypotheses))
-            if classifications[i]["is_vulnerability"] and classifications[i]["is_asan"]
+            if classifications[i]["is_vulnerability"]
+            and bool(classifications[i].get("sanitizers"))
         ]
         self._log(
-            f"  [scan_filter] Filtered: {len(all_hypotheses) - len(valid_indices)} non-asan, "
+            f"  [scan_filter] Filtered: "
+            f"{len(all_hypotheses) - len(valid_indices)} not sanitizer-triggerable, "
             f"{len(valid_indices)} remain"
         )
 
         for i, h in enumerate(all_hypotheses):
-            h["_cwe_ids"] = classifications[i]["cwe_ids"]
-            h["_is_vulnerability"] = classifications[i]["is_vulnerability"]
-            h["_is_asan"] = classifications[i]["is_asan"]
-            if not classifications[i]["is_vulnerability"]:
-                h["_removed"] = f"Not a vulnerability: {classifications[i]['reason']}"
-            elif not classifications[i]["is_asan"]:
-                h["_removed"] = f"Not ASAN-triggerable: {classifications[i]['reason']}"
+            c = classifications[i]
+            h["_cwe_ids"] = c["cwe_ids"]
+            h["_is_vulnerability"] = c["is_vulnerability"]
+            h["_sanitizers"] = c.get("sanitizers", [])
+            h["_is_asan"] = c.get("is_asan", False)  # back-compat
+            if not c["is_vulnerability"]:
+                h["_removed"] = f"Not a vulnerability: {c['reason']}"
+            elif not c.get("sanitizers"):
+                h["_removed"] = f"Not sanitizer-triggerable: {c['reason']}"
 
         valid_hyps = [all_hypotheses[i] for i in valid_indices]
         cwe_map = {j: classifications[valid_indices[j]]["cwe_ids"] for j in range(len(valid_indices))}
@@ -633,11 +694,15 @@ class ScanFilterOrchestrator:
             self._log(f"\n[scan_filter] === Processing {rel_path} ===")
             files_completed += 1
 
-            # Read source from container
-            source = self._read_file_from_container(project_path, rel_path)
+            # Read source from container. The resolver may rewrite rel_path
+            # (e.g. 'ssl/ssl_rsa.c' -> 'openssl/ssl/ssl_rsa.c') when the
+            # project lives under a subdirectory of project_path.
+            source, resolved_rel = self._read_file_from_container(project_path, rel_path)
             if not source.strip():
-                self._log(f"[scan_filter] Skipping empty file: {rel_path}")
+                self._log(f"[scan_filter] Skipping empty/unreadable file: {rel_path}")
                 continue
+            if resolved_rel and resolved_rel != rel_path:
+                rel_path = resolved_rel
 
             # Sanitize filename for trace filenames
             safe_name = rel_path.replace("/", "__").replace(".", "_")

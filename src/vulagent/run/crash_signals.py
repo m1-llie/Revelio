@@ -55,9 +55,6 @@ CRASH_SIGNATURES: frozenset[str] = frozenset({
     # UndefinedBehaviorSanitizer
     "undefinedbehaviorsanitizer",
     "runtime error:",  # UBSAN format, always "runtime error: <kind>"
-    # ThreadSanitizer (data races are a correctness/memory-model issue)
-    "threadsanitizer",
-    "data race",
     # Generic / libFuzzer / OSS-Fuzz wrappers.
     # These are anchored on punctuation / fixed prefixes to avoid
     # false-positive substring matches inside file paths or log lines

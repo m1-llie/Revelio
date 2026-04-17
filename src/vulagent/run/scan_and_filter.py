@@ -346,38 +346,48 @@ def run_pipeline(
             done += 1
             try:
                 classifications[idx] = future.result()
-                is_vuln = classifications[idx]["is_vulnerability"]
-                is_asan = classifications[idx]["is_asan"]
+                c = classifications[idx]
+                is_vuln = c["is_vulnerability"]
+                sans = c.get("sanitizers", [])
+                if is_vuln and sans:
+                    tag = "+".join(s.upper() for s in sans)
+                elif is_vuln:
+                    tag = "VUL(no-san)"
+                else:
+                    tag = "NOT"
                 print(
-                    f"  [{done}/{len(all_hypotheses)}] "
-                    f"{('ASAN' if is_asan else 'VUL') if is_vuln else 'NOT'} — "
-                    f"{classifications[idx]['reason'][:70]}",
+                    f"  [{done}/{len(all_hypotheses)}] {tag} — {c['reason'][:70]}",
                     file=sys.stderr,
                 )
             except Exception as e:
                 classifications[idx] = {
-                    "is_vulnerability": False, "is_asan": False, "cwe_ids": [], "reason": f"error: {e}"
+                    "is_vulnerability": False, "sanitizers": [], "is_asan": False,
+                    "cwe_ids": [], "reason": f"error: {e}",
                 }
 
-    # Filter: keep only ASAN-triggerable vulnerabilities
+    # Filter: keep any vulnerability triggerable by a supported sanitizer
+    # (ASAN/UBSAN/MSAN — matches what tools/validate.py actually tests).
     valid_indices = [
         i for i in range(len(all_hypotheses))
-        if classifications[i]["is_vulnerability"] and classifications[i]["is_asan"]
+        if classifications[i]["is_vulnerability"]
+        and bool(classifications[i].get("sanitizers"))
     ]
     print(
-        f"  Filtered: {len(all_hypotheses) - len(valid_indices)} non-asan-vulnerabilities, "
+        f"  Filtered: {len(all_hypotheses) - len(valid_indices)} not sanitizer-triggerable, "
         f"{len(valid_indices)} remain",
         file=sys.stderr,
     )
 
     for i, h in enumerate(all_hypotheses):
-        h["_cwe_ids"] = classifications[i]["cwe_ids"]
-        h["_is_vulnerability"] = classifications[i]["is_vulnerability"]
-        h["_is_asan"] = classifications[i]["is_asan"]
-        if not classifications[i]["is_vulnerability"]:
-            h["_removed"] = f"Not a vulnerability: {classifications[i]['reason']}"
-        elif not classifications[i]["is_asan"]:
-            h["_removed"] = f"Not ASAN-triggerable: {classifications[i]['reason']}"
+        c = classifications[i]
+        h["_cwe_ids"] = c["cwe_ids"]
+        h["_is_vulnerability"] = c["is_vulnerability"]
+        h["_sanitizers"] = c.get("sanitizers", [])
+        h["_is_asan"] = c.get("is_asan", False)  # back-compat
+        if not c["is_vulnerability"]:
+            h["_removed"] = f"Not a vulnerability: {c['reason']}"
+        elif not c.get("sanitizers"):
+            h["_removed"] = f"Not sanitizer-triggerable: {c['reason']}"
 
     valid_hyps = [all_hypotheses[i] for i in valid_indices]
     cwe_map = {j: classifications[valid_indices[j]]["cwe_ids"] for j in range(len(valid_indices))}
@@ -393,7 +403,7 @@ def run_pipeline(
         for r in removed
     }
     for h in all_hypotheses:
-        if h.get("_is_vulnerability") and h.get("_is_asan") and not h.get("_removed"):
+        if h.get("_is_vulnerability") and h.get("_sanitizers") and not h.get("_removed"):
             summary_text = h.get("hypothesis", h).get("summary", "")
             if summary_text in removed_summaries:
                 h["_removed"] = removed_summaries[summary_text]

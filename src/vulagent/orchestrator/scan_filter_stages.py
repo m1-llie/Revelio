@@ -742,31 +742,56 @@ def phase_summarize(
     model: str, file_path: Path, source: str, kwargs: dict,
     cost_tracker: CostTracker | None = None,
     check_analysis_context: str = "",
+    harness_context: str = "",
 ) -> tuple[str, str, list[dict]]:
     msgs: list[dict] = []
 
-    # Build the initial prompt with source + optional check analysis
+    # Present the TARGET file first and unambiguously, so the model's
+    # summarization stays scoped to it even when a harness block is attached.
     initial_prompt = (
-        f"Here is the file `{file_path.name}`:\n\n```\n{truncate(source)}\n```\n\n"
+        f"# Target file: `{file_path}`\n\n"
+        f"Below is the full source of the target file that you must summarize. "
+        f"All features, functions, and eventual vulnerability hypotheses must "
+        f"be about THIS file. Other code blocks further down are reference "
+        f"context only — do NOT produce hypotheses about them.\n\n"
+        f"```c\n{truncate(source)}\n```\n\n"
     )
+    if harness_context:
+        initial_prompt += (
+            f"## Reference: fuzzer harness (reachability context only)\n\n"
+            f"{harness_context}\n\n"
+            f"The block above is the fuzzer harness that eventually drives "
+            f"`{file_path.name}`. Use it ONLY to reason about which functions "
+            f"in the target file are reachable from the harness entry and what "
+            f"input shapes arrive there. Do NOT treat the harness as the "
+            f"target of analysis and do NOT generate hypotheses about bugs in "
+            f"the harness itself.\n\n"
+        )
     if check_analysis_context:
         initial_prompt += (
-            f"\n{check_analysis_context}\n\n"
+            f"## Reference: static argument-check analysis\n\n"
+            f"{check_analysis_context}\n\n"
         )
     initial_prompt += (
-        "Please produce a summary of this file. Note that your summary should explain "
-        "**all** of the features and functionalities. Do this by checking whether you "
-        "can address every line of the file to one of the features/functionalities."
+        f"## Task\n"
+        f"Please produce a summary of `{file_path.name}`. Your summary should "
+        f"explain **all** of its features and functionalities. Do this by "
+        f"checking whether you can attribute every line of `{file_path.name}` "
+        f"to one of the features/functionalities."
     )
     if check_analysis_context:
         initial_prompt += (
             "\n\nAlso note the static analysis results above — parameters marked UNCHECKED "
             "lack detected validation. Keep these in mind as you summarize; they represent "
-            "potential attack surfaces."
+            "potential attack surfaces **in the target file**."
         )
 
     round1 = chat_send(msgs, model, initial_prompt, kwargs, cost_tracker=cost_tracker)
-    round2 = chat_send(msgs, model, "good. now please summarize into more high-level features.", kwargs, cost_tracker=cost_tracker)
+    round2 = chat_send(
+        msgs, model,
+        f"good. now please summarize `{file_path.name}` into more high-level features.",
+        kwargs, cost_tracker=cost_tracker,
+    )
     return round1, round2, msgs
 
 
@@ -777,15 +802,20 @@ def phase_analyze_wholefile(
     msgs = list(summary_msgs)
     analysis = chat_send(
         msgs, model,
-        "Good. now please refer to your own summarization and form some hypothesis about "
-        "feature-related vulnerabilities. Note that you don't have to cover all the "
-        "vulnerabilities, just cover **all** of the feature-related ones.\n\n"
-        "Please review each feature to form hypothesis. Please think very carefully about "
-        "the features. Especially do not miss the vulnerabilities related to uncontrolled "
-        "resource consumption.\n\n"
-        "**Focus only on real, exploitable vulnerabilities** — issues where a crafted input "
-        "could cause memory corruption, crashes, or undefined behavior. Do NOT report code "
-        "quality issues, dead code, redundant checks, or style problems.",
+        f"Good. now please refer to your own summarization and form some hypothesis about "
+        f"feature-related vulnerabilities **in the target file `{file_path.name}`**. "
+        f"Note that you don't have to cover all the vulnerabilities, just cover **all** "
+        f"of the feature-related ones.\n\n"
+        f"Please review each feature to form hypothesis. Please think very carefully about "
+        f"the features. Especially do not miss the vulnerabilities related to uncontrolled "
+        f"resource consumption.\n\n"
+        f"**Strict scope:** every hypothesis you produce must point to code inside "
+        f"`{file_path.name}`. Do NOT produce hypotheses whose hotspots are in the "
+        f"fuzzer harness or other reference files; those were included only as "
+        f"reachability context.\n\n"
+        f"**Focus only on real, exploitable vulnerabilities** — issues where a crafted "
+        f"input could cause memory corruption, crashes, or undefined behavior. Do NOT "
+        f"report code quality issues, dead code, redundant checks, or style problems.",
         kwargs,
         cost_tracker=cost_tracker,
     )
@@ -909,12 +939,53 @@ def _format_hypothesis_text(hyp: dict, source_lines: list[str] | None = None) ->
     return "\n".join(parts)
 
 
+# Sanitizers the downstream validator (tools/validate.py) actually tests
+# against, and whose signatures crash_signals.py recognizes. The filter gate
+# in Stage 2 keeps any hypothesis the classifier judges triggerable by one
+# or more of these.
+SUPPORTED_SANITIZERS: tuple[str, ...] = ("asan", "ubsan", "msan")
+
+
+def _normalize_sanitizers(values: Any) -> list[str]:
+    """Coerce an LLM response value into a canonical list of sanitizer tags."""
+    if not values:
+        return []
+    if isinstance(values, str):
+        values = [values]
+    out: list[str] = []
+    for v in values:
+        tag = str(v).strip().lower().rstrip(",")
+        # accept both 'asan' and 'addresssanitizer'-like aliases
+        alias = {
+            "addresssanitizer": "asan",
+            "address-sanitizer": "asan",
+            "address_sanitizer": "asan",
+            "undefinedbehaviorsanitizer": "ubsan",
+            "undefined-behavior-sanitizer": "ubsan",
+            "memorysanitizer": "msan",
+            "memory-sanitizer": "msan",
+        }.get(tag, tag)
+        if alias in SUPPORTED_SANITIZERS and alias not in out:
+            out.append(alias)
+    return out
+
+
 def classify_hypothesis(
     hyp: dict, model: str, kwargs: dict,
     source_lines: list[str] | None = None,
     cost_tracker: CostTracker | None = None,
 ) -> dict:
-    """Ask LLM: is this a real vulnerability? Is it ASAN-triggerable? What CWE IDs?"""
+    """Ask LLM: is this a real vulnerability? Which sanitizer(s) would catch it? What CWE IDs?
+
+    Returns a dict with:
+        is_vulnerability: bool
+        sanitizers: list[str] — subset of {'asan','ubsan','msan'}
+        is_asan: bool — back-compat alias for 'asan' in sanitizers
+        cwe_ids: list[str]
+        reason: str
+        raw_response: str
+        prompt: str
+    """
     text = _format_hypothesis_text(hyp, source_lines)
     prompt = (
         "You are a security expert. Given the following vulnerability hypothesis, answer:\n\n"
@@ -923,8 +994,16 @@ def classify_hypothesis(
         "1. What does the code do? What is the hypothesis claiming?\n"
         "2. Is this a genuine security vulnerability, or is it speculative, informational, "
         "a best-practice issue without exploitability, or not a real security bug?\n"
-        "3. Could a correct PoC trigger an AddressSanitizer "
-        "(ASAN) crash? The hypothesis MUST BE specific enough to craft a PoC and must point out actual vulnerability.\n"
+        "3. Which code sanitizer(s) would catch a correct PoC for this bug?\n"
+        "   - `asan`  (AddressSanitizer): heap/stack/global out-of-bounds, use-after-free, "
+        "double-free, alloc-dealloc mismatch, stack-overflow, container-overflow.\n"
+        "   - `ubsan` (UndefinedBehaviorSanitizer): signed integer overflow, shift beyond width, "
+        "divide-by-zero, null pointer dereference, misaligned access, out-of-bounds index that is "
+        "statically known, invalid enum/bool load, function-type mismatch, unreachable reached.\n"
+        "   - `msan`  (MemorySanitizer): use of uninitialized memory.\n"
+        "   Return the list of sanitizers that a crafted input would actually trip. Empty "
+        "list if none — e.g. resource-exhaustion DoS, logic bugs, concurrency issues, or "
+        "protocol-level issues that do not violate memory/UB invariants.\n"
         "4. What are the most relevant CWE IDs (e.g. CWE-476, CWE-125)? List at most 3.\n\n"
         "**Mark is_vulnerability=false for ANY of these:**\n"
         "- Code quality issues: dead code, redundant checks, misleading conditions, style problems\n"
@@ -933,11 +1012,12 @@ def classify_hypothesis(
         "- Missing error handling that leads to graceful degradation, not memory corruption\n"
         "- Speculative issues requiring preconditions that are impossible in practice\n"
         "- Informational findings that cannot be triggered by any input\n\n"
-        "Only mark is_vulnerability=true if a concrete, crafted input could trigger memory corruption, "
-        "a crash, or undefined behavior.\n\n"
+        "Only mark is_vulnerability=true if a concrete, crafted input could trigger memory "
+        "corruption, undefined behavior, or uninitialized-read exposure.\n\n"
         "First write your reasoning, then output your final judgement as a JSON block:\n"
         "```json\n"
-        '{"is_vulnerability": true|false, "is_asan": true|false, '
+        '{"is_vulnerability": true|false, '
+        '"sanitizers": ["asan"|"ubsan"|"msan", ...], '
         '"cwe_ids": ["CWE-XXX", ...], "reason": "one sentence"}\n'
         "```"
     )
@@ -946,9 +1026,15 @@ def classify_hypothesis(
     m = re.search(r"\{[\s\S]*\}", json_str)
     try:
         result = json.loads(m.group(0) if m else raw)
+        sanitizers = _normalize_sanitizers(result.get("sanitizers"))
+        # Back-compat: older prompts returned only `is_asan`. Honor it if the
+        # new `sanitizers` field is missing but `is_asan` is set.
+        if not sanitizers and result.get("is_asan"):
+            sanitizers = ["asan"]
         return {
             "is_vulnerability": bool(result.get("is_vulnerability", False)),
-            "is_asan": bool(result.get("is_asan", False)),
+            "sanitizers": sanitizers,
+            "is_asan": "asan" in sanitizers,
             "cwe_ids": [str(c) for c in result.get("cwe_ids", [])],
             "reason": result.get("reason", ""),
             "raw_response": raw,
@@ -956,7 +1042,7 @@ def classify_hypothesis(
         }
     except (json.JSONDecodeError, AttributeError):
         return {
-            "is_vulnerability": False, "is_asan": False, "cwe_ids": [],
+            "is_vulnerability": False, "sanitizers": [], "is_asan": False, "cwe_ids": [],
             "reason": f"parse error: {raw[:200]}",
             "raw_response": raw, "prompt": prompt,
         }
