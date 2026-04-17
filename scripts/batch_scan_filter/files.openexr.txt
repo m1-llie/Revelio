@@ -1,0 +1,28 @@
+# Top 10 files for scan_filter, ranked by OSS-Fuzz coverage signal.
+# Score = uncovered_lines * (1 - coverage_pct/100), with +40% boost
+# for parser/decoder/format paths; test/fuzz/demo dirs excluded.
+# Source: coverage summary for openexr under /src/openexr/
+# Paths are relative to the project root inside the container.
+#
+# Ranked list (score | line cov | covered/total | path):
+#      1945 |   1.1% |    16/1421  | src/lib/OpenEXR/ImfMisc.cpp
+#      1421 |   3.9% |    60/1539  | src/lib/OpenEXRCore/part_attr.c
+#      1332 |   1.7% |    17/985   | src/lib/OpenEXR/ImfIDManifest.cpp
+#      1193 |   0.0% |     0/852   | src/lib/OpenEXR/ImfRgbaFile.cpp
+#      1065 |   0.0% |     0/761   | src/lib/OpenEXR/ImfOutputFile.cpp
+#       693 |   0.0% |     0/495   | src/lib/OpenEXRCore/write_header.c
+#       650 |  27.0% |   235/871   | src/lib/OpenEXR/ImfHeader.cpp
+#       531 |   0.0% |     0/379   | src/lib/Iex/IexThrowErrnoExc.cpp
+#       522 |  55.2% |  1026/1858  | src/lib/OpenEXRCore/chunk.c
+#       356 |   2.3% |     6/266   | src/lib/OpenEXR/ImfCompressor.cpp
+
+src/lib/OpenEXR/ImfMisc.cpp
+src/lib/OpenEXRCore/part_attr.c
+src/lib/OpenEXR/ImfIDManifest.cpp
+src/lib/OpenEXR/ImfRgbaFile.cpp
+src/lib/OpenEXR/ImfOutputFile.cpp
+src/lib/OpenEXRCore/write_header.c
+src/lib/OpenEXR/ImfHeader.cpp
+src/lib/Iex/IexThrowErrnoExc.cpp
+src/lib/OpenEXRCore/chunk.c
+src/lib/OpenEXR/ImfCompressor.cpp

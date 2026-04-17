@@ -1,0 +1,28 @@
+# Top 10 files for scan_filter, ranked by OSS-Fuzz coverage signal.
+# Score = uncovered_lines * (1 - coverage_pct/100), with +40% boost
+# for parser/decoder/format paths; test/fuzz/demo dirs excluded.
+# Source: coverage summary for curl under /src/curl/
+# Paths are relative to the project root inside the container.
+#
+# Ranked list (score | line cov | covered/total | path):
+#      2317 |  28.6% |   930/3249  | lib/vtls/openssl.c
+#      1434 |   0.0% |     0/1024  | lib/cf-h2-proxy.c
+#      1432 |  10.7% |   138/1284  | lib/ws.c
+#      1390 |   0.0% |     0/993   | lib/telnet.c
+#       630 |  41.1% |   534/1298  | lib/vtls/vtls.c
+#       606 |   8.0% |    57/715   | lib/easy.c
+#       535 |  30.3% |   239/788   | lib/tftp.c
+#       470 |   6.8% |    37/541   | lib/getinfo.c
+#       442 |  52.0% |   714/1372  | lib/mime.c
+#       433 |  33.5% |   234/699   | lib/vtls/vtls_scache.c
+
+lib/vtls/openssl.c
+lib/cf-h2-proxy.c
+lib/ws.c
+lib/telnet.c
+lib/vtls/vtls.c
+lib/easy.c
+lib/tftp.c
+lib/getinfo.c
+lib/mime.c
+lib/vtls/vtls_scache.c

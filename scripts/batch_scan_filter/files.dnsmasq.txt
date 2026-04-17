@@ -1,0 +1,28 @@
+# Top 10 files for scan_filter, ranked by OSS-Fuzz coverage signal.
+# Score = uncovered_lines * (1 - coverage_pct/100), with +40% boost
+# for parser/decoder/format paths; test/fuzz/demo dirs excluded.
+# Source: coverage summary for dnsmasq under /src/dnsmasq/
+# Paths are relative to the project root inside the container.
+#
+# Ranked list (score | line cov | covered/total | path):
+#      6167 |   0.0% |     0/4405  | src/option.c
+#      3321 |   0.0% |     0/2372  | src/rfc2131.c
+#      2369 |   0.0% |     0/1692  | src/rfc3315.c
+#      2341 |   0.0% |     0/1672  | src/forward.c
+#      2327 |   0.0% |     0/1662  | src/rfc1035.c
+#      2246 |   0.0% |     0/1604  | src/cache.c
+#      1862 |   0.0% |     0/1330  | src/dnsmasq.c
+#      1249 |   0.0% |     0/1249  | src/network.c
+#      1007 |   0.0% |     0/719   | src/auth.c
+#       981 |   0.0% |     0/701   | src/dhcp.c
+
+src/option.c
+src/rfc2131.c
+src/rfc3315.c
+src/forward.c
+src/rfc1035.c
+src/cache.c
+src/dnsmasq.c
+src/network.c
+src/auth.c
+src/dhcp.c
