@@ -28,6 +28,7 @@ from vulagent.orchestrator.parsers import (
     parse_poc_recipe,
     parse_validation_result,
 )
+from vulagent.orchestrator.scan_filter_stages import hypothesis_priority_key
 from vulagent.tools.validate import make_validate_tool
 from vulagent.orchestrator.types import AgentRunResult, AgentSpec, OrchestratorResult
 
@@ -354,11 +355,24 @@ class MultiAgentOrchestrator:
                 run_dir=self.store.run_dir,
             )
 
-        # Truncate to top_n
+        # Rank by (reachable, severity, confidence) before truncating to
+        # top_n so the downstream PoC budget is spent on reachable,
+        # higher-severity hypotheses first. When loaded via
+        # --hypotheses-file, the input order may be arbitrary, so we always
+        # sort here as a safety net.
+        hypotheses.hypotheses.sort(key=hypothesis_priority_key, reverse=True)
         hypotheses.hypotheses = hypotheses.hypotheses[:self.top_n]
         self._artifacts["hypotheses"] = hypotheses
         self.store.write_handoff("hypotheses", hypotheses)
-        self._log(f"HypothesisOrchestrator produced {len(hypotheses.hypotheses)} hypotheses (top {self.top_n})")
+        top_preview = ", ".join(
+            f"{h.hypothesis_id}[{h.severity}/"
+            f"{'R' if h.reachable is True else 'U' if h.reachable is None else 'X'}]"
+            for h in hypotheses.hypotheses[:5]
+        )
+        self._log(
+            f"HypothesisOrchestrator produced {len(hypotheses.hypotheses)} hypotheses "
+            f"(top {self.top_n}); priority head: {top_preview}"
+        )
 
         # If pipeline_mode is "project", stop after hypothesis generation
         if self.pipeline_mode == "project":

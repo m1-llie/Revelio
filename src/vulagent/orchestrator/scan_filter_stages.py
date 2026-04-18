@@ -813,9 +813,22 @@ def phase_analyze_wholefile(
         f"`{file_path.name}`. Do NOT produce hypotheses whose hotspots are in the "
         f"fuzzer harness or other reference files; those were included only as "
         f"reachability context.\n\n"
-        f"**Focus only on real, exploitable vulnerabilities** — issues where a crafted "
-        f"input could cause memory corruption, crashes, or undefined behavior. Do NOT "
-        f"report code quality issues, dead code, redundant checks, or style problems.",
+        f"**Attacker-controlled input only.** An acceptable hypothesis must describe "
+        f"how an attacker-influenced input (bytes arriving through the fuzzer harness, "
+        f"network protocol, parsed file/byte stream, etc.) reaches the buggy site. "
+        f"Do NOT report bugs whose only trigger is 'a C caller passes NULL / an invalid "
+        f"value / an out-of-contract argument to this public API' — that is a caller "
+        f"contract violation, not a security vulnerability for this pipeline. In "
+        f"particular, a bare NULL-pointer dereference of a function parameter whose "
+        f"documented contract is 'non-NULL' does NOT qualify unless you can show the "
+        f"NULL reaches this function from attacker-controlled input (not from another "
+        f"caller in-process).\n\n"
+        f"**Focus only on real, exploitable memory-safety vulnerabilities** — issues "
+        f"where a crafted input could cause memory corruption (OOB read/write, UAF, "
+        f"double free, type confusion), uninitialized-memory use, or exploitable "
+        f"undefined behavior (integer overflow feeding an allocation/memcpy, signed "
+        f"shift, etc.). Do NOT report code quality issues, dead code, redundant "
+        f"checks, or style problems.",
         kwargs,
         cost_tracker=cost_tracker,
     )
@@ -874,12 +887,24 @@ def phase_analyze_functions(
             "these lack validation and are higher risk for exploitable bugs.\n\n"
         )
     prompt += (
-        "**Only report real, exploitable vulnerabilities** where a crafted input could cause "
-        "memory corruption, crashes, or undefined behavior. Do NOT report:\n"
+        "**Only report real, exploitable memory-safety vulnerabilities** where a crafted "
+        "input reaches the buggy site and causes memory corruption (OOB read/write, UAF, "
+        "double free, type confusion), uninitialized-memory use, or exploitable "
+        "undefined behavior (integer overflow feeding an allocation/memcpy, signed shift, "
+        "etc.).\n\n"
+        "**Attacker-controlled input only.** The hypothesis must describe how an "
+        "attacker-influenced input reaches the buggy site. Do NOT report bugs whose only "
+        "trigger is 'a C caller passes NULL / an invalid value / an out-of-contract "
+        "argument to this public API' — that is a caller contract violation, not a "
+        "security vulnerability for this pipeline. Bare NULL-pointer dereferences of a "
+        "function parameter whose documented contract is 'non-NULL' do NOT qualify unless "
+        "you can show the NULL reaches this function from attacker-controlled input.\n\n"
+        "Do NOT report:\n"
         "- Code quality issues or style problems\n"
         "- Dead code or redundant/always-true checks (e.g., `&(s->member) != NULL`)\n"
         "- Missing error handling that just causes graceful degradation\n"
-        "- Speculative issues that require impossible preconditions"
+        "- Speculative issues that require impossible preconditions\n"
+        "- Contract-violation NULL-derefs reachable only via an in-process caller bug"
     )
     formulation = chat_send(
         msgs, model, prompt, kwargs, cost_tracker=cost_tracker,
@@ -970,17 +995,127 @@ def _normalize_sanitizers(values: Any) -> list[str]:
     return out
 
 
+SUPPORTED_PRIMITIVES: tuple[str, ...] = (
+    "oob-write",
+    "oob-read",
+    "uaf",
+    "double-free",
+    "type-confusion",
+    "int-overflow",
+    "uninit",
+    "deref",
+    "none",
+)
+
+SUPPORTED_ATTACKER_CONTROLS: tuple[str, ...] = ("input", "api", "none")
+
+SUPPORTED_SEVERITIES: tuple[str, ...] = ("none", "low", "medium", "high", "critical")
+
+SEVERITY_RANK: dict[str, int] = {s: i for i, s in enumerate(SUPPORTED_SEVERITIES)}
+
+
+def _reachable_rank(value: Any) -> int:
+    """Map ``reachable`` tri-state to a ranking score (higher is better).
+
+    ``True`` (known-reachable) > ``None`` (unknown / lookup unavailable) >
+    ``False`` (no fuzz target links the function).
+    """
+    if value is True:
+        return 2
+    if value is False:
+        return 0
+    return 1
+
+
+def hypothesis_priority_key(hyp: Any) -> tuple[int, int, float]:
+    """Composite sort key for ranking hypotheses by triage importance.
+
+    Works with both ``VulnHypothesis`` dataclass instances and plain dicts.
+    Returns ``(reachable_rank, severity_rank, confidence)``; use with
+    ``sorted(..., reverse=True)`` so higher-priority hypotheses come first.
+    Unknown severity / missing confidence default to 0.
+    """
+    if isinstance(hyp, dict):
+        reachable = hyp.get("reachable", hyp.get("_reachable"))
+        severity = hyp.get("severity", hyp.get("_severity", "none"))
+        confidence = float(hyp.get("confidence", hyp.get("_filter_confidence", 0.0)))
+    else:
+        reachable = getattr(hyp, "reachable", None)
+        severity = getattr(hyp, "severity", "none")
+        confidence = float(getattr(hyp, "confidence", 0.0))
+    return (
+        _reachable_rank(reachable),
+        SEVERITY_RANK.get(str(severity).lower(), 0),
+        confidence,
+    )
+
+
+def _normalize_primitive(value: Any) -> str:
+    tag = str(value or "").strip().lower()
+    alias = {
+        "out-of-bounds-write": "oob-write",
+        "heap-oob-write": "oob-write",
+        "stack-oob-write": "oob-write",
+        "buffer-overflow": "oob-write",
+        "out-of-bounds-read": "oob-read",
+        "heap-oob-read": "oob-read",
+        "stack-oob-read": "oob-read",
+        "buffer-over-read": "oob-read",
+        "use-after-free": "uaf",
+        "uninitialized-read": "uninit",
+        "uninitialized": "uninit",
+        "integer-overflow": "int-overflow",
+        "integer_overflow": "int-overflow",
+        "null-pointer-dereference": "deref",
+        "null-deref": "deref",
+        "nullptr-deref": "deref",
+        "null": "deref",
+    }.get(tag, tag)
+    return alias if alias in SUPPORTED_PRIMITIVES else "none"
+
+
+def _normalize_attacker_controls(value: Any) -> str:
+    tag = str(value or "").strip().lower()
+    alias = {
+        "attacker-input": "input",
+        "fuzzer-input": "input",
+        "protocol": "input",
+        "network": "input",
+        "file": "input",
+        "bytes": "input",
+        "caller": "api",
+        "c-api": "api",
+        "in-process": "api",
+        "contract": "api",
+        "unreachable": "none",
+    }.get(tag, tag)
+    return alias if alias in SUPPORTED_ATTACKER_CONTROLS else "none"
+
+
+def _normalize_severity(value: Any) -> str:
+    tag = str(value or "").strip().lower()
+    alias = {
+        "info": "none",
+        "informational": "none",
+        "crit": "critical",
+    }.get(tag, tag)
+    return alias if alias in SUPPORTED_SEVERITIES else "none"
+
+
 def classify_hypothesis(
     hyp: dict, model: str, kwargs: dict,
     source_lines: list[str] | None = None,
     cost_tracker: CostTracker | None = None,
 ) -> dict:
-    """Ask LLM: is this a real vulnerability? Which sanitizer(s) would catch it? What CWE IDs?
+    """Ask LLM: is this a real memory-safety vulnerability and how severe is it?
 
     Returns a dict with:
         is_vulnerability: bool
         sanitizers: list[str] — subset of {'asan','ubsan','msan'}
         is_asan: bool — back-compat alias for 'asan' in sanitizers
+        primitive: str — one of SUPPORTED_PRIMITIVES
+        attacker_controls: str — 'input' | 'api' | 'none'
+        severity: str — 'none' | 'low' | 'medium' | 'high' | 'critical'
         cwe_ids: list[str]
         reason: str
         raw_response: str
@@ -988,36 +1123,71 @@ def classify_hypothesis(
     """
     text = _format_hypothesis_text(hyp, source_lines)
     prompt = (
-        "You are a security expert. Given the following vulnerability hypothesis, answer:\n\n"
+        "You are a security expert triaging a vulnerability hypothesis for a "
+        "memory-safety-focused fuzzing pipeline. Given the hypothesis below, answer:\n\n"
         f"{text}\n\n"
         "Think step by step:\n"
         "1. What does the code do? What is the hypothesis claiming?\n"
-        "2. Is this a genuine security vulnerability, or is it speculative, informational, "
-        "a best-practice issue without exploitability, or not a real security bug?\n"
-        "3. Which code sanitizer(s) would catch a correct PoC for this bug?\n"
-        "   - `asan`  (AddressSanitizer): heap/stack/global out-of-bounds, use-after-free, "
-        "double-free, alloc-dealloc mismatch, stack-overflow, container-overflow.\n"
-        "   - `ubsan` (UndefinedBehaviorSanitizer): signed integer overflow, shift beyond width, "
-        "divide-by-zero, null pointer dereference, misaligned access, out-of-bounds index that is "
-        "statically known, invalid enum/bool load, function-type mismatch, unreachable reached.\n"
+        "2. Is this a genuine **memory-safety** vulnerability, or is it speculative, "
+        "informational, a best-practice issue, or out of scope (logic bug, DoS without "
+        "memory corruption, concurrency issue, or protocol/policy issue)?\n"
+        "3. Who controls the bad input? Answer `attacker_controls`:\n"
+        "   - `input` — attacker-influenced bytes from the fuzzer harness, network, "
+        "parsed file, or similar input stream reach the buggy site.\n"
+        "   - `api`   — the bug only triggers if an in-process C caller violates this "
+        "function's documented contract (e.g., passes NULL to a public API whose "
+        "contract is non-NULL). This is NOT a security vulnerability for this pipeline.\n"
+        "   - `none`  — the bug cannot be triggered by any caller/input.\n"
+        "4. What is the primitive the bug provides? Answer `primitive`:\n"
+        "   `oob-write` | `oob-read` | `uaf` | `double-free` | `type-confusion` | "
+        "`int-overflow` | `uninit` | `deref` | `none`.\n"
+        "   Prefer the strongest primitive an attacker can obtain. Pure NULL-deref of "
+        "an out-of-contract API parameter is `deref` (and `attacker_controls=api`).\n"
+        "5. Which code sanitizer(s) would catch a correct PoC?\n"
+        "   - `asan`  (AddressSanitizer): heap/stack/global OOB, UAF, double-free, "
+        "alloc-dealloc mismatch, stack-overflow, container-overflow.\n"
+        "   - `ubsan` (UndefinedBehaviorSanitizer): signed integer overflow, shift "
+        "beyond width, divide-by-zero, null pointer dereference, misaligned access, "
+        "statically-known OOB index, invalid enum/bool load, function-type mismatch.\n"
         "   - `msan`  (MemorySanitizer): use of uninitialized memory.\n"
-        "   Return the list of sanitizers that a crafted input would actually trip. Empty "
-        "list if none — e.g. resource-exhaustion DoS, logic bugs, concurrency issues, or "
-        "protocol-level issues that do not violate memory/UB invariants.\n"
-        "4. What are the most relevant CWE IDs (e.g. CWE-476, CWE-125)? List at most 3.\n\n"
+        "   Empty list if no sanitizer would fire (e.g. pure logic bug, resource "
+        "exhaustion, concurrency).\n"
+        "6. Severity — overall impact if an attacker reached the bug:\n"
+        "   - `critical`: remote code execution or reliable write-what-where from "
+        "attacker input.\n"
+        "   - `high`: heap/stack OOB-write, UAF on attacker-reached data, "
+        "type-confusion, double-free with attacker-reached allocation — typical "
+        "exploitable memory corruption.\n"
+        "   - `medium`: OOB-read of sensitive/adjacent memory, integer overflow that "
+        "feeds an allocation or memcpy, uninitialized-memory use with possible info "
+        "leak, UAF/OOB reachable only via multiple layered preconditions.\n"
+        "   - `low`: bounded OOB-read of non-sensitive bytes, DoS via crash on "
+        "attacker-reached NULL/assert, or memory-safety issue with very narrow impact.\n"
+        "   - `none`: not a security bug, or caller-contract-only (attacker_controls=api "
+        "or none). A hypothesis with `attacker_controls != 'input'` MUST be `none` or "
+        "`low` at most.\n"
+        "7. What are the most relevant CWE IDs (e.g. CWE-476, CWE-125)? Up to 3.\n\n"
         "**Mark is_vulnerability=false for ANY of these:**\n"
-        "- Code quality issues: dead code, redundant checks, misleading conditions, style problems\n"
-        "- Always-true or always-false conditions (e.g., `&(struct->member) != NULL` is always true — "
-        "this is dead code, NOT a NULL pointer vulnerability)\n"
-        "- Missing error handling that leads to graceful degradation, not memory corruption\n"
-        "- Speculative issues requiring preconditions that are impossible in practice\n"
-        "- Informational findings that cannot be triggered by any input\n\n"
-        "Only mark is_vulnerability=true if a concrete, crafted input could trigger memory "
-        "corruption, undefined behavior, or uninitialized-read exposure.\n\n"
+        "- Code quality issues, dead code, redundant checks, style problems.\n"
+        "- Always-true/always-false conditions (e.g., `&(s->member) != NULL`).\n"
+        "- Missing error handling that causes graceful degradation, not corruption.\n"
+        "- Speculative issues requiring impossible preconditions.\n"
+        "- Caller-contract violations: a public-API function that crashes only when "
+        "an in-process C caller passes NULL or an out-of-contract value. These have "
+        "`attacker_controls=api`; set is_vulnerability=false UNLESS you can show the "
+        "bad value originates from attacker-controlled input (not from another caller "
+        "bug in the same process).\n\n"
+        "Only mark is_vulnerability=true if a concrete, attacker-controlled input "
+        "reaches the buggy site and causes memory corruption, exploitable UB, or "
+        "uninitialized-read exposure.\n\n"
         "First write your reasoning, then output your final judgement as a JSON block:\n"
         "```json\n"
         '{"is_vulnerability": true|false, '
+        '"attacker_controls": "input"|"api"|"none", '
+        '"primitive": "oob-write"|"oob-read"|"uaf"|"double-free"|"type-confusion"|'
+        '"int-overflow"|"uninit"|"deref"|"none", '
         '"sanitizers": ["asan"|"ubsan"|"msan", ...], '
+        '"severity": "none"|"low"|"medium"|"high"|"critical", '
         '"cwe_ids": ["CWE-XXX", ...], "reason": "one sentence"}\n'
         "```"
     )
@@ -1031,10 +1201,24 @@ def classify_hypothesis(
         # new `sanitizers` field is missing but `is_asan` is set.
         if not sanitizers and result.get("is_asan"):
             sanitizers = ["asan"]
+        attacker_controls = _normalize_attacker_controls(result.get("attacker_controls"))
+        primitive = _normalize_primitive(result.get("primitive"))
+        severity = _normalize_severity(result.get("severity"))
+        is_vuln = bool(result.get("is_vulnerability", False))
+        # Hard post-conditions: caller-contract-only bugs are not vulnerabilities,
+        # and severity is capped to `low` when the attacker doesn't control input.
+        if attacker_controls != "input":
+            if severity not in ("none", "low"):
+                severity = "low"
+            if attacker_controls == "api" and primitive == "deref":
+                is_vuln = False
         return {
-            "is_vulnerability": bool(result.get("is_vulnerability", False)),
+            "is_vulnerability": is_vuln,
             "sanitizers": sanitizers,
             "is_asan": "asan" in sanitizers,
+            "attacker_controls": attacker_controls,
+            "primitive": primitive,
+            "severity": severity,
             "cwe_ids": [str(c) for c in result.get("cwe_ids", [])],
             "reason": result.get("reason", ""),
             "raw_response": raw,
@@ -1043,6 +1227,7 @@ def classify_hypothesis(
     except (json.JSONDecodeError, AttributeError):
         return {
             "is_vulnerability": False, "sanitizers": [], "is_asan": False, "cwe_ids": [],
+            "attacker_controls": "none", "primitive": "none", "severity": "none",
             "reason": f"parse error: {raw[:200]}",
             "raw_response": raw, "prompt": prompt,
         }

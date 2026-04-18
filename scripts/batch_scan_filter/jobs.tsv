@@ -25,5 +25,4 @@ poppler	vulagent/poppler:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_1	files
 proj4	vulagent/proj4:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_2	files.proj4.txt		
 curl	vulagent/curl:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_2	files.curl.txt		
 openexr	vulagent/openexr:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_2	files.openexr.txt		
-sleuthkit	vulagent/sleuthkit:latest	openrouter/anthropic/claude-haiku-4.5	OPENROUTER_KEY	files.sleuthkit.txt		
-libheif	vulagent/libheif:latest	openrouter/anthropic/claude-haiku-4.5	OPENROUTER_KEY	files.libheif.txt		
+sleuthkit	vulagent/sleuthkit:latest	openrouter/anthropic/claude-haiku-4.5	OPENROUTER_KEY	files.sleuthkit.txt

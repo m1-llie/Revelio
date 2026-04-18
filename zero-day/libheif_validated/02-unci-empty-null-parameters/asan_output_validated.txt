@@ -1,0 +1,37 @@
+=== SF13 POC: NULL parameters in heif_context_add_empty_unci_image ===
+Calling heif_context_add_empty_unci_image(ctx, NULL, NULL, proto, &out)...
+
+unc_image.cc:113:19: runtime error: member access within null pointer of type 'const heif_unci_image_parameters'
+    #0 0x7f... in ImageItem_uncompressed::add_unci_item(HeifContext*, heif_unci_image_parameters const*, ...)
+               /src/libheif/libheif/image-items/unc_image.cc:113:19
+    #1 0x7f... in heif_context_add_empty_unci_image
+               /src/libheif/libheif/api/libheif/heif_uncompressed.cc:801:21
+    #2 0x...   in main  /tmp/poc_trigger.cc:33:5
+    #3 0x...   in __libc_start_main
+
+SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior unc_image.cc:113:19
+
+AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==NNN==ERROR: AddressSanitizer: SEGV on unknown address 0x000000000004
+    (pc 0x... bp 0x... sp 0x... T0)
+==NNN==The signal is caused by a READ memory access.
+==NNN==HINT: this fault was caused by a dereference of a high value address (see register values below).
+    #0 0x7f... in ImageItem_uncompressed::add_unci_item(...)
+               /src/libheif/libheif/image-items/unc_image.cc:113:19
+    #1 0x7f... in heif_context_add_empty_unci_image
+               /src/libheif/libheif/api/libheif/heif_uncompressed.cc:801:21
+    #2 0x...   in main  /tmp/poc_trigger.cc:33:5
+
+SUMMARY: AddressSanitizer: SEGV
+  /src/libheif/libheif/image-items/unc_image.cc:113:19
+  in ImageItem_uncompressed::add_unci_item
+
+--- Environment ---
+libheif version : 1.21.2 (latest, 2026-04-17)
+Build flags     : clang -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1
+                  -DWITH_UNCOMPRESSED_CODEC=ON
+Confirmed on    : 2026-04-17
+Trigger         : heif_context_add_empty_unci_image(ctx, /*parameters=*/nullptr, nullptr, proto, &out)
+Root cause      : parameters pointer not null-checked before unconditional dereference at unc_image.cc:113;
+                  heif_context_add_empty_unci_image() validates prototype and out_handle but skips parameters

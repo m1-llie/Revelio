@@ -1,0 +1,53 @@
+Crash triggered via: heif_image_handle_get_luma_bits_per_pixel()
+
+API call chain:
+  heif_image_handle_get_luma_bits_per_pixel()
+  -> ImageItem_Tiled::get_luma_bits_per_pixel()
+  -> append_compressed_tile_data(data, tx=0, ty=0)
+  -> TiledHeader::is_tile_offset_known(idx=0)
+  -> m_offsets[0]  <-- SIGSEGV: m_offsets is empty (size=0 due to integer overflow in nTiles_h)
+
+Note: heif_image_handle_has_alpha_channel() does NOT directly crash because
+HeifContext::has_alpha() calls ImageItem_Tiled::get_coded_image_colorspace() which
+calls get_compressed_data_for_tile() which calls m_tile_item->initialize_decoder()
+first — and that fails on empty HEVC data, returning an error before reaching
+append_compressed_tile_data(). The has_alpha() path thus returns false safely.
+
+heif_image_handle_get_luma_bits_per_pixel() DOES crash because
+ImageItem_Tiled::get_luma_bits_per_pixel() calls append_compressed_tile_data() DIRECTLY
+without any prior error check.
+
+=================================================================
+File size: 262 bytes
+Number of top-level images: 1
+Item 1: width=0 height=4
+Calling heif_image_handle_has_alpha_channel...
+has_alpha = 0
+Calling heif_image_handle_get_luma_bits_per_pixel...
+AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==11==ERROR: AddressSanitizer: SEGV on unknown address 0x000000000000 (pc 0x7f4aa3d9c47f bp 0x7ffd0d75f0a0 sp 0x7ffd0d75f090 T0)
+==11==The signal is caused by a READ memory access.
+==11==Hint: address points to the zero page.
+    #0 0x7f4aa3d9c47f in TiledHeader::is_tile_offset_known(unsigned int) const /src/libheif/libheif/image-items/tiled.h:118:80
+    #1 0x7f4aa3d9ab65 in ImageItem_Tiled::append_compressed_tile_data(std::vector<unsigned char, std::allocator<unsigned char>>&, unsigned int, unsigned int) const /src/libheif/libheif/image-items/tiled.cc:888:22
+    #2 0x7f4aa3d9b540 in ImageItem_Tiled::get_luma_bits_per_pixel() const /src/libheif/libheif/image-items/tiled.cc:1014:3
+    #3 0x7f4aa3d25160 in heif_image_handle_get_luma_bits_per_pixel /src/libheif/libheif/api/libheif/heif_image_handle.cc:105:25
+    #4 0x560c79825770 in main /root/poc05_harness.cc:72:28
+    #5 0x7f4aa3848082 in __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x24082) (BuildId: 5792732f783158c66fb4f3756458ca24e46e827d)
+    #6 0x560c798259bd in _start (/root/poc05_harness+0x2d9bd)
+
+==11==Register values:
+rax = 0x0000000000000000  rbx = 0x00007ffd0d75f2a0  rcx = 0x0000000000000000  rdx = 0x0000000000000000
+rdi = 0x00007cdaa2be2720  rsi = 0x0000000000000000  rbp = 0x00007ffd0d75f0a0  rsp = 0x00007ffd0d75f090
+ r8 = 0x0000000000000000   r9 = 0x00000ac18f3242aa  r10 = 0xfffffffffffff2dd  r11 = 0x00007f4aa3d25140
+r12 = 0x00000f695431a000  r13 = 0x00007b4aa18d0020  r14 = 0x0000000000000000  r15 = 0x00000fe9547422f0
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: SEGV /src/libheif/libheif/image-items/tiled.h:118:80 in TiledHeader::is_tile_offset_known(unsigned int) const
+==11==ABORTING
+Exit status: 1
+=================================================================
+
+Libheif version: 1.21.2
+Docker image: vulagent/libheif:latest
+Build: ASAN instrumented (clang -fsanitize=address)

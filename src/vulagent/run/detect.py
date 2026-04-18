@@ -115,7 +115,12 @@ def save_hypotheses(hypotheses: VulnHypotheses, path: Path) -> Path:
 
 
 def _hypotheses_from_items(items: list[dict[str, Any]]) -> list[VulnHypothesis]:
-    """Build VulnHypothesis objects from a list of dicts (payload/file format)."""
+    """Build VulnHypothesis objects from a list of dicts (payload/file format).
+
+    Accepts both the new schema (with severity/primitive/attacker_controls/
+    sanitizers/cwe_ids/reachable/fuzz_targets) and older files that lack those
+    fields. Unknown fields default to the dataclass defaults.
+    """
     hyps: list[VulnHypothesis] = []
     for h in items:
         refs = [
@@ -128,6 +133,7 @@ def _hypotheses_from_items(items: list[dict[str, Any]]) -> list[VulnHypothesis]:
             )
             for r in h.get("references", [])
         ]
+        reachable = h.get("reachable")
         hyps.append(VulnHypothesis(
             hypothesis_id=h["hypothesis_id"],
             title=h["title"],
@@ -139,6 +145,13 @@ def _hypotheses_from_items(items: list[dict[str, Any]]) -> list[VulnHypothesis]:
             expected_crash=h.get("expected_crash"),
             confidence=h.get("confidence", 0.0),
             references=refs,
+            severity=h.get("severity", "none"),
+            primitive=h.get("primitive", "none"),
+            attacker_controls=h.get("attacker_controls", "none"),
+            sanitizers=list(h.get("sanitizers", [])),
+            cwe_ids=[str(c) for c in h.get("cwe_ids", [])],
+            reachable=(bool(reachable) if reachable is not None else None),
+            fuzz_targets=list(h.get("fuzz_targets", [])),
         ))
     return hyps
 

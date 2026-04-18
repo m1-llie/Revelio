@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Zero-Day Bug Dashboard — 7 Open-Source Projects</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #151b23;
+    --panel-2: #1c232d;
+    --border: #2a323d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --crit: #ff4d4f;
+    --high: #ff7a45;
+    --med: #faad14;
+    --low: #52c41a;
+    --info: #1890ff;
+    --api: #b37feb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+  }
+  header {
+    padding: 28px 36px 18px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #121820 0%, #0f1419 100%);
+  }
+  h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: .2px; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    padding: 18px 36px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+  .controls .label {
+    color: var(--muted);
+    font-size: 13px;
+    margin-right: 4px;
+  }
+  .btn {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 7px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all .15s ease;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.active {
+    background: var(--accent);
+    color: #0b1117;
+    border-color: var(--accent);
+  }
+  .btn.sev-critical.active { background: var(--crit); border-color: var(--crit); color: #fff; }
+  .btn.sev-high.active { background: var(--high); border-color: var(--high); color: #0b1117; }
+  .btn.sev-medium.active { background: var(--med); border-color: var(--med); color: #0b1117; }
+  .btn.sev-low.active { background: var(--low); border-color: var(--low); color: #0b1117; }
+  .search {
+    flex: 1;
+    min-width: 220px;
+    max-width: 340px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .counter {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  main { padding: 22px 36px 60px; }
+  .project {
+    margin: 22px 0 30px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .project-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+  }
+  .project-head h2 {
+    margin: 0;
+    font-size: 18px;
+    letter-spacing: .3px;
+  }
+  .project-head .slug {
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+  }
+  .project-head .summary {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+
+  .vuln-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 14px;
+    padding: 18px 20px;
+  }
+  .vuln {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: transform .1s ease, border-color .15s ease;
+  }
+  .vuln:hover { transform: translateY(-1px); border-color: #3b4554; }
+  .vuln.sev-critical { border-left-color: var(--crit); }
+  .vuln.sev-high { border-left-color: var(--high); }
+  .vuln.sev-medium { border-left-color: var(--med); }
+  .vuln.sev-low { border-left-color: var(--low); }
+
+  .vuln-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .vuln-title {
+    font-weight: 600;
+    font-size: 14.5px;
+    margin: 0;
+  }
+  .vuln-id {
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    margin-top: 2px;
+  }
+
+  .badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 10px 0 8px;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 999px;
+    letter-spacing: .3px;
+    text-transform: uppercase;
+  }
+  .badge.sev-critical { background: rgba(255,77,79,.15); color: var(--crit); border: 1px solid rgba(255,77,79,.4); }
+  .badge.sev-high { background: rgba(255,122,69,.15); color: var(--high); border: 1px solid rgba(255,122,69,.4); }
+  .badge.sev-medium { background: rgba(250,173,20,.15); color: var(--med); border: 1px solid rgba(250,173,20,.4); }
+  .badge.sev-low { background: rgba(82,196,26,.15); color: var(--low); border: 1px solid rgba(82,196,26,.4); }
+  .badge.type {
+    background: rgba(88,166,255,.12);
+    color: var(--accent);
+    border: 1px solid rgba(88,166,255,.35);
+    text-transform: none;
+  }
+  .badge.api {
+    background: rgba(179,127,235,.13);
+    color: var(--api);
+    border: 1px solid rgba(179,127,235,.4);
+    text-transform: none;
+  }
+  .badge.cwe {
+    background: rgba(139,148,158,.12);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    text-transform: none;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .vuln-desc {
+    color: #c9d1d9;
+    font-size: 13px;
+    margin: 0 0 6px;
+  }
+  .vuln-loc {
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    word-break: break-all;
+  }
+
+  .hidden { display: none !important; }
+
+  footer {
+    padding: 20px 36px;
+    color: var(--muted);
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  @media (max-width: 720px) {
+    header, .controls, main, footer { padding-left: 18px; padding-right: 18px; }
+    .vuln-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Zero-Day Bug Dashboard</h1>
+  <p>Manually validated memory-safety bugs and API contract issues across seven open-source projects · Findings date: 2026-04-17</p>
+</header>
+
+<section class="controls" id="controls">
+  <span class="label">Severity:</span>
+  <button class="btn active" data-filter="all">All</button>
+  <button class="btn sev-critical" data-filter="critical">Critical</button>
+  <button class="btn sev-high" data-filter="high">High</button>
+  <button class="btn sev-medium" data-filter="medium">Medium</button>
+  <button class="btn sev-low" data-filter="low">Low</button>
+  <span class="label" style="margin-left:14px">Class:</span>
+  <button class="btn" data-class="memory">Memory-Safety Only</button>
+  <button class="btn" data-class="api">API Misuse Only</button>
+  <input class="search" id="search" placeholder="Search title, CWE, type, location…" />
+  <span class="counter" id="counter"></span>
+</section>
+
+<main id="main"></main>
+
+<footer>
+  Data sourced from <code>/scr2/yiwei/vul-agent/zero-day/&lt;project&gt;_validated/</code>. Severity estimates follow each project's reporting guide; where no explicit severity was provided, a reasonable estimate is given based on CWE/impact. A bug marked "API misuse" is reachable only by an application mis-using the library API, not by a remote attacker-controlled file/input stream.
+</footer>
+
+<script>
+const data = [
+  {
+    project: "curl",
+    slug: "curl_validated",
+    summary: "10 confirmed vulnerabilities across TLS, SSL session export, MIME, WebSockets",
+    vulns: [
+      { id: "vuln-01-tls-null-deref-client-cert", title: "NULL deref in EVP_PKEY_copy_parameters()", sev: "high", type: "NULL Pointer Dereference", cwe: ["CWE-476"], apiOnly: false, loc: "lib/vtls/openssl.c:1559", desc: "X509_get_pubkey() return value unchecked in client_cert(); malformed client certificate crashes any TLS connection using CURLOPT_SSLCERT." },
+      { id: "vuln-02-tls-privkey-null-deref", title: "NULL deref in EVP_PKEY_id()", sev: "medium", type: "NULL Pointer Dereference", cwe: ["CWE-476","CWE-252"], apiOnly: false, loc: "lib/vtls/openssl.c:1568", desc: "SSL_get_privatekey() return value unchecked on the ENGINE/deprecated code path." },
+      { id: "vuln-03-certinfo-oob-write", title: "Heap OOB write in Curl_ssl_push_certinfo_len()", sev: "medium", type: "Heap Out-of-Bounds Write", cwe: ["CWE-787","CWE-20"], apiOnly: false, loc: "lib/vtls/vtls.c:658", desc: "certnum bounds-check exists only as a DEBUGASSERT — stripped in release builds, leaving silent heap corruption if any call site exceeds MAX_ALLOWED_CERT_AMOUNT." },
+      { id: "vuln-04-easy-stack-overflow", title: "Stack buffer overflow in populate_fds()", sev: "medium", type: "Stack Buffer Overflow", cwe: ["CWE-121"], apiOnly: false, loc: "lib/easy.c (DEBUGBUILD only)", desc: "fds[4] overflows when 5+ concurrent sockets are registered via the debug-only curl_easy_perform_ev() API." },
+      { id: "vuln-05-ssls-export-uaf", title: "Heap-UAF in Curl_ssl_session_export()", sev: "high", type: "Use-After-Free", cwe: ["CWE-416"], apiOnly: false, loc: "lib/vtls/vtls_scache.c:1214 (USE_SSLS_EXPORT)", desc: "Iterator invalidated when the export callback re-enters curl_easy_ssls_import(); subsequent iteration dereferences freed cache entry." },
+      { id: "vuln-06-ssls-import-oob-read", title: "OOB read in curl_easy_ssls_import()", sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false, loc: "lib/vtls/vtls_scache.c (USE_SSLS_EXPORT)", desc: "shmac_len validates declared size but buffer can be smaller — reads 22 bytes past the end of the caller's blob." },
+      { id: "vuln-07-ssls-import-null-deref", title: "NULL deref in Curl_ssl_session_import()", sev: "medium", type: "NULL Pointer Dereference", cwe: ["CWE-476"], apiOnly: false, loc: "lib/vtls/vtls_scache.c (USE_SSLS_EXPORT)", desc: "sdata=NULL with sdata_len>0 reaches spack_dec8(*NULL) in release builds." },
+      { id: "vuln-08-mime-recursion-stack-overflow", title: "Unbounded recursion → stack overflow", sev: "medium", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false, loc: "lib/mime.c:684", desc: "~9500 nested curl_mime_subparts() exhausts the 8 MB stack — DoS from attacker-supplied MIME structure." },
+      { id: "vuln-09-mime-base64-int-overflow", title: "Signed integer overflow in encoder_base64_size()", sev: "low", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false, loc: "lib/mime.c:427", desc: "datasize=LLONG_MAX wraps to negative, corrupting Content-Length header." },
+      { id: "vuln-10-ws-send-missing-nwritten", title: "Missing *pnwritten write in ws_send_raw_blocking()", sev: "low", type: "API Contract Violation", cwe: ["CWE-252"], apiOnly: true, loc: "lib/ws.c", desc: "*pnwritten never set on success path; callers observe sent=0 despite successful transmission. Not a memory-safety bug — API contract only." }
+    ]
+  },
+  {
+    project: "dnsmasq",
+    slug: "dnsmasq_validated",
+    summary: "1 confirmed network-reachable heap buffer overflow (DNSSEC path)",
+    vulns: [
+      { id: "01-log_query-ds-heap-overflow", title: "Heap buffer overflow in log_query() via DS record", sev: "high", type: "Heap Buffer Overflow", cwe: ["CWE-122","CWE-787","CWE-120"], apiOnly: false, loc: "src/cache.c:2358 (log_query)", desc: "sprintf() writes 58 bytes into the 46-byte daemon->addrbuff when a DS record carries unassigned algorithm=255 and digest_type=255 and triggers the \"(not supported)\" branch in dnssec.c:1104. Network-reachable when DNSSEC validation + query logging are enabled. CVSS ~7.5." }
+    ]
+  },
+  {
+    project: "libheif",
+    slug: "libheif_validated",
+    summary: "12 confirmed bugs — 5 file-parsing + 7 C API contract violations",
+    vulns: [
+      { id: "01-track-oob-chunk-access", title: "OOB chunk vector access in Track::get_next_sample_raw_data()", sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-193"], apiOnly: false, loc: "sequences/track.cc:1087", desc: "stco chunk count < stsz sample count → off-by-one (> vs >=) stores chunkIdx = m_chunks.size(); subsequent read is OOB. Triggered by malicious HEIF file." },
+      { id: "02-unci-empty-null-parameters", title: "NULL parameters in heif_context_add_empty_unci_image()", sev: "low", type: "NULL Pointer Dereference (API)", cwe: ["CWE-476"], apiOnly: true, loc: "image-items/unc_image.cc:113", desc: "parameters pointer passed to add_unci_item() without null-check, though prototype / out_handle are guarded. API-level DoS." },
+      { id: "03-gimi-component-id-overflow", title: "uint32 overflow → heap OOB write in heif_image_set_gimi_component_content_id()", sev: "medium", type: "Integer Overflow → Heap OOB Write (API)", cwe: ["CWE-190","CWE-122"], apiOnly: true, loc: "api/libheif/heif_uncompressed.cc:784", desc: "component_idx+1 wraps to 0 when component_idx = UINT32_MAX; ids.resize(0) followed by ids[UINT32_MAX] writes ~136 GiB past base." },
+      { id: "04-saiz-sampleauxinfo-oob", title: "SampleAuxInfoReader OOB via saiz/stco mismatch", sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-617"], apiOnly: false, loc: "sequences/track.cc:141", desc: "assert() is debug-only; release builds advance current_chunk past chunks.size() and perform OOB access. Triggered by malicious HEIF." },
+      { id: "05-tild-ntiles-overflow", title: "Integer overflow in nTiles_h()/nTiles_v() → SIGSEGV", sev: "high", type: "Integer Overflow → SEGV", cwe: ["CWE-190","CWE-125"], apiOnly: false, loc: "image-items/tiled.cc:87-96", desc: "(image_width + tile_width - 1) wraps to 0 → nTiles=0 → m_offsets.resize(0) → m_offsets[0] SEGV. File-parsing DoS, no user interaction beyond opening file." },
+      { id: "06-track-null-iloc-deref", title: "NULL iloc dereference in Track::load()", sev: "high", type: "NULL Pointer Dereference", cwe: ["CWE-476"], apiOnly: false, loc: "sequences/track.cc:478", desc: "get_child_box<Box_iloc>() returns nullptr for trak>meta with infe(uri) but no iloc; pointer used unchecked in read_data()." },
+      { id: "07-track-api-oob-no-size", title: "Missing size param in heif_context_get_track_ids() / heif_track_get_track_reference_types()", sev: "medium", type: "Heap Buffer Overflow (API)", cwe: ["CWE-120","CWE-122"], apiOnly: true, loc: "api/libheif/heif_sequences.cc:73,760", desc: "Functions write all entries to caller's array with no capacity or max_count parameter." },
+      { id: "08-track-release-double-free", title: "Double-free / UAF in heif_track_release()", sev: "medium", type: "Double Free / Use-After-Free (API)", cwe: ["CWE-415","CWE-416"], apiOnly: true, loc: "api/libheif/heif_sequences.cc:57", desc: "Bare `delete track` with no null guard; second release destructs already-freed object and corrupts shared_ptr<HeifContext>." },
+      { id: "09-context-api-null-data", title: "NULL data in heif_context_read_from_memory() / heif_context_add_generic_metadata()", sev: "medium", type: "NULL Pointer Dereference (API)", cwe: ["CWE-476"], apiOnly: true, loc: "bitstream.cc:83 / context.cc:1796", desc: "data pointer passed directly to memcpy() without null-check when size>0." },
+      { id: "10-context-api-negative-size", title: "Signed→size_t wrap in metadata size parameter", sev: "medium", type: "Signed-to-Unsigned Conversion (API)", cwe: ["CWE-195"], apiOnly: true, loc: "context.cc (~1790)", desc: "int size parameter of heif_context_add_generic_metadata / _XMP_ / _exif_ accepts -1; resize((size_t)-1) throws std::length_error → SIGABRT." },
+      { id: "11-metadata-invalid-compression-enum", title: "Unvalidated heif_metadata_compression enum", sev: "low", type: "API Misuse / Undefined Behavior", cwe: ["CWE-20","CWE-704"], apiOnly: true, loc: "context.cc:1728,1762,1767,1774,1783", desc: "heif_context_add_XMP_metadata2() accepts any int cast to enum (e.g. 99), triggers 8 UBSan errors and silent type confusion (stored without content_encoding header while returning heif_error_Ok)." },
+      { id: "12-snuc-memory-exhaustion", title: "Memory exhaustion in Box_snuc::parse() bypassing limits", sev: "medium", type: "Uncontrolled Resource Consumption", cwe: ["CWE-400","CWE-770"], apiOnly: false, loc: "codecs/uncompressed/unc_boxes.cc:1323", desc: "61-byte file allocates ~1.88 GB (two vector::resize calls under 1G-pixel limit) bypassing MemoryHandle tracking." }
+    ]
+  },
+  {
+    project: "OpenEXR",
+    slug: "openexr_validated",
+    summary: "3 confirmed bugs in ImfIDManifest.cpp (idmanifest attribute parser)",
+    vulns: [
+      { id: "01-idmanifest-ubsan-shift-overflow", title: "Shift exponent overflow in readVariableLengthInteger()", sev: "high", type: "Undefined Behavior (Shift Overflow)", cwe: ["CWE-190","CWE-1335"], apiOnly: false, loc: "src/lib/OpenEXR/ImfIDManifest.cpp:122", desc: "No upper bound on shift counter; after 10 continuation bytes (uint64_t) << 70 is UB per C++14 §5.8/2. Triggered by crafted EXR file. CVSS ~6.5–7.5." },
+      { id: "02-idmanifest-oob-string-prefix", title: "Missing size check before 2-byte prefix read", sev: "high", type: "Out-of-Bounds Read", cwe: ["CWE-125","CWE-119"], apiOnly: false, loc: "src/lib/OpenEXR/ImfIDManifest.cpp:342-343", desc: "IDManifest::init() reads stringList[i][0] and [1] without verifying size ≥ 2. 0-byte string makes both reads OOB (ASan + _GLIBCXX_DEBUG confirmed)." },
+      { id: "03-idmanifest-oob-mapping-vector", title: "Off-by-one bounds check → NULL ptr deref on empty mapping vector", sev: "high", type: "Out-of-Bounds Read / NULL Deref", cwe: ["CWE-125","CWE-129","CWE-476"], apiOnly: false, loc: "src/lib/OpenEXR/ImfIDManifest.cpp (~521)", desc: "size_t(stringIndex) > stringList.size() should be >=; empty stringList + stringIndex=0 passes check and mapping[0] dereferences null." }
+    ]
+  },
+  {
+    project: "OpenSSL",
+    slug: "openssl_validated",
+    summary: "14 confirmed crashes across 7 issue groups (master 04623f1)",
+    vulns: [
+      { id: "01-pkcs7-type-confusion", title: "Systemic PKCS7 type confusion (5 crash sites)", sev: "high", type: "Type Confusion → Heap OOB Read", cwe: ["CWE-843","CWE-125"], apiOnly: false, loc: "crypto/pkcs7/pk7_doit.c:271,272,286,804", desc: "PKCS7_dataInit/Final/Verify dispatch on p7->type OID without validating that p7->d matches declared type — same systemic root cause unfixed from 3.3. Reads 4–8 bytes past heap allocation." },
+      { id: "02-pkcs7-negidx-encdat", title: "PKCS7 negative index + NULL enc_data SEGVs", sev: "medium", type: "NULL Pointer Dereference", cwe: ["CWE-476","CWE-129"], apiOnly: false, loc: "pk7_doit.c:1177, 286", desc: "PKCS7_get_issuer_and_serial() uses negative idx → sk_value returns NULL → member-access SEGV. Enveloped branch in PKCS7_dataInit() dereferences NULL enc_data." },
+      { id: "03-evp-null-write", title: "NULL/arbitrary write in fix_rsa_padding_mode() / fix_rsa_pss_saltlen()", sev: "high", type: "NULL Pointer / Arbitrary Write", cwe: ["CWE-476","CWE-787","CWE-824"], apiOnly: false, loc: "crypto/evp/ctrl_params_translate.c:1363,1443", desc: "orig_p2 stores caller's p2=NULL, then unconditionally writes *(int*)orig_p2 = value in POST phase. Any freed/attacker-controlled pointer becomes a 4-byte arbitrary-write primitive." },
+      { id: "04-ssl-oob-reads", title: "Stack OOB reads in dane_tlsa_add() / validate_cert_type()", sev: "high", type: "Stack Out-of-Bounds Read", cwe: ["CWE-125","CWE-126"], apiOnly: false, loc: "ssl/ssl_lib.c:328, 8389", desc: "memcpy(t->data, data, dlen) and val[0..len-1] trust caller-supplied length without verifying buffer size — 256-byte and 1-byte OOB reads confirmed by ASAN." },
+      { id: "05-ec-null-scalar", title: "ecp_nistz256_windowed_mul() NULL scalar SEGV", sev: "low", type: "NULL Pointer Dereference (API contract)", cwe: ["CWE-476","CWE-252"], apiOnly: true, loc: "crypto/ec/ecp_nistz256.c:637", desc: "Documented contract says NULL scalar = zero; BN_num_bits(scalar[i]) crashes instead. Broken API contract, not reachable from untrusted input." },
+      { id: "06-alpn-overread", title: "ALPN callback heap OOB read (up to 255 bytes)", sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false, loc: "ssl/statem/statem_srvr.c:2392", desc: "tls_handle_alpn() trusts callback-supplied selected_len — OPENSSL_memdup(selected, selected_len) reads past the callback's actual buffer." },
+      { id: "07-quic-peeraddr-oob", title: "QUIC set_initial_peer_addr stack OOB read", sev: "medium", type: "Stack Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false, loc: "ssl/quic/quic_impl.c:1309", desc: "BIO_ADDR_copy always reads sizeof(BIO_ADDR)=112 bytes from caller's peer_addr without size validation." }
+    ]
+  },
+  {
+    project: "PROJ (proj4)",
+    slug: "proj4_validated",
+    summary: "11 confirmed DoS-class bugs (master 324ed21)",
+    vulns: [
+      { id: "01-io-SF09-wktnode-stack-overflow", title: "WKTNode::toString() unbounded recursion", sev: "high", type: "Uncontrolled Recursion (Stack Overflow)", cwe: ["CWE-674"], apiOnly: false, loc: "src/io.cpp (WKTNode::toString)", desc: "Deeply nested WKT tree causes stack exhaustion during string export. File-parsing DoS." },
+      { id: "02-crs-SF01-projjson-stack-overflow", title: "DerivedCRS::_exportToJSON() + PROJJSON parser recursion", sev: "high", type: "Uncontrolled Recursion (Stack Overflow)", cwe: ["CWE-674"], apiOnly: false, loc: "src/iso19111/crs.cpp", desc: "No depth limit in JSON export / PROJJSON parse paths. Malicious JSON crashes the process." },
+      { id: "03-net-SF23-nfm-null-deref", title: "proj_is_download_needed(ctx, NULL) SEGV", sev: "high", type: "NULL Pointer Dereference (API)", cwe: ["CWE-476"], apiOnly: true, loc: "src/networkfilemanager.cpp (nfm_is_tilde_slash)", desc: "NULL URL string passed through to nfm_is_tilde_slash() without null-check." },
+      { id: "04-net-SF24-download-null-deref", title: "proj_download_file(ctx, NULL, …) SEGV", sev: "high", type: "NULL Pointer Dereference (API)", cwe: ["CWE-476"], apiOnly: true, loc: "src/networkfilemanager.cpp", desc: "Shares root cause with #03 — path not null-checked before downstream use." },
+      { id: "05-isea-SF08-silent-inverse-failure", title: "ISEA inverse returns {inf,inf} with errno=0", sev: "medium", type: "Logic Error / Silent Failure (API misuse class)", cwe: ["CWE-252","CWE-754"], apiOnly: true, loc: "src/projections/isea.cpp", desc: "For non-default configs the inverse projection returns infinities with no error indication. Not a memory-safety bug." },
+      { id: "06-capi-SF22-null-deref-api-functions", title: "4 C API functions dereference obj without NULL check", sev: "high", type: "NULL Pointer Dereference (API)", cwe: ["CWE-476"], apiOnly: true, loc: "src/c_api.cpp (4 functions)", desc: "Calling any of the four with obj=NULL immediately SEGVs." },
+      { id: "07-capi-SF04-dangling-string-ptr", title: "proj_uom_get_info_from_database() dangling string pointer", sev: "medium", type: "Use-After-Free / Dangling Pointer (API)", cwe: ["CWE-416","CWE-825"], apiOnly: true, loc: "src/c_api.cpp (proj_uom_get_info_from_database)", desc: "Second call may free the std::string backing the prior c_str() return, giving the caller a dangling pointer." },
+      { id: "08-conv-SF02-null-deref-stack-oob", title: "proj_create_conversion() NULL params + stack OOB", sev: "high", type: "NULL Deref / Stack OOB (API)", cwe: ["CWE-476","CWE-125"], apiOnly: true, loc: "src/iso19111/coordinateoperation.cpp", desc: "param_count>0 with NULL params array → NULL deref + stack OOB read." },
+      { id: "09-grids-SF01-proj-grid-info-null", title: "proj_grid_info(NULL) throws std::logic_error (abort)", sev: "medium", type: "Uncaught Exception (API)", cwe: ["CWE-248","CWE-755"], apiOnly: true, loc: "src/grids.cpp", desc: "C entry point allows std::logic_error to escape → SIGABRT." },
+      { id: "10-grids-SF10-ntv2-destructor-overflow", title: "NTv2 parent-child destructor unbounded recursion", sev: "high", type: "Uncontrolled Recursion (Stack Overflow)", cwe: ["CWE-674"], apiOnly: false, loc: "src/grids.cpp (NTv2 destructor)", desc: "Malformed NTv2 grid with deep parent-child chain causes destructor chain to exhaust the stack." },
+      { id: "11-singleop-SF01-concatop-stack-overflow", title: "ConcatenatedOperation::_exportToWKT/JSON() unbounded recursion", sev: "high", type: "Uncontrolled Recursion (Stack Overflow)", cwe: ["CWE-674"], apiOnly: false, loc: "src/iso19111/coordinateoperation.cpp", desc: "Export of deeply nested concatenated operations lacks depth limit." }
+    ]
+  },
+  {
+    project: "The Sleuth Kit (sleuthkit)",
+    slug: "sleuthkit_validated",
+    summary: "13 confirmed bugs across APFS / btrfs / HFS+ / FFS / NTFS / XFS / YAFFS2 parsers",
+    vulns: [
+      { id: "01-apfs-btree-keycount-oob", title: "APFS btree key_count OOB iterator (MSan)", sev: "medium", type: "Use of Uninitialized Value / OOB Iteration", cwe: ["CWE-908","CWE-125"], apiOnly: false, loc: "pool/apfs_pool_compat.cpp (apfs_btree_node)", desc: "Attacker-controlled key_count iterates past buffer; MSan flags use-of-uninitialized-value. ASAN alone does not catch." },
+      { id: "02-apfs-getimageinfo-uninit-alloc", title: "APFSPoolCompat::getImageInfo unvalidated num_img", sev: "high", type: "Alloc-Too-Big / Uninit Var → Heap", cwe: ["CWE-456","CWE-190","CWE-122"], apiOnly: false, loc: "pool/apfs_pool_compat.cpp (getImageInfo)", desc: "num_img field unvalidated → calloc size overflow → allocation-size-too-big (ASAN crash). Potential heap corruption if allocation succeeds." },
+      { id: "03-btrfs-sf01-zero-items", title: "btrfs number_of_items=0 integer underflow", sev: "high", type: "Integer Underflow → Heap OOB Read", cwe: ["CWE-191","CWE-125"], apiOnly: false, loc: "fs/btrfs.c (tree node parser)", desc: "number_of_items=0 causes count-1 underflow to SIZE_MAX, walks past heap allocation." },
+      { id: "04-btrfs-sf06-stripe-oob", title: "btrfs chunk item stripe_count OOB", sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-20"], apiOnly: false, loc: "fs/btrfs.c (chunk item parser)", desc: "Attacker-supplied stripe_count not bounded against chunk-item length." },
+      { id: "05-btrfs-sf07-large-num-items", title: "btrfs large number_of_items OOB", sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-20"], apiOnly: false, loc: "fs/btrfs.c (tree node parser)", desc: "Large number_of_items makes item table walk exceed node size." },
+      { id: "06-btrfs-sf09-dir-entry-oob", title: "btrfs dir entry data_len OOB", sev: "high", type: "Heap OOB Read / Potential OOB Write", cwe: ["CWE-125","CWE-787"], apiOnly: false, loc: "fs/btrfs.c (dir entry parser)", desc: "data_len trusted; read walks past buffer. `new uint8_t[data_len]` also potential write path." },
+      { id: "07-decmpfs-uncsize-overflow", title: "decmpfs uncSize integer overflow → allocation-size-too-big", sev: "high", type: "Integer Overflow / Alloc-Too-Big", cwe: ["CWE-190","CWE-122"], apiOnly: false, loc: "fs/decmpfs.c (HFS+ decompressed attr)", desc: "uncSize field not bounded; multiplication overflow triggers huge allocation and potential heap overflow if allocation succeeds." },
+      { id: "08-12-decmpfs-noncompressed-oob", title: "decmpfs noncompressed attr rawSize ignored (OOB 65536 B)", sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-119"], apiOnly: false, loc: "fs/decmpfs.c (noncompressed branch)", desc: "rawSize header field ignored; read uses attacker-controlled uncSize instead. 65536-byte OOB read." },
+      { id: "10-ffs-cgiusedoff-oob", title: "FFS cg_iusedoff signed comparison bypass", sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-122","CWE-125","CWE-681"], apiOnly: false, loc: "fs/ffs.c (cylinder group parser)", desc: "Signed vs unsigned comparison allows cg_iusedoff to bypass bounds check." },
+      { id: "11-ffs-itoo-oob", title: "FFS itoo_lcl OOB via anomalous fs_inopb", sev: "high", type: "Heap Out-of-Bounds Read (128 B)", cwe: ["CWE-122","CWE-119","CWE-20"], apiOnly: false, loc: "fs/ffs.c (inode table)", desc: "Unchecked fs_inopb value produces out-of-bounds inode table index." },
+      { id: "13-ntfs-idxrec-oob", title: "ntfs_fix_idxrec upd_seq array OOB", sev: "medium", type: "Heap Out-of-Bounds Read (1 B)", cwe: ["CWE-125","CWE-787"], apiOnly: false, loc: "fs/ntfs.c (ntfs_fix_idxrec)", desc: "upd_seq array read past end by 1 byte; write path has OOB-write variant." },
+      { id: "14-xfs-uint32-overflow", title: "XFS xfs_inode_get_offset uint32 × uint32 overflow", sev: "medium", type: "Integer Overflow (UBSan, unsigned)", cwe: ["CWE-190","CWE-125"], apiOnly: false, loc: "fs/xfs.c (xfs_inode_get_offset)", desc: "Attacker-controlled inputs overflow uint32 multiplication; wrong forensic offsets / information disclosure." },
+      { id: "15-yaffs2-uaf", title: "yaffs2_open() returns dangling pointer", sev: "high", type: "Use-After-Free", cwe: ["CWE-416","CWE-825"], apiOnly: false, loc: "fs/yaffs.cpp (yaffs2_open)", desc: "Open function returns dangling pointer; subsequent tsk_fs_fls() reliably triggers heap-use-after-free (potential RCE)." }
+    ]
+  }
+];
+
+function render() {
+  const main = document.getElementById("main");
+  main.innerHTML = data.map(p => `
+    <section class="project" data-project="${p.slug}">
+      <div class="project-head">
+        <h2>${p.project}</h2>
+        <span class="slug">${p.slug}/</span>
+        <span class="summary">${p.summary} · <b>${p.vulns.length}</b> issue${p.vulns.length===1?'':'s'}</span>
+      </div>
+      <div class="vuln-grid">
+        ${p.vulns.map(v => renderVuln(v)).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function renderVuln(v) {
+  const sevLabel = v.sev.charAt(0).toUpperCase() + v.sev.slice(1);
+  const cweBadges = v.cwe.map(c => `<span class="badge cwe">${c}</span>`).join("");
+  const apiBadge = v.apiOnly ? `<span class="badge api">API misuse</span>` : "";
+  const typeClass = v.apiOnly ? "api" : "type";
+  return `
+    <article class="vuln sev-${v.sev}"
+      data-sev="${v.sev}"
+      data-api="${v.apiOnly?'1':'0'}"
+      data-search="${(v.title+' '+v.type+' '+v.cwe.join(' ')+' '+v.loc+' '+v.desc).toLowerCase()}">
+      <div class="vuln-head">
+        <div>
+          <h3 class="vuln-title">${v.title}</h3>
+          <div class="vuln-id">${v.id}</div>
+        </div>
+        <span class="badge sev-${v.sev}">${sevLabel}</span>
+      </div>
+      <div class="badges">
+        <span class="badge ${typeClass}">${v.type}</span>
+        ${apiBadge}
+        ${cweBadges}
+      </div>
+      <p class="vuln-desc">${v.desc}</p>
+      <div class="vuln-loc">${v.loc}</div>
+    </article>`;
+}
+
+let sevFilter = "all";
+let classFilter = "all";
+let searchFilter = "";
+
+function applyFilters() {
+  let shown = 0, total = 0;
+  document.querySelectorAll(".vuln").forEach(el => {
+    total++;
+    const sev = el.dataset.sev;
+    const isApi = el.dataset.api === "1";
+    const text = el.dataset.search;
+    const sevOk = sevFilter === "all" || sevFilter === sev;
+    const classOk = classFilter === "all"
+      || (classFilter === "memory" && !isApi)
+      || (classFilter === "api" && isApi);
+    const searchOk = !searchFilter || text.includes(searchFilter);
+    if (sevOk && classOk && searchOk) { el.classList.remove("hidden"); shown++; }
+    else { el.classList.add("hidden"); }
+  });
+  document.querySelectorAll(".project").forEach(sec => {
+    const visible = sec.querySelectorAll(".vuln:not(.hidden)").length;
+    sec.classList.toggle("hidden", visible === 0);
+  });
+  document.getElementById("counter").textContent = `Showing ${shown} / ${total}`;
+}
+
+function wire() {
+  document.querySelectorAll(".btn[data-filter]").forEach(b => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll(".btn[data-filter]").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      sevFilter = b.dataset.filter;
+      applyFilters();
+    });
+  });
+  document.querySelectorAll(".btn[data-class]").forEach(b => {
+    b.addEventListener("click", () => {
+      const cls = b.dataset.class;
+      if (classFilter === cls) { classFilter = "all"; b.classList.remove("active"); }
+      else {
+        document.querySelectorAll(".btn[data-class]").forEach(x => x.classList.remove("active"));
+        classFilter = cls; b.classList.add("active");
+      }
+      applyFilters();
+    });
+  });
+  document.getElementById("search").addEventListener("input", e => {
+    searchFilter = e.target.value.trim().toLowerCase();
+    applyFilters();
+  });
+}
+
+render();
+wire();
+applyFilters();
+</script>
+</body>
+</html>

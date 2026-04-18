@@ -25,6 +25,7 @@ from vulagent.orchestrator.scan_filter_stages import (
     dedup_hypotheses,
     format_check_analysis_context,
     format_constraint_context,
+    hypothesis_priority_key,
     make_batches,
     parse_functions,
     phase_analyze_focused,
@@ -49,7 +50,13 @@ EXCLUDED_DIRS = {
 
 
 def _convert_hypothesis(hyp: dict, index: int, file_path: str) -> VulnHypothesis:
-    """Convert a scan_and_filter dict hypothesis to a VulnHypothesis dataclass."""
+    """Convert a scan_and_filter dict hypothesis to a VulnHypothesis dataclass.
+
+    Propagates Stage 2 triage metadata (``_severity``/``_primitive``/
+    ``_attacker_controls``/``_sanitizers``/``_cwe_ids``) and Stage 2
+    reachability (``_reachable``/``_fuzz_targets``) onto the dataclass so
+    downstream ranking can use them.
+    """
     h = hyp.get("hypothesis", hyp)
     hotspots = h.get("hotspots", [])
     references = [
@@ -64,6 +71,7 @@ def _convert_hypothesis(hyp: dict, index: int, file_path: str) -> VulnHypothesis
     ]
     func = hotspots[0].get("function") if hotspots else None
     warnings = h.get("warnings", [])
+    reachable = hyp.get("_reachable")
     return VulnHypothesis(
         hypothesis_id=f"SF{index:02d}",
         title=h.get("summary", "Unknown vulnerability"),
@@ -75,6 +83,13 @@ def _convert_hypothesis(hyp: dict, index: int, file_path: str) -> VulnHypothesis
         expected_crash="; ".join(str(w) for w in warnings) if warnings else None,
         confidence=hyp.get("_filter_confidence", 0.5),
         references=references,
+        severity=str(hyp.get("_severity", "none")),
+        primitive=str(hyp.get("_primitive", "none")),
+        attacker_controls=str(hyp.get("_attacker_controls", "none")),
+        sanitizers=list(hyp.get("_sanitizers", [])),
+        cwe_ids=[str(c) for c in hyp.get("_cwe_ids", [])],
+        reachable=(bool(reachable) if reachable is not None else None),
+        fuzz_targets=list(hyp.get("_fuzz_targets", [])),
     )
 
 
@@ -130,10 +145,66 @@ class ScanFilterOrchestrator:
         self.agent_step_limit = agent_step_limit
         self.agent_cost_limit = agent_cost_limit
         self.model_kwargs = model_kwargs or {"temperature": 1.0, "drop_params": True}
+        # Per-function reachability cache: function symbol -> list of fuzz-target
+        # binaries whose nm table contains it. ``None`` means lookup failed or
+        # the ``arvo`` wrapper doesn't support ``targets`` (non-multi-sanitizer
+        # images). Populated lazily by ``_lookup_fuzz_targets``.
+        self._reachability_cache: dict[str, list[str] | None] = {}
+        # Remember whether ``arvo targets`` is usable in this container. If the
+        # first probe fails or returns an error, stop issuing further lookups.
+        self._arvo_targets_available: bool | None = None
 
     def _log(self, message: str) -> None:
         if self.log_fn:
             self.log_fn(message)
+
+    def _lookup_fuzz_targets(self, function: str | None) -> list[str] | None:
+        """Return fuzzer binaries whose symbol table contains ``function``.
+
+        Uses the ``arvo targets <symbol>`` nm-based lookup. Returns:
+            * ``list[str]`` — matching binaries (possibly empty = unreachable).
+            * ``None``      — lookup is not available (original ARVO images,
+                              stripped binaries, missing `arvo targets`, etc.).
+                              Callers should treat this as "unknown".
+
+        Results are cached per function symbol for the life of this
+        orchestrator instance.
+        """
+        if not function:
+            return None
+        if self._arvo_targets_available is False:
+            return None
+        if function in self._reachability_cache:
+            return self._reachability_cache[function]
+
+        # Probe once: if `arvo targets` isn't supported, disable further lookups.
+        try:
+            result = self.env.execute(
+                f"arvo targets {function} 2>/dev/null; echo __rc=$?"
+            )
+        except Exception as e:
+            self._log(f"[scan_filter] reachability probe failed: {e}")
+            self._arvo_targets_available = False
+            self._reachability_cache[function] = None
+            return None
+
+        output = (result.get("output") or "").strip()
+        lines = output.splitlines()
+        rc_line = lines[-1] if lines else ""
+        body_lines = lines[:-1] if rc_line.startswith("__rc=") else lines
+        rc = rc_line.split("=", 1)[1] if rc_line.startswith("__rc=") else ""
+
+        if rc not in ("", "0"):
+            # Non-zero rc means the wrapper doesn't understand `targets` or
+            # /out/$SANITIZER isn't present. Disable further probing.
+            self._arvo_targets_available = False
+            self._reachability_cache[function] = None
+            return None
+
+        self._arvo_targets_available = True
+        matches = [line.strip() for line in body_lines if line.strip()]
+        self._reachability_cache[function] = matches
+        return matches
 
     @staticmethod
     def _file_slug(file_path: str) -> str:
@@ -526,6 +597,9 @@ class ScanFilterOrchestrator:
                 "is_vulnerability": c["is_vulnerability"],
                 "sanitizers": c.get("sanitizers", []),
                 "is_asan": c.get("is_asan", False),  # back-compat
+                "attacker_controls": c.get("attacker_controls", "none"),
+                "primitive": c.get("primitive", "none"),
+                "severity": c.get("severity", "none"),
                 "cwe_ids": c["cwe_ids"],
                 "reason": c["reason"],
                 "raw_response": c.get("raw_response", ""),
@@ -552,6 +626,9 @@ class ScanFilterOrchestrator:
             h["_is_vulnerability"] = c["is_vulnerability"]
             h["_sanitizers"] = c.get("sanitizers", [])
             h["_is_asan"] = c.get("is_asan", False)  # back-compat
+            h["_attacker_controls"] = c.get("attacker_controls", "none")
+            h["_primitive"] = c.get("primitive", "none")
+            h["_severity"] = c.get("severity", "none")
             if not c["is_vulnerability"]:
                 h["_removed"] = f"Not a vulnerability: {c['reason']}"
             elif not c.get("sanitizers"):
@@ -575,6 +652,39 @@ class ScanFilterOrchestrator:
         }
 
         return kept, classify_trace, dedup_trace
+
+    def _annotate_reachability(self, kept: list[dict], rel_path: str) -> None:
+        """Annotate ``kept`` hypotheses in-place with reachability metadata.
+
+        Sets on each hypothesis dict:
+            * ``_reachable`` — ``True`` if at least one fuzz-target binary
+              links the hotspot function, ``False`` if none, ``None`` if the
+              lookup is unavailable (non-multi-sanitizer image, stripped
+              binaries, missing ``arvo targets`` command).
+            * ``_fuzz_targets`` — list of binary names that link the function.
+
+        Reachability is a *ranking signal only*; it does not remove any
+        hypothesis from ``kept``.
+        """
+        reach_counts = {"true": 0, "false": 0, "unknown": 0}
+        for h in kept:
+            inner = h.get("hypothesis", h)
+            hotspots = inner.get("hotspots", [])
+            func = hotspots[0].get("function") if hotspots else None
+            matches = self._lookup_fuzz_targets(func)
+            if matches is None:
+                h["_reachable"] = None
+                h["_fuzz_targets"] = []
+                reach_counts["unknown"] += 1
+            else:
+                h["_reachable"] = len(matches) > 0
+                h["_fuzz_targets"] = matches
+                reach_counts["true" if matches else "false"] += 1
+        self._log(
+            f"  [scan_filter] Reachability ({rel_path}): "
+            f"{reach_counts['true']} reachable, {reach_counts['false']} "
+            f"unreachable, {reach_counts['unknown']} unknown"
+        )
 
     def _run_stage3(
         self, kept: list[dict], target_file: str,
@@ -806,6 +916,14 @@ class ScanFilterOrchestrator:
                 self._log(f"[scan_filter] No hypotheses survived classification/dedup for {rel_path}")
                 continue
 
+            # Reachability annotation (between Stage 2 and Stage 3): use
+            # ``arvo targets <symbol>`` to discover which fuzz-target binaries
+            # link each hypothesis's hotspot function. Result is advisory
+            # (a ranking signal), NOT a hard filter — unreachable-from-fuzzer
+            # bugs are still worth reporting, they just drop in priority.
+            if arvo_mode:
+                self._annotate_reachability(kept, rel_path)
+
             # Stage 3: Docker sub-agent filtering.
             # Traces are persisted per-hypothesis inside _run_stage3 as each
             # sub-agent returns, so partial progress survives an interrupt.
@@ -841,8 +959,10 @@ class ScanFilterOrchestrator:
                 files_total=len(files),
             )
 
-        # Sort by confidence descending and re-number
-        all_vuln_hypotheses.sort(key=lambda h: h.confidence, reverse=True)
+        # Rank by (reachable, severity, confidence) — descending — so that
+        # reachable-from-fuzzer, higher-severity, higher-confidence hypotheses
+        # land at the top of hypotheses.json and survive ``--top-n``.
+        all_vuln_hypotheses.sort(key=hypothesis_priority_key, reverse=True)
         for idx, h in enumerate(all_vuln_hypotheses, start=1):
             h.hypothesis_id = f"SF{idx:02d}"
 

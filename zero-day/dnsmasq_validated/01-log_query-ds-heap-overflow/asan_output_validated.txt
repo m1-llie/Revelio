@@ -1,0 +1,54 @@
+Validation environment:
+  Image  : vulagent/dnsmasq:latest (dnsmasq v2.93, clang 22.0.0git)
+  Date   : 2026-04-17
+  Command: clang -fsanitize=address,undefined -g -o /tmp/poc poc_reproducer.c
+           ASAN_OPTIONS=detect_leaks=0 /tmp/poc
+
+=================================================================
+==13==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x7b4981ae007e at pc 0x55cd1f21263b bp 0x7fff11b85150 sp 0x7fff11b84900
+WRITE of size 58 at 0x7b4981ae007e thread T0
+    #0 0x55cd1f21263a in vsprintf /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:1732:1
+    #1 0x55cd1f21379a in sprintf /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:1777:1
+    #2 0x55cd1f2cf578 in main poc_reproducer.c:64:5
+    #3 0x7f09825eb082 in __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x24082) (BuildId: 5792732f783158c66fb4f3756458ca24e46e827d)
+    #4 0x55cd1f1e936d in _start (/tmp/poc+0x2c36d)
+
+0x7b4981ae007e is located 0 bytes after 46-byte region [0x7b4981ae0050,0x7b4981ae007e)
+allocated by thread T0 here:
+    #0 0x55cd1f28caf4 in malloc /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:67:3
+    #1 0x55cd1f2cf470 in main poc_reproducer.c:44:30
+    #2 0x7f09825eb082 in __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x24082) (BuildId: 5792732f783158c66fb4f3756458ca24e46e827d)
+
+SUMMARY: AddressSanitizer: heap-buffer-overflow poc_reproducer.c:64:5 in main
+Shadow bytes around the buggy address:
+  0x7b4981adfd80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x7b4981adfe00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x7b4981adfe80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x7b4981adff00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x7b4981adff80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+=>0x7b4981ae0000: fa fa 00 00 00 00 00 02 fa fa 00 00 00 00 00[06]
+  0x7b4981ae0080: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x7b4981ae0100: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x7b4981ae0180: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x7b4981ae0200: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x7b4981ae0280: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+Shadow byte legend (one shadow byte represents 8 application bytes):
+  Addressable:           00
+  Partially addressable: 01 02 03 04 05 06 07
+  Heap left redzone:       fa
+  Freed heap region:       fd
+  Stack left redzone:      f1
+  Stack mid redzone:       f2
+  Stack right redzone:     f3
+  Stack after return:      f5
+  Stack use after scope:   f8
+  Global redzone:          f9
+  Global init order:       f6
+  Poisoned by user:        f7
+  Container overflow:      fc
+  Array cookie:            ac
+  Intra object redzone:    bb
+  ASan internal:           fe
+  Left alloca redzone:     ca
+  Right alloca redzone:    cb
+==13==ABORTING

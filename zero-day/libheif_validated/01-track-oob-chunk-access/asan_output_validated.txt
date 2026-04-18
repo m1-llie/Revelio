@@ -1,0 +1,28 @@
+==538==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x7bce37ae0840 at pc 0x7f9e38fc6193 bp 0x7ffecfce6750 sp 0x7ffecfce6748
+READ of size 8 at 0x7bce37ae0840 thread T0
+    #0 0x7f9e38fc6192 in std::__shared_ptr<Chunk, (__gnu_cxx::_Lock_policy)2>::get() const /usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/shared_ptr_base.h:1310:16
+    #1 0x7f9e38fc6192 in std::__shared_ptr_access<Chunk, (__gnu_cxx::_Lock_policy)2, false, false>::_M_get() const /usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/shared_ptr_base.h:1021:66
+    #2 0x7f9e38fc6192 in std::__shared_ptr_access<Chunk, (__gnu_cxx::_Lock_policy)2, false, false>::operator->() const /usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/shared_ptr_base.h:1015:9
+    #3 0x7f9e38fc6192 in Track::get_next_sample_raw_data(heif_decoding_options const*) /src/libheif/libheif/sequences/track.cc:1087:23
+    #4 0x7f9e38dd9c8a in heif_track_get_next_raw_sequence_sample /src/libheif/libheif/api/libheif/heif_sequences.cc:266:32
+
+0x7bce37ae0840 is located 0 bytes after 32-byte region [0x7bce37ae0820,0x7bce37ae0840)
+allocated by thread T0 here:
+    #0 0x55bea3925b94 in malloc
+    #1 0x7f9e385edb28 in operator new(unsigned long)
+    #2 0x7f9e38fb3504 in Track::load(std::shared_ptr<Box_trak> const&) /src/libheif/libheif/sequences/track.cc:402:14
+    #3 0x7f9e38fd1869 in Track_Visual::load(std::shared_ptr<Box_trak> const&) /src/libheif/libheif/sequences/track_visual.cc:50:34
+    #4 0x7f9e38fbdd3c in Track::alloc_track(HeifContext*, std::shared_ptr<Box_trak> const&) /src/libheif/libheif/sequences/track.cc:682:28
+    #5 0x7f9e38ce8fa0 in HeifContext::interpret_heif_file_sequences() /src/libheif/libheif/context.cc:1952:24
+    #6 0x7f9e38cd0b58 in HeifContext::interpret_heif_file() /src/libheif/libheif/context.cc:512:17
+    #7 0x7f9e38cd1534 in HeifContext::read_from_memory(void const*, unsigned long, bool) /src/libheif/libheif/context.cc:225:10
+    #8 0x7f9e38e0c7c6 in heif_context_read_from_memory /src/libheif/libheif/api/libheif/heif_context.cc:67:29
+
+SUMMARY: AddressSanitizer: heap-buffer-overflow /src/libheif/libheif/sequences/track.cc:1087:23 in Track::get_next_sample_raw_data(heif_decoding_options const*)
+
+--- Environment ---
+libheif version : 1.21.2 (latest release, tag v1.21.2)
+Confirmed on    : 2026-04-17
+Build           : clang -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1
+Trigger         : heif_track_get_next_raw_sequence_sample() called 3rd time on a
+                  track whose stco has 2 chunks but stsz declares 5 samples

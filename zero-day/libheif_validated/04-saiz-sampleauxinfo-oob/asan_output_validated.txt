@@ -1,0 +1,36 @@
+INFO: Running with entropic power schedule (0xFF, 100).
+INFO: Seed: 1492215012
+INFO: Loaded 1 modules   (506615 inline 8-bit counters): 506615 [0x55d6fcb42000, 0x55d6fcbbdaf7), 
+INFO: Loaded 1 PC tables (506615 PCs): 506615 [0x55d6fcbbdaf8,0x55d6fd378a68), 
+/out/asan/file_fuzzer: Running 1 inputs 1 time(s) each.
+Running: /poc/poc_input
+file_fuzzer: /src/libheif/libheif/sequences/track.cc:141: SampleAuxInfoReader::SampleAuxInfoReader(std::shared_ptr<Box_saiz>, std::shared_ptr<Box_saio>, const std::vector<std::shared_ptr<Chunk>> &): Assertion `current_chunk < chunks.size()' failed.
+==1== ERROR: libFuzzer: deadly signal
+    #0 0x55d6f78c1a31 in __sanitizer_print_stack_trace /src/llvm-project/compiler-rt/lib/asan/asan_stack.cpp:87:3
+    #1 0x55d6f77b37d8 in fuzzer::PrintStackTrace() /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerUtil.cpp:210:5
+    #2 0x55d6f7796325 in fuzzer::Fuzzer::CrashCallback() /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerLoop.cpp:231:3
+    #3 0x7f35bfd7741f  (/lib/x86_64-linux-gnu/libpthread.so.0+0x1441f) (BuildId: 9753720502573b97dbac595b61fd72c2df18e078)
+    #4 0x7f35bfb6b00a in raise (/lib/x86_64-linux-gnu/libc.so.6+0x4300a) (BuildId: 5792732f783158c66fb4f3756458ca24e46e827d)
+    #5 0x7f35bfb4a858 in abort (/lib/x86_64-linux-gnu/libc.so.6+0x22858) (BuildId: 5792732f783158c66fb4f3756458ca24e46e827d)
+    #6 0x7f35bfb4a728  (/lib/x86_64-linux-gnu/libc.so.6+0x22728) (BuildId: 5792732f783158c66fb4f3756458ca24e46e827d)
+    #7 0x7f35bfb5bfd5 in __assert_fail (/lib/x86_64-linux-gnu/libc.so.6+0x33fd5) (BuildId: 5792732f783158c66fb4f3756458ca24e46e827d)
+    #8 0x55d6f7cb7bb4 in SampleAuxInfoReader::SampleAuxInfoReader(std::__1::shared_ptr<Box_saiz>, std::__1::shared_ptr<Box_saio>, std::__1::vector<std::__1::shared_ptr<Chunk>, std::__1::allocator<std::__1::shared_ptr<Chunk>>> const&) /src/libheif/libheif/sequences/track.cc:141:9
+    #9 0x55d6f7cc16f7 in std::__1::unique_ptr<SampleAuxInfoReader, std::__1::default_delete<SampleAuxInfoReader>> std::__1::make_unique[abi:ne220000]<SampleAuxInfoReader, std::__1::shared_ptr<Box_saiz> const&, std::__1::shared_ptr<Box_saio>&, std::__1::vector<std::__1::shared_ptr<Chunk>, std::__1::allocator<std::__1::shared_ptr<Chunk>>>&, 0>(std::__1::shared_ptr<Box_saiz> const&, std::__1::shared_ptr<Box_saio>&, std::__1::vector<std::__1::shared_ptr<Chunk>, std::__1::allocator<std::__1::shared_ptr<Chunk>>>&) /usr/local/bin/../include/c++/v1/__memory/unique_ptr.h:759:30
+    #10 0x55d6f7cbc32c in Track::load(std::__1::shared_ptr<Box_trak> const&) /src/libheif/libheif/sequences/track.cc:447:36
+    #11 0x55d6f7cde9fa in Track_Visual::load(std::__1::shared_ptr<Box_trak> const&) /src/libheif/libheif/sequences/track_visual.cc:50:34
+    #12 0x55d6f7ccdf0c in Track::alloc_track(HeifContext*, std::__1::shared_ptr<Box_trak> const&) /src/libheif/libheif/sequences/track.cc:682:28
+    #13 0x55d6f7b41268 in HeifContext::interpret_heif_file_sequences() /src/libheif/libheif/context.cc:1952:24
+    #14 0x55d6f7b289f9 in HeifContext::interpret_heif_file() /src/libheif/libheif/context.cc:512:17
+    #15 0x55d6f7b29539 in HeifContext::read_from_memory(void const*, unsigned long, bool) /src/libheif/libheif/context.cc:225:10
+    #16 0x55d6f792afa5 in heif_context_read_from_memory /src/libheif/libheif/api/libheif/heif_context.cc:67:29
+    #17 0x55d6f78fa2fa in LLVMFuzzerTestOneInput /src/libheif/fuzzing/file_fuzzer.cc:111:9
+    #18 0x55d6f7797a0d in fuzzer::Fuzzer::ExecuteCallback(unsigned char const*, unsigned long) /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerLoop.cpp:619:13
+    #19 0x55d6f7782782 in fuzzer::RunOneTest(fuzzer::Fuzzer*, char const*, unsigned long) /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerDriver.cpp:329:6
+    #20 0x55d6f7788650 in fuzzer::FuzzerDriver(int*, char***, int (*)(unsigned char const*, unsigned long)) /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerDriver.cpp:865:9
+    #21 0x55d6f77b4182 in main /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerMain.cpp:20:10
+    #22 0x7f35bfb4c082 in __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x24082) (BuildId: 5792732f783158c66fb4f3756458ca24e46e827d)
+    #23 0x55d6f777b86d in _start (/out/asan/file_fuzzer+0xe3886d)
+
+NOTE: libFuzzer has rudimentary signal handlers.
+      Combine libFuzzer with AddressSanitizer or similar for better crash reports.
+SUMMARY: libFuzzer: deadly signal

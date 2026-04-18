@@ -1,0 +1,36 @@
+INFO: Running with entropic power schedule (0xFF, 100).
+INFO: Seed: 408761233
+INFO: Loaded 1 modules   (506615 inline 8-bit counters): 506615 [0x55f743b55000, 0x55f743bd0af7),
+INFO: Loaded 1 PC tables (506615 PCs): 506615 [0x55f743bd0af8,0x55f74438ba68),
+/out/asan/file_fuzzer: Running 1 inputs 1 time(s) each.
+Running: /tmp/poc06.heif
+AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==1==ERROR: AddressSanitizer: SEGV on unknown address 0x0000000000a0 (pc 0x55f73eadef64 bp 0x7ffe44128d40 sp 0x7ffe44128b20 T0)
+==1==The signal is caused by a READ memory access.
+==1==Hint: address points to the zero page.
+    #0 0x55f73eadef64 in Box_iloc::read_data(unsigned int, std::__1::shared_ptr<StreamReader> const&, std::__1::shared_ptr<Box_idat> const&, std::__1::vector<unsigned char, std::__1::allocator<unsigned char>>*, unsigned long, unsigned long, heif_security_limits const*) const /src/libheif/libheif/box.cc:1782:16
+    #1 0x55f73eaded00 in Box_iloc::read_data(unsigned int, std::__1::shared_ptr<StreamReader> const&, std::__1::shared_ptr<Box_idat> const&, std::__1::vector<unsigned char, std::__1::allocator<unsigned char>>*, heif_security_limits const*) const /src/libheif/libheif/box.cc:1770:10
+    #2 0x55f73eccf9dd in Track::load(std::__1::shared_ptr<Box_trak> const&) /src/libheif/libheif/sequences/track.cc:478:29
+    #3 0x55f73ecff43d in Track_Metadata::load(std::__1::shared_ptr<Box_trak> const&) /src/libheif/libheif/sequences/track_metadata.cc:35:34
+    #4 0x55f73ece0f0c in Track::alloc_track(HeifContext*, std::__1::shared_ptr<Box_trak> const&) /src/libheif/libheif/sequences/track.cc:682:28
+    #5 0x55f73eb54268 in HeifContext::interpret_heif_file_sequences() /src/libheif/libheif/context.cc:1952:24
+    #6 0x55f73eb3b9f9 in HeifContext::interpret_heif_file() /src/libheif/libheif/context.cc:512:17
+    #7 0x55f73eb3c539 in HeifContext::read_from_memory(void const*, unsigned long, bool) /src/libheif/libheif/context.cc:225:10
+    #8 0x55f73e93dfa5 in heif_context_read_from_memory /src/libheif/libheif/api/libheif/heif_context.cc:67:29
+    #9 0x55f73e90d2fa in LLVMFuzzerTestOneInput /src/libheif/fuzzing/file_fuzzer.cc:111:9
+    #10 0x55f73e7aaa0d in fuzzer::Fuzzer::ExecuteCallback(unsigned char const*, unsigned long) /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerLoop.cpp:619:13
+    #11 0x55f73e795782 in fuzzer::RunOneTest(fuzzer::Fuzzer*, char const*, unsigned long) /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerDriver.cpp:329:6
+    #12 0x55f73e79b650 in fuzzer::FuzzerDriver(int*, char***, int (*)(unsigned char const*, unsigned long)) /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerDriver.cpp:865:9
+    #13 0x55f73e7c7182 in main /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerMain.cpp:20:10
+    #14 0x7fc07cefa082 in __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x24082) (BuildId: 5792732f783158c66fb4f3756458ca24e46e827d)
+    #15 0x55f73e78e86d in _start (/out/asan/file_fuzzer+0xe3886d)
+
+==1==Register values:
+rax = 0x0000000000000015  rbx = 0x00007ffe44128b20  rcx = 0x00007bc07b6d0020  rdx = 0xf8f8f8f8f2f2f2f2
+rdi = 0x00000000000000a8  rsi = 0xf2f2f2f2f2f2f2f2  rbp = 0x00007ffe44128d40  rsp = 0x00007ffe44128b20
+ r8 = 0x00000f780f6da000   r9 = 0x00007bc07b6d0000  r10 = 0xf8f8f8f8f8f8f8f8  r11 = 0xffffffffffffffff
+r12 = 0x0000000000000000  r13 = 0x00000f788f6b3700  r14 = 0x00007bc07b5dbec0  r15 = 0x00007bc07b5dbe80
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: SEGV /src/libheif/libheif/box.cc:1782:16 in Box_iloc::read_data(unsigned int, std::__1::shared_ptr<StreamReader> const&, std::__1::shared_ptr<Box_idat> const&, std::__1::vector<unsigned char, std::__1::allocator<unsigned char>>*, unsigned long, unsigned long, heif_security_limits const*) const
+==1==ABORTING

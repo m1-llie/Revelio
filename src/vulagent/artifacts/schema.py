@@ -89,6 +89,17 @@ class VulnHypothesis:
     expected_crash: str | None = None
     confidence: float = 0.0
     references: list[CodeReference] = field(default_factory=list)
+    # Triage metadata set by the Stage 2 classifier / Stage 2 reachability pass.
+    # All optional for backward compatibility with older hypotheses.json files.
+    severity: str = "none"               # none | low | medium | high | critical
+    primitive: str = "none"              # oob-write | oob-read | uaf | double-free |
+                                         # type-confusion | int-overflow | uninit |
+                                         # deref | none
+    attacker_controls: str = "none"      # input | api | none
+    sanitizers: list[str] = field(default_factory=list)  # subset of {asan,ubsan,msan}
+    cwe_ids: list[str] = field(default_factory=list)
+    reachable: bool | None = None        # None=unknown; True/False from `arvo targets`
+    fuzz_targets: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
