@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Zero-Day Bug Dashboard — 7 Open-Source Projects</title>
+<title>Zero-Day Bug Dashboard — 8 Open-Source Projects</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root {
@@ -230,7 +230,7 @@
 <body>
 <header>
   <h1>Zero-Day Bug Dashboard</h1>
-  <p>Manually validated memory-safety bugs and API contract issues across seven open-source projects · Findings date: 2026-04-17</p>
+  <p>Manually validated memory-safety bugs and API contract issues across eight open-source projects · Findings date: 2026-04-17</p>
 </header>
 
 <section class="controls" id="controls">
@@ -321,6 +321,26 @@ const data = [
       { id: "05-ec-null-scalar", title: "ecp_nistz256_windowed_mul() NULL scalar SEGV", sev: "low", type: "NULL Pointer Dereference (API contract)", cwe: ["CWE-476","CWE-252"], apiOnly: true, loc: "crypto/ec/ecp_nistz256.c:637", desc: "Documented contract says NULL scalar = zero; BN_num_bits(scalar[i]) crashes instead. Broken API contract, not reachable from untrusted input." },
       { id: "06-alpn-overread", title: "ALPN callback heap OOB read (up to 255 bytes)", sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false, loc: "ssl/statem/statem_srvr.c:2392", desc: "tls_handle_alpn() trusts callback-supplied selected_len — OPENSSL_memdup(selected, selected_len) reads past the callback's actual buffer." },
       { id: "07-quic-peeraddr-oob", title: "QUIC set_initial_peer_addr stack OOB read", sev: "medium", type: "Stack Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false, loc: "ssl/quic/quic_impl.c:1309", desc: "BIO_ADDR_copy always reads sizeof(BIO_ADDR)=112 bytes from caller's peer_addr without size validation." }
+    ]
+  },
+  {
+    project: "poppler",
+    slug: "poppler_validated",
+    summary: "13 confirmed bugs on poppler 26.04.90 (commit e3d56a0) — 8 in poppler proper + 5 in cairo (triggered via poppler render pipeline)",
+    vulns: [
+      { id: "01-stream-intovf-cmyk", title: "Integer overflow in ImageStream() (CMYK)", sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false, loc: "poppler/Stream.cc:596", desc: "nVals = width * nComps computed BEFORE the INT_MAX/nComps guard — overflow corrupts nVals. Triggered by CMYK (nComps=4) image XObject with /Width ≥ 536,870,912. UBSan confirmed. CVSS 5.5." },
+      { id: "02-stream-intovf-rgb", title: "Integer overflow in ImageStream() (RGB)", sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false, loc: "poppler/Stream.cc:596", desc: "Same defect as #01 triggered via /DeviceRGB (nComps=3) with /Width ≥ 715,827,883. Same one-line fix resolves both. UBSan confirmed. CVSS 5.5." },
+      { id: "03-stream-tiff-shift-ub", title: "Shift exponent overflow in TIFF predictor bit accumulation", sev: "medium", type: "Shift Overflow (UB)", cwe: ["CWE-682"], apiOnly: false, loc: "poppler/Stream.cc:900", desc: "`if (outBits >= 8)` should be `while` — when /BitsPerComponent ≥ 9, outBits accumulates past 64, making outBuf >> (outBits-8) UB on uint64. UBSan confirmed shift exponent 64 and 66. CVSS 5.5." },
+      { id: "04-stream-tiff-neg-shift", title: "Negative shift exponent in TIFF predictor final flush", sev: "medium", type: "Shift Overflow (UB)", cwe: ["CWE-682"], apiOnly: false, loc: "poppler/Stream.cc:906", desc: "Same root cause as #03; final-flush branch then computes (8 - outBits) with outBits > 8 → negative shift (observed −22). Same one-line fix. UBSan confirmed. CVSS 5.5." },
+      { id: "05-form-recursion-stackoverflow", title: "Stack overflow in AcroForm /Kids traversal", sev: "high", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false, loc: "poppler/Form.cc:1032 / :2677", desc: "FormField ctor ↔ Form::createFieldFromDict mutual recursion with no depth limit; 5000-level /Kids chain exhausts stack. usedParents only detects cycles, not linear depth. ASan stack-overflow confirmed. CVSS 7.5." },
+      { id: "06-cairo-fixed-imgmask-overflow", title: "INT_MIN negation in _cairo_fixed_integer_floor() [cairo]", sev: "medium", type: "Integer Overflow (cairo)", cwe: ["CWE-190"], apiOnly: false, loc: "cairo/src/cairo-fixed-private.h:233", desc: "`-f` on f == INT_MIN is UB; reached from poppler CairoOutputDev when a PDF ImageMask is scaled so fixed-point coordinate hits CAIRO_FIXED_MIN. Root cause in cairo. UBSan confirmed. CVSS 5.5." },
+      { id: "07-cairo-slope-path-overflow", title: "Coordinate subtraction overflow in _cairo_slope_init() [cairo]", sev: "medium", type: "Integer Overflow (cairo)", cwe: ["CWE-190"], apiOnly: false, loc: "cairo/src/cairo-slope-private.h:49", desc: "b->x - a->x computed in int32 overflows when path endpoints span the full fixed-point range (near INT_MAX to near INT_MIN). Triggered via CairoOutputDev::stroke. UBSan confirmed. CVSS 5.5." },
+      { id: "08-cairo-pathbounds-overflow", title: "Stroke-extent addition overflow in _cairo_path_fixed_approximate_stroke_extents() [cairo]", sev: "medium", type: "Integer Overflow (cairo)", cwe: ["CWE-190"], apiOnly: false, loc: "cairo/src/cairo-path-bounds.c:180", desc: "box_extents.p2.x += fixed-from-double(dx) overflows int32 when Bezier ctrl points put bbox near INT_MAX and any stroke width is applied. Triggered via CairoOutputDev::stroke. UBSan confirmed. CVSS 5.5." },
+      { id: "09-cairo-truetype-heapboflow", title: "Heap OOB read in find_name() (TrueType name table) [cairo]", sev: "high", type: "Heap Out-of-Bounds Read (cairo)", cwe: ["CWE-125","CWE-122"], apiOnly: false, loc: "cairo/src/cairo-truetype-subset.c:1462", desc: "find_name() reads 2 bytes at data+record->offset without bounding record->offset/length against the name-table buffer. Reachable via embedded TrueType font in a PDF annotation. ASan heap-buffer-overflow confirmed. CVSS 7.8." },
+      { id: "10-cairo-type1-intovf", title: "Type1 font metric multiplication overflow [cairo]", sev: "medium", type: "Integer Overflow (cairo)", cwe: ["CWE-190"], apiOnly: false, loc: "cairo/src/cairo-type1-subset.c:667", desc: "`55882 * 52845` in int32 ≈ 2.95e9 > INT_MAX. Triggered by LaTeX-style Type1 fonts (CMBX12, CMR10) via poppler annotation rendering. UBSan confirmed. CVSS 5.5." },
+      { id: "11-pdfdoc-inline-img-dos", title: "CPU DoS via unbounded inline-image dimensions", sev: "high", type: "Uncontrolled Resource Consumption", cwe: ["CWE-400"], apiOnly: false, loc: "poppler/Gfx.cc (BI/ID/EI handling)", desc: "Inline image parser trusts declared /W and /H (up to 32767×32767) without validating against actual stream bytes. 485 B PDF → ~57 s CPU (~1455× slowdown). CVSS 7.5." },
+      { id: "12-textout-dos", title: "CPU+memory DoS via oversized page + text blocks", sev: "high", type: "Uncontrolled Resource Consumption", cwe: ["CWE-400"], apiOnly: false, loc: "splash/SplashBitmap.cc ctor + poppler/TextOutputDev.cc (TextPage::coalesce)", desc: "Two joined defects: SplashBitmap allocates height*rowSize with no height cap (~240 MB for MediaBox 300×200050), and TextPage::coalesce()/visitDepthFirst is O(n²) over isolated text blocks. 347 KB PoC → ~20 s, ~290 MB RSS. CVSS 7.5." },
+      { id: "13-outline-recursion-stackoverflow", title: "Stack overflow in outline /First chain traversal", sev: "high", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false, loc: "cpp/poppler-toc.cpp:84 / utils/HtmlOutputDev.cc:1729", desc: "toc_item_private::load_children() and HtmlOutputDev::newHtmlOutlineLevel() both recurse into outline kids without any depth check; 100k-level /First chain overflows the stack (ASan stack-overflow with ulimit -s 1024). Reachable via poppler-cpp create_toc() and pdftohtml. CVSS 7.5." }
     ]
   },
   {
