@@ -1,5 +1,4 @@
 /*
- * PoC for SF12: Stack overflow via deeply nested multipart MIME structures
  *
  * The MIME read functions are mutually recursive with no depth limit:
  *   Curl_mime_read -> readback_part -> read_part_content (MIMEKIND_MULTIPART)

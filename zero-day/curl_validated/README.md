@@ -1,8 +1,8 @@
 # curl Zero-Day Findings
 
-**Date**: 2026-04-17  
+**Date**: 2026-04-18  
 **Source**: Automated hypothesis generation + manual validation against `vulagent/curl:latest`  
-**Total hypotheses analyzed**: 128 across 10 scan sessions  
+**Total hypotheses analyzed**: 128 across 10 file scanning sessions  
 **Confirmed vulnerabilities**: 10  
 **False positives**: 118  
 
@@ -14,7 +14,7 @@
 |---|--------|----------|-----------|-----|-----------|-----|
 | 1 | `vuln-01-tls-null-deref-client-cert` | **HIGH** | `lib/vtls/openssl.c:1559` | NULL deref in `EVP_PKEY_copy_parameters()` — `X509_get_pubkey()` unchecked in `client_cert()` | any | CWE-476 |
 | 2 | `vuln-02-tls-privkey-null-deref` | MEDIUM | `lib/vtls/openssl.c:1568` | NULL deref in `EVP_PKEY_id()` — `SSL_get_privatekey()` unchecked (ENGINE/deprecated path) | deprecated path | CWE-476 |
-| 3 | `vuln-03-certinfo-oob-write` | MEDIUM | `lib/vtls/vtls.c:658` | Heap OOB write in `Curl_ssl_push_certinfo_len()` — `certnum` bounds only via `DEBUGASSERT`, stripped in release | release build | CWE-787 |
+| 3 | `vuln-03-certinfo-oob-write` | **HIGH** | `lib/vtls/vtls.c:658` | Heap OOB write in `Curl_ssl_push_certinfo_len()` — sole guard is `DEBUGASSERT`, no-op in every release build; all 5 TLS backends funnel through this unguarded write; certnum derived from server cert chain | `CURLOPT_CERTINFO=1` | CWE-787 |
 | 4 | `vuln-04-easy-stack-overflow` | MEDIUM | `lib/easy.c` | Stack buffer overflow in `populate_fds()` — `fds[4]` overflows with 5+ concurrent sockets via `curl_easy_perform_ev()` | `DEBUGBUILD` | CWE-121 |
 | 5 | `vuln-05-ssls-export-uaf` | **HIGH** | `lib/vtls/vtls_scache.c:1214` | Heap-UAF in `Curl_ssl_session_export()` — iterator invalidated when callback calls `curl_easy_ssls_import` during export | `USE_SSLS_EXPORT` | CWE-416 |
 | 6 | `vuln-06-ssls-import-oob-read` | MEDIUM-HIGH | `lib/vtls/vtls_scache.c` | OOB read in `curl_easy_ssls_import()` — `shmac_len` validates size but buffer can be smaller; reads 22B past end | `USE_SSLS_EXPORT` | CWE-125 |
@@ -25,66 +25,42 @@
 
 ---
 
-## Folder Structure
+## Reporting Split
 
-```
-curl/
-├── README.md                              ← this file
-│
-├── vuln-01-tls-null-deref-client-cert/    HIGH   openssl.c EVP_PKEY_copy_parameters NULL deref
-│   ├── poc.c
-│   └── report.md
-│
-├── vuln-02-tls-privkey-null-deref/        MEDIUM openssl.c EVP_PKEY_id NULL deref
-│   ├── poc.c
-│   └── report.md
-│
-├── vuln-03-certinfo-oob-write/            MEDIUM vtls.c certnum OOB write (release build)
-│   ├── poc.c
-│   └── report.md
-│
-├── vuln-04-easy-stack-overflow/           MEDIUM easy.c populate_fds stack overflow (DEBUGBUILD)
-│   ├── poc.c
-│   └── report.md
-│
-├── vuln-05-ssls-export-uaf/               HIGH   vtls_scache.c session export heap-UAF
-│   ├── poc.c
-│   └── report.md
-│
-├── vuln-06-ssls-import-oob-read/          MED-HIGH vtls_scache.c shmac OOB read
-│   ├── poc.c
-│   └── report.md
-│
-├── vuln-07-ssls-import-null-deref/        MEDIUM vtls_scache.c sdata NULL deref
-│   ├── poc.c
-│   └── report.md
-│
-├── vuln-08-mime-recursion-stack-overflow/ MEDIUM mime.c unbounded recursion → stack overflow
-│   ├── poc.c
-│   └── report.md
-│
-├── vuln-09-mime-base64-int-overflow/      LOW-MED mime.c encoder_base64_size signed overflow
-│   ├── poc.c
-│   └── report.md
-│
-├── vuln-10-ws-send-missing-nwritten/      LOW    ws.c ws_send_raw_blocking missing *pnwritten
-│   └── report.md
-```
+curl's current policy says several categories are usually not security issues:
+- API misuse
+- debug-only paths
+- experimental features that are off by default
+- NULL dereferences and plain crashes
+- busy-loops that eventually end
 
----
+Based on that policy, the practical split is:
 
-## Reporting Priority
+### Private security reports
 
-1. **Report immediately** (no special build flags, ASAN-confirmed crash):
-   - `vuln-01` — malformed client cert crashes any TLS connection using `CURLOPT_SSLCERT`
-   - `vuln-08` — attacker-supplied MIME structure causes DoS via stack overflow
+- `vuln-05-ssls-export-uaf`
+  - prepared in [ISSUE.md](/scr2/yiwei/vul-agent/zero-day/curl_validated/vuln-05-ssls-export-uaf/ISSUE.md)
+  - note: policy risk remains because SSLS export/import is experimental and off by default
+- `vuln-08-mime-recursion-stack-overflow`
+  - prepared in [ISSUE.md](/scr2/yiwei/vul-agent/zero-day/curl_validated/vuln-08-mime-recursion-stack-overflow/ISSUE.md)
+  - best remaining private-report candidate
+- `vuln-03-certinfo-oob-write`
+  - prepared in [ISSUE.md](/scr2/yiwei/vul-agent/zero-day/curl_validated/vuln-03-certinfo-oob-write/ISSUE.md)
 
-2. **Report with note on build flags**:
-   - `vuln-05` — HIGH severity UAF but requires `USE_SSLS_EXPORT` (new API, may not be widely deployed)
-   - `vuln-06`, `vuln-07` — same `USE_SSLS_EXPORT` gate
+### Public issues
 
-3. **Report as hardening / defense-in-depth**:
-   - `vuln-03` — DEBUGASSERT-only bounds check should be a runtime check
-   - `vuln-04` — fixed-size array in debug-only API path
-   - `vuln-09` — UBSan-detected overflow, no direct memory corruption
-   - `vuln-10` — low severity API contract issue
+- `vuln-01-tls-null-deref-client-cert`
+  - prepared in [PUBLIC_ISSUE.md](/scr2/yiwei/vul-agent/zero-day/curl_validated/vuln-01-tls-null-deref-client-cert/PUBLIC_ISSUE.md)
+- `vuln-02-tls-privkey-null-deref`
+  - prepared in [PUBLIC_ISSUE.md](/scr2/yiwei/vul-agent/zero-day/curl_validated/vuln-02-tls-privkey-null-deref/PUBLIC_ISSUE.md)
+- `vuln-04-easy-stack-overflow`
+  - prepared in [PUBLIC_ISSUE.md](/scr2/yiwei/vul-agent/zero-day/curl_validated/vuln-04-easy-stack-overflow/PUBLIC_ISSUE.md)
+- `vuln-06-ssls-import-oob-read`
+  - prepared in [PUBLIC_ISSUE.md](/scr2/yiwei/vul-agent/zero-day/curl_validated/vuln-06-ssls-import-oob-read/PUBLIC_ISSUE.md)
+  - this one is memory-unsafe, but curl can plausibly classify it as API misuse and also experimental-feature behavior
+- `vuln-07-ssls-import-null-deref`
+  - prepared in [PUBLIC_ISSUE.md](/scr2/yiwei/vul-agent/zero-day/curl_validated/vuln-07-ssls-import-null-deref/PUBLIC_ISSUE.md)
+- `vuln-09-mime-base64-int-overflow`
+  - prepared in [PUBLIC_ISSUE.md](/scr2/yiwei/vul-agent/zero-day/curl_validated/vuln-09-mime-base64-int-overflow/PUBLIC_ISSUE.md)
+- `vuln-10-ws-send-missing-nwritten`
+  - prepared in [PUBLIC_ISSUE.md](/scr2/yiwei/vul-agent/zero-day/curl_validated/vuln-10-ws-send-missing-nwritten/PUBLIC_ISSUE.md)

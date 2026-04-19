@@ -1,5 +1,4 @@
 /*
- * ER_FOLDER_064756 - SF01 PoC
  * Stack buffer overflow in populate_fds() via curl_easy_perform_ev()
  *
  * Affected: lib/easy.c (curl 8.20.0-DEV, DEBUGBUILD only)

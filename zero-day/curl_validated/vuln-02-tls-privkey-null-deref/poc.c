@@ -1,5 +1,4 @@
 /*
- * SF15 PoC - NULL deref in EVP_PKEY_id() when SSL_get_privatekey returns NULL
  *
  * Affected: curl/lib/vtls/openssl.c, client_cert() function, lines 1568-1570
  *

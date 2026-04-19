@@ -1,7 +1,4 @@
 /*
- * PoC for SF20: NULL pointer dereference when sdata=NULL but sdata_len>0
- * in curl_easy_ssls_import -> Curl_ssl_session_import -> Curl_ssl_session_unpack
- *
  * Affected: curl lib/vtls/vtls_scache.c:Curl_ssl_session_import (line 1097)
  *           curl lib/vtls/vtls_spack.c:Curl_ssl_session_unpack (line 254-259)
  *
@@ -13,10 +10,6 @@
  *   In sanitizer builds the SEGV on NULL dereference is caught at vtls_spack.c:59.
  *
  * Crash: SEGV at spack_dec8 which reads *buf where buf=NULL.
- *
- * Reproduction:
- *   clang -fsanitize=address -g -O1 poc.c -lcurl -lssl -lcrypto -lz -lpthread -o poc
- *   ASAN_OPTIONS=detect_leaks=0 ./poc
  */
 #include <stdio.h>
 #include <string.h>

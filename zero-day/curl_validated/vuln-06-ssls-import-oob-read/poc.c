@@ -1,5 +1,4 @@
 /*
- * PoC for SF15: Stack-buffer-overflow (OOB read) in Curl_ssl_session_import
  * via undersized shmac buffer with claimed shmac_len=64.
  *
  * Affected: curl lib/vtls/vtls_scache.c:Curl_ssl_session_import (lines 1109-1117)
@@ -22,9 +21,6 @@
  * Exploitation: OOB read - can leak adjacent stack memory (salt/hmac from surrounding data),
  * potentially leaking sensitive cryptographic material.
  *
- * Reproduction:
- *   clang -fsanitize=address -g -O1 poc.c -lcurl -lssl -lcrypto -lz -lpthread -o poc
- *   ASAN_OPTIONS=detect_leaks=0 ./poc
  */
 #include <stdio.h>
 #include <string.h>

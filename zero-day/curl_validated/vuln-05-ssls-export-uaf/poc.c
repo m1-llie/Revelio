@@ -1,5 +1,4 @@
 /*
- * PoC for SF12: Iterator invalidation in Curl_ssl_session_export
  *
  * The export callback is called while iterating peer->sessions linked list.
  * If the callback calls curl_easy_ssls_import (which can add sessions, pushing

@@ -1,5 +1,4 @@
 /*
- * PoC for SF06/SF03: Signed integer overflow in encoder_base64_size()
  *
  * encoder_base64_size() computes the expected base64-encoded output size:
  *   size = 4 * (1 + ((size - 1) / 3));   // OVERFLOW when datasize near LLONG_MAX
@@ -17,13 +16,6 @@
  * This is reported as Content-Length to HTTP/SMTP servers, which may confuse them
  * or cause premature EOF detection.
  *
- * Build:
- *   clang -fsanitize=undefined -g poc_sf06.c \
- *     -I/path/to/curl/include /path/to/libcurl.a \
- *     -lssl -lcrypto -lz -o poc_sf06
- *
- * Run:
- *   UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=0 ./poc_sf06
  */
 
 #include <curl/curl.h>
