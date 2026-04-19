@@ -10,8 +10,9 @@ ASAN's `allocation-size-too-big` or silently corrupts the heap on non-instrument
 builds.
 
 - **Affected file**: `tsk/pool/apfs_pool_compat.cpp` (line 343)
-- **Confirmed on commit**: `01de034` (2026-04-15, sleuthkit main)
-- **Sanitizer**: ASAN (crash confirmed)
+- **Confirmed on commit**: `01de034` (2026-04-15, sleuthkit develop-4.14)
+- **Re-confirmed on commit**: `d784e64db6` (2026-04-13, sleuthkit develop branch)
+- **Sanitizer**: ASAN (crash confirmed on both commits)
 - **Impact**: DoS / potential heap corruption
 
 ## Root Cause

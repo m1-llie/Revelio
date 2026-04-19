@@ -9,8 +9,9 @@ large value (e.g., 0xFFFF), the loop reads far past the end of the 4096-byte sup
 raw buffer, causing a heap-buffer-overflow.
 
 - **Affected file**: `tsk/fs/btrfs.cpp` (lines 358, 396)
-- **Confirmed on commit**: `01de034` (2026-04-15, sleuthkit main)
-- **Sanitizer**: ASAN (crash confirmed)
+- **Confirmed on commit**: `01de034` (2026-04-15, sleuthkit develop-4.14)
+- **Re-confirmed on commit**: `d784e64db6` (2026-04-13, sleuthkit develop branch)
+- **Sanitizer**: ASAN (crash confirmed on both commits)
 - **Impact**: DoS / information disclosure
 
 ## Root Cause

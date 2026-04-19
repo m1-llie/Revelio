@@ -11,8 +11,9 @@ image to bypass the check by setting these fields to negative values (e.g.,
 heap-allocated `grp_buf`, causing an out-of-bounds read.
 
 - **Affected file**: `tsk/fs/ffs.cpp` (lines 88–89, 751–755)
-- **Confirmed on commit**: `01de034` (2026-04-15, sleuthkit main)
-- **Sanitizer**: ASAN (crash confirmed)
+- **Confirmed on commit**: `01de034` (2026-04-15, sleuthkit develop-4.14)
+- **Re-confirmed on commit**: `d784e64db6` (2026-04-13, sleuthkit develop branch)
+- **Sanitizer**: ASAN (crash confirmed on both commits)
 - **Impact**: DoS / information disclosure
 
 ## Root Cause

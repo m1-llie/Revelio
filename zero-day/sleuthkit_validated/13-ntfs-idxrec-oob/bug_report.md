@@ -9,8 +9,9 @@ with a malformed `$INDEX_ALLOCATION` attribute whose INDX record header contains
 causes reading past the end of the 4096-byte index record buffer.
 
 - **Affected file**: `tsk/fs/ntfs_dent.cpp` (line 737)
-- **Confirmed on commit**: `01de034` (2026-04-15, sleuthkit main)
-- **Sanitizer**: ASAN (crash confirmed)
+- **Confirmed on commit**: `01de034` (2026-04-15, sleuthkit develop-4.14)
+- **Re-confirmed on commit**: `d784e64db6` (2026-04-13, sleuthkit develop branch)
+- **Sanitizer**: ASAN (crash confirmed on both commits)
 - **Impact**: DoS / information disclosure / potential OOB write
 
 ## Root Cause
