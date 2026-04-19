@@ -1,5 +1,5 @@
 # Security related
-vuln-05: reported to HackerOne, no response yet
+vuln-05: reported to HackerOne on Apr 18, no response yet
 
 vuln-08: not reported yet due to HackerOne policy
 
