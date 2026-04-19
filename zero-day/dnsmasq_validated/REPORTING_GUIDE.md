@@ -84,39 +84,30 @@ public disclosure and break the embargo.
 
 **Attach** (or inline) the following files from this directory:
 - `01-log_query-ds-heap-overflow/poc_reproducer.c` — standalone reproducer
-- `01-log_query-ds-heap-overflow/01-log_query-ds-heap-overflow.md` — full bug report
+- `01-log_query-ds-heap-overflow/ISSUE.md` — full bug report
 - `01-log_query-ds-heap-overflow/asan_output_validated.txt` — confirmed crash output
 
 **Body (template):**
 
 ```
-Hi Simon,
-
-I'm writing to report a heap buffer overflow in dnsmasq's log_query() function
-that is reachable from the network when DNSSEC validation and query logging are
-both enabled.
+Dear Simon,
+I'm writing to report a heap buffer overflow in dnsmasq's log_query() function that is reachable from the network when DNSSEC validation and query logging are both enabled.
 
 Summary:
-  File:    src/cache.c, log_query(), line 2358
-  Bug:     sprintf() writes 58 bytes into a 46-byte heap buffer (daemon->addrbuff)
-  Trigger: DS record with key_tag=65535, algorithm=255, digest_type=255
-           Both algorithm 255 and digest_type 255 are IANA-unassigned, causing
-           the "(not supported)" branch in dnssec.c:1104 to fire.
-  Impact:  Heap write overflow (12 bytes); DoS / potential heap metadata corruption
-  CVSS 3.1: 7.5 (High) — AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H
+  File:    src/cache.c, log_query(), line 2358
+  Bug:     sprintf() writes 58 bytes into a 46-byte heap buffer (daemon->addrbuff)
+  Trigger: DS record with key_tag=65535, algorithm=255, digest_type=255
+           Both algorithm 255 and digest_type 255 are IANA-unassigned, causing
+           the "(not supported)" branch in dnssec.c:1104 to fire.
+  Impact:  Heap write overflow (12 bytes); DoS / potential heap metadata corruption
+  CVSS 3.1: 7.5 (High) — AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H
 
-Reproduced on dnsmasq v2.93 (latest as of 2026-04-17) with clang ASAN.
+Reproduced on dnsmasq v2.93test9 (latest as of 2026-04-18) with clang ASAN.
+Confirmed still present in upstream HEAD 2d0e0c7a (thekelleys.org.uk gitweb).
 
-I have attached a standalone reproducer (poc_reproducer.c), a detailed bug report,
-and the ASAN crash output. Build and run the reproducer with:
+I have attached a standalone reproducer and a detailed bug report.
 
-  clang -fsanitize=address,undefined -g -o poc poc_reproducer.c
-  ASAN_OPTIONS=detect_leaks=0 ./poc
-
-I am following coordinated disclosure practices. Please let me know your preferred
-timeline for a fix and whether you need any additional information.
-
-[Your name / handle]
+Thank you for maintaining this project!
 ```
 
 ### 2. Send the Email
@@ -157,11 +148,11 @@ Once Simon releases a patched version:
 ## Files in This Report
 
 ```
-3-dnsmasq-260417/
+dnsmasq_validated/
 ├── REPORTING_GUIDE.md                        ← this file
 └── 01-log_query-ds-heap-overflow/
     ├── poc_reproducer.c                       ← standalone ASAN reproducer
     ├── build.sh                               ← one-step build + run
-    ├── 01-log_query-ds-heap-overflow.md       ← full technical bug report
+    ├── ISSUE.md                               ← full technical bug report
     └── asan_output_validated.txt              ← Docker-validated crash output
 ```

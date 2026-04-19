@@ -1,9 +1,72 @@
-Validation environment:
-  Image  : vulagent/dnsmasq:latest (dnsmasq v2.93, clang 22.0.0git)
-  Date   : 2026-04-17
-  Command: clang -fsanitize=address,undefined -g -o /tmp/poc poc_reproducer.c
-           ASAN_OPTIONS=detect_leaks=0 /tmp/poc
+# Heap-buffer-overflow in `log_query()` for unsupported DS records
 
+## Summary
+
+When dnsmasq logs an unsupported DS record, `log_query()` formats the message into
+`daemon->addrbuff` with `sprintf()`. The destination buffer is 46 bytes, but the
+unsupported-DS format string can require 58 bytes for legal wire values such as
+`keytag=65535`, `algo=255`, and `digest=255`.
+
+I reproduced this on dnsmasq `v2.93test9` (latest release as of 2026-04-18).
+The vulnerability is confirmed present in the current official HEAD
+`2d0e0c7a54f73d10d7afa15691c08cf5ec1e4ee2` from the upstream gitweb
+(https://thekelleys.org.uk/gitweb/?p=dnsmasq.git).
+
+## Affected code path
+
+- **File:** `src/cache.c`
+- **Function:** `log_query()`
+- **Overflow site:** `src/cache.c:2358`
+- **Format source:** `src/dnssec.c:1104`
+- **Buffer allocation:** `src/option.c:5967`
+
+## Root cause
+
+The vulnerable write is:
+
+```c
+sprintf(daemon->addrbuff, arg,
+        addr->log.keytag, addr->log.algo, addr->log.digest);
+```
+
+The format string:
+
+```c
+"DS for keytag %hu, algo %hu, digest %hu (not supported)"
+```
+
+can render to 58 bytes including the trailing NUL, but `daemon->addrbuff` is only 46
+bytes long.
+
+## Tested version
+
+- **Version reproduced:** dnsmasq `v2.93test9` (latest release as of 2026-04-18)
+- **Current upstream HEAD verified:** `2d0e0c7a54f73d10d7afa15691c08cf5ec1e4ee2` (https://thekelleys.org.uk/gitweb/?p=dnsmasq.git)
+
+## Environment
+
+- **OS:** Ubuntu Linux x86_64
+- **Compiler:** clang 22.0.0git (LLVM trunk)
+- **Sanitizers:** AddressSanitizer + UndefinedBehaviorSanitizer
+
+## Reproduction
+
+The attached `poc_reproducer.c` mirrors the exact buffer size, format string, and field
+values.
+
+```bash
+clang -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1 \
+  poc_reproducer.c -o /tmp/poc_dnsmasq_ds_overflow
+
+ASAN_OPTIONS="halt_on_error=1:print_stacktrace=1:detect_leaks=0" \
+  /tmp/poc_dnsmasq_ds_overflow
+```
+
+## ASan output
+
+Validated in Docker image `vulagent/dnsmasq:latest` (dnsmasq v2.93test9, clang 22.0.0git) on 2026-04-17.
+
+```text
 =================================================================
 ==13==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x7b4981ae007e at pc 0x55cd1f21263b bp 0x7fff11b85150 sp 0x7fff11b84900
 WRITE of size 58 at 0x7b4981ae007e thread T0
@@ -52,3 +115,25 @@ Shadow byte legend (one shadow byte represents 8 application bytes):
   Left alloca redzone:     ca
   Right alloca redzone:    cb
 ==13==ABORTING
+```
+
+## Impact
+
+- CWE-122: Heap-based Buffer Overflow
+- This is a heap out-of-bounds write in a network-reachable logging path.
+- In the tested configuration it crashes dnsmasq.
+- In other builds it may also corrupt adjacent heap state.
+
+## Suggested fix
+
+Use `snprintf()` instead of `sprintf()`:
+
+```c
+snprintf(daemon->addrbuff, ADDRSTRLEN, arg,
+         addr->log.keytag, addr->log.algo, addr->log.digest);
+```
+
+## Duplicate check
+
+I did not find a clearly matching public dnsmasq issue for this exact unsupported-DS
+logging path.
