@@ -1,5 +1,7 @@
 # Double-Free / Heap-Use-After-Free in `heif_track_release()`
 
+> **Security Assessment: VALID** — ASAN `heap-use-after-free READ`; triggered by calling `heif_track_release()` twice on the same pointer via the documented public API. Recommend reporting.
+
 ## Summary
 
 `heif_track_release()` unconditionally deletes the track object with no guard
@@ -11,8 +13,9 @@ already-freed heap region, yielding an ASAN-confirmed
 
 - **Affected file:** `libheif/api/libheif/heif_sequences.cc`, line 55–58  
   (struct layout: `libheif/api_structs.h`, line 41)
-- **Type:** CWE-415 Double Free / CWE-416 Use After Free
-- **Confirmed on version:** libheif 1.21.2
+- **CWE:** CWE-415 (Double Free), CWE-416 (Use After Free)
+- **CVSS 3.1:** 6.1 Medium (AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H)
+- **Confirmed on version:** libheif 1.21.2 (latest, 2026-04-17) and master commit `f20a88baec0f34825cc076b3dfb2578fb2d5728c` (2026-04-17)
 
 ---
 
@@ -145,7 +148,8 @@ Full output is in `asan_output_validated.txt`.
 
 ## Impact
 
-- **CWE:** CWE-415 (Double Free) / CWE-416 (Use After Free)
+- **CWE:** CWE-415 (Double Free), CWE-416 (Use After Free)
+- **CVSS 3.1:** 6.1 Medium (AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H)
 - **Severity:** Medium — exploitable when an application error path leads to
   double-release (e.g., error handling that calls `heif_track_release()` on a
   pointer that has already been released in a cleanup block, or a C wrapper

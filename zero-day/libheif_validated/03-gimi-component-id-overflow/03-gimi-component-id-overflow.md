@@ -1,5 +1,7 @@
 # Integer Overflow → Heap OOB Write in `heif_image_set_gimi_component_content_id()`
 
+> **Security Assessment: VALID** — ASAN SEGV at 0x47fff7ffd (OOB write, not zero page); triggered via documented public API with `UINT32_MAX` boundary input. Recommend reporting.
+
 ## Summary
 
 `heif_image_set_gimi_component_content_id()` in
@@ -13,8 +15,10 @@ detected by both UBSan and ASAN as a SEGV.
 - **Affected file:** `libheif/api/libheif/heif_uncompressed.cc`
 - **Function:** `heif_image_set_gimi_component_content_id()`
 - **Line:** 784–786 (latest master `f20a88b`, 2026-04-17)
-- **Confirmed on:** libheif master commit `f20a88baec0f34825cc076b3dfb2578fb2d5728c`
+- **Confirmed on:** libheif 1.21.2 (latest, 2026-04-17) and master commit `f20a88baec0f34825cc076b3dfb2578fb2d5728c` (2026-04-17)
 - **Build requirement:** `WITH_UNCOMPRESSED_CODEC=ON`
+- **CWE:** CWE-190 (Integer Overflow or Wraparound) → CWE-122 (Heap-Based Buffer Overflow)
+- **CVSS 3.1:** 6.1 Medium (AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H)
 - **Impact:** Undefined behaviour (write to unmapped address) → crash; potential heap corruption
 
 ---
@@ -125,8 +129,8 @@ SUMMARY: AddressSanitizer: SEGV heif_uncompressed.cc:786:22
 
 | Property | Value |
 |----------|-------|
-| Type | CWE-190 (Integer Overflow) → CWE-122 (Heap-Based Buffer Overflow) |
-| CVSS 3.1 (estimate) | 6.2 — Medium (AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H) |
+| Type | CWE-190 (Integer Overflow or Wraparound) → CWE-122 (Heap-Based Buffer Overflow) |
+| CVSS 3.1 (estimate) | 6.1 Medium (AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H) |
 | Primitive | UB + SEGV (write to unmapped address); potential heap corruption with crafted layout |
 | Trigger | Direct API call with component_idx = UINT32_MAX; no file parsing required |
 | Scope | `WITH_UNCOMPRESSED_CODEC=ON` builds only |

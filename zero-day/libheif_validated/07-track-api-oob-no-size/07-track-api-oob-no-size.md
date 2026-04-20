@@ -1,5 +1,7 @@
 # Heap Buffer Overflow in Track ID/Reference APIs Due to Missing Size Parameter
 
+> **Security Assessment: VALID** — ASAN `heap-buffer-overflow WRITE`; triggered via documented public APIs `heif_context_get_track_ids()` and `heif_track_get_track_reference_types()` with an attacker-controlled HEIF file. Recommend reporting.
+
 ## Summary
 
 Two related functions in the libheif C API write unbounded arrays into caller-provided
@@ -8,8 +10,9 @@ caller's buffer is smaller than the actual data.
 
 - **Affected functions:** `heif_context_get_track_ids()`, `heif_track_get_track_reference_types()`
 - **Affected file:** `libheif/api/libheif/heif_sequences.cc`
-- **Type:** CWE-120 (Buffer Copy without Checking Size of Input), CWE-122 (Heap Buffer Overflow)
-- **Confirmed on version:** libheif 1.21.2
+- **CWE:** CWE-120 (Buffer Copy without Checking Size of Input), CWE-122 (Heap-Based Buffer Overflow)
+- **CVSS 3.1:** 6.1 Medium (AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H)
+- **Confirmed on version:** libheif 1.21.2 (latest, 2026-04-17) and master commit `f20a88baec0f34825cc076b3dfb2578fb2d5728c` (2026-04-17)
 
 Both bugs share the same root pattern: the API contract documents that the caller must
 pre-allocate a buffer of the "correct" size using a separate query function, but the
@@ -152,7 +155,8 @@ allocated by thread T0 here:
 
 ## Impact
 
-- **CWE:** CWE-122 Heap Buffer Overflow, CWE-120 Buffer Copy without Checking Size
+- **CWE:** CWE-120 (Buffer Copy without Checking Size of Input), CWE-122 (Heap-Based Buffer Overflow)
+- **CVSS 3.1:** 6.1 Medium (AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H)
 - **Severity:** Medium — API-level bug; exploitable when the library is used with untrusted
   HEIF files that control track count or tref reference type count
 - **Effect:** Heap corruption past the caller's buffer on every write past the boundary.

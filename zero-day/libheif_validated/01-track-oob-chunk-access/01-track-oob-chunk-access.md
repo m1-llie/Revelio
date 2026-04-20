@@ -2,30 +2,23 @@
 
 ## Summary
 
-`Track::init_sample_timing_table()` in `libheif/sequences/track.cc` stores an
-out-of-bounds chunk index (`m_chunks.size()`) into `m_presentation_timeline` when
-the number of chunks defined in the `stco` box is less than the number of samples
-in `stsz`. A subsequent call to `heif_track_get_next_raw_sequence_sample()` reads
-`m_chunks[chunk_idx]` with that OOB index, causing a **heap-buffer-overflow**.
+`Track::init_sample_timing_table()` in `libheif/sequences/track.cc` stores an out-of-bounds chunk index (`m_chunks.size()`) into `m_presentation_timeline` when the number of chunks defined in the `stco` box is less than the number of samples in `stsz`. A subsequent call to `heif_track_get_next_raw_sequence_sample()` reads `m_chunks[chunk_idx]` with that OOB index, causing a **heap-buffer-overflow**.
 
 - **Affected file:** `libheif/sequences/track.cc`
 - **Crash function:** `Track::get_next_sample_raw_data()`, line 1087
 - **Root-cause function:** `Track::init_sample_timing_table()`, line ~1018
-- **Confirmed on version:** libheif 1.21.2 (latest release, 2025-01-16)
+- **Confirmed on version:** libheif 1.21.2 (latest release, 2025-01-16) and master commit `f20a88baec0f34825cc076b3dfb2578fb2d5728c` (2026-04-17)
+- **CWE:** CWE-125 (Out-of-bounds Read)
+- **CVSS 3.1:** 6.5 Medium (AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:H)
 - **Impact:** Denial of service (crash); potential read of heap memory adjacent to the chunk vector
 
----
 
 ## Root Cause
 
-`Track::load()` builds `m_chunks` by iterating over `stco` chunk offsets. It
-validates that each individual chunk's sample count does not exceed `stsz`, but
-never checks that the total samples assigned to chunks equals `stsz->num_samples()`.
-If `stco` has fewer entries than needed, the remaining samples are left without a
-valid chunk.
+`Track::load()` builds `m_chunks` by iterating over `stco` chunk offsets. It validates that each individual chunk's sample count does not exceed `stsz`, but never checks that the total samples assigned to chunks equals `stsz->num_samples()`.
+If `stco` has fewer entries than needed, the remaining samples are left without a valid chunk.
 
-`init_sample_timing_table()` then iterates over *all* `m_num_samples` and
-increments `current_chunk` whenever `i > m_chunks[current_chunk]->last_sample_number()`:
+`init_sample_timing_table()` then iterates over *all* `m_num_samples` and increments `current_chunk` whenever `i > m_chunks[current_chunk]->last_sample_number()`:
 
 ```cpp
 // track.cc ~1010–1025
@@ -46,18 +39,13 @@ for (uint32_t i = 0; i < m_num_samples; i++) {
 }
 ```
 
-When `current_chunk` reaches `m_chunks.size()`, the `while` guard exits (because
-`current_chunk < m_chunks.size()` becomes false), the `>` vs `>=` error in the
-inner check leaves `timing.chunkIdx = m_chunks.size()` unhandled, and the OOB
-index is written to `m_presentation_timeline`.
+When `current_chunk` reaches `m_chunks.size()`, the `while` guard exits (because `current_chunk < m_chunks.size()` becomes false), the `>` vs `>=` error in the inner check leaves `timing.chunkIdx = m_chunks.size()` unhandled, and the OOB index is written to `m_presentation_timeline`.
 
 Later, `get_next_sample_raw_data()` at line 1087 dereferences:
 
 ```cpp
 const std::shared_ptr<Chunk>& chunk = m_chunks[chunk_idx];  // chunk_idx OOB
 ```
-
----
 
 ## Vulnerable Code
 
@@ -80,7 +68,6 @@ timing.chunkIdx = current_chunk;             // ← OOB stored here
 const std::shared_ptr<Chunk>& chunk = m_chunks[chunk_idx];  // heap-buffer-overflow
 ```
 
----
 
 ## Proof of Concept
 
@@ -90,14 +77,12 @@ Attached file `poc_input` is a minimal 625-byte ISO BMFF HEIC sequence with:
 - `stsc`: 1 sample per chunk (for all chunks)
 - `stco`: only **2** chunk offsets → only 2 `Chunk` objects are created
 
-Samples 2–4 have `chunkIdx = 2 = m_chunks.size()`. The OOB read fires on the
-third call to `heif_track_get_next_raw_sequence_sample()`.
+Samples 2–4 have `chunkIdx = 2 = m_chunks.size()`. The OOB read fires on the third call to `heif_track_get_next_raw_sequence_sample()`.
 
 ### Build and run
 
 ```bash
 # 1. Build libheif 1.21.2 with ASAN
-git clone https://github.com/strukturag/libheif.git
 cd libheif && git checkout v1.21.2
 mkdir build && cd build
 CC=clang CXX=clang++ cmake .. \
@@ -120,7 +105,7 @@ ASAN_OPTIONS="halt_on_error=1:print_stacktrace=1:detect_leaks=0" \
     ./seq_driver poc_input
 ```
 
-### Observed output (ASAN)
+### Observed output of ASAN
 
 ```
 ==PID==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x... at pc 0x...
@@ -140,21 +125,17 @@ SUMMARY: AddressSanitizer: heap-buffer-overflow
     in Track::get_next_sample_raw_data(heif_decoding_options const*)
 ```
 
----
-
 ## Impact
 
+- **CWE:** CWE-125 (Out-of-bounds Read)
+- **CVSS 3.1:** 6.5 Medium (AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:H)
+
 Any application that:
-1. Opens an attacker-controlled HEIC sequence file via `heif_context_read_from_memory`
-   or `heif_context_read_from_file`, and
+1. Opens an attacker-controlled HEIC sequence file via `heif_context_read_from_memory` or `heif_context_read_from_file`, and
 2. Calls `heif_track_get_next_raw_sequence_sample()` to iterate frames
 
-is vulnerable. The OOB read crashes the process (DoS) and may allow reading heap
-memory adjacent to the chunk vector, depending on heap layout.
+is vulnerable. The OOB read crashes the process (DoS) and may allow reading heap memory adjacent to the chunk vector, depending on heap layout.
 
-Impact is at minimum **availability (process crash / DoS)**.
-
----
 
 ## Suggested Fix
 
