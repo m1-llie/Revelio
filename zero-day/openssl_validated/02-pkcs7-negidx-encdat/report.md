@@ -1,20 +1,31 @@
-# NULL Pointer Dereference in `PKCS7_get_issuer_and_serial()` and `PKCS7_dataInit()` — 2 Confirmed Crashes
+# NULL Pointer Dereference in `PKCS7_get_issuer_and_serial()` and `PKCS7_dataInit()` — 2 Confirmed Crashes (1 legitimate bug, 1 API misuse)
+
+## Classification
+
+| Bug | Classification | Severity |
+|-----|----------------|----------|
+| PK-NEGIDX | **Legitimate defensive programming bug** — public API accepts `int idx`; negative value bypasses bounds guard due to signed comparison, then dereferences NULL. Triggerable via public API without struct manipulation. | Low (DoS) |
+| PK-ENCDAT | **API misuse** — manually NULLing `p7->d.enveloped->enc_data` after construction is not a documented operation. Not reachable from external data. | — |
 
 ## Summary
 
-Two additional NULL-pointer dereferences in `crypto/pkcs7/pk7_doit.c`:
+Two NULL-pointer dereferences in `crypto/pkcs7/pk7_doit.c`:
 
-1. **PK-NEGIDX:** `PKCS7_get_issuer_and_serial()` at line 1177 does not validate
+1. **PK-NEGIDX:** `PKCS7_get_issuer_and_serial()` at line 1176 does not validate
    that `idx` is non-negative before calling `sk_PKCS7_RECIP_INFO_value()`.
-   A negative index maps to a NULL pointer, causing an immediate SIGSEGV.
+   The guard `sk_PKCS7_RECIP_INFO_num(rsk) <= idx` uses a signed comparison, so
+   a negative `idx` (e.g. -1) satisfies `num > -1` — the guard returns false and
+   the code proceeds to dereference the NULL returned by `sk_...value(rsk, -1)`.
+   This is a **legitimate robustness bug**: the public API signature is `int idx`
+   and does not document the constraint `idx >= 0`.
 
 2. **PK-ENCDAT:** `PKCS7_dataInit()` at line 286 dereferences
-   `p7->d.enveloped->enc_data` without checking that `enc_data` is non-NULL.
-   Setting `enc_data = NULL` after type construction crashes in the enveloped
-   branch.
+   `p7->d.enveloped->enc_data` without checking for NULL. The crash in `poc_SF16.c`
+   requires the application to manually free and NULL `enc_data` after construction
+   — this is API misuse and cannot be triggered from external/network input.
 
 - **Affected file:** `crypto/pkcs7/pk7_doit.c`
-- **Confirmed on commit:** `04623f1` (2026-04-17, OpenSSL 4.1.0-dev master)
+- **Confirmed on:** OpenSSL **4.0.0** (tag `openssl-4.0.0`, commit `11b7b6e`)
 - **Build:** ASAN + UBSAN
 
 ---
@@ -102,7 +113,7 @@ SUMMARY: AddressSanitizer: SEGV pk7_doit.c:286:43 in PKCS7_dataInit
 ### Reproduction Steps
 
 ```bash
-OPENSSL=/path/to/openssl-master
+OPENSSL=/tmp/openssl-4.0.0
 
 ./config no-shared no-tests no-apps --debug CC=clang \
     CFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1"

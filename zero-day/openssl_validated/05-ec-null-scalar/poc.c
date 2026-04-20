@@ -1,5 +1,5 @@
 /*
- * Minimal PoC: NULL pointer dereference in ecp_nistz256_windowed_mul
+ * NULL pointer dereference in ecp_nistz256_windowed_mul
  * when EC_POINTs_mul is called with NULL scalar entries for non-NULL points.
  *
  * File: openssl33/crypto/ec/ecp_nistz256.c

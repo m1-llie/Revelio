@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Compile and run all PoCs for 05-ec-null-scalar
 set -e
-OPENSSL="${OPENSSL_SRC:-/tmp/openssl-latest}"
+OPENSSL="${OPENSSL_SRC:-/tmp/openssl-4.0.0}"
 DIR="$(dirname "$0")"
 ASAN_OPTIONS="halt_on_error=0:print_stacktrace=1:detect_leaks=0"
 export ASAN_OPTIONS
