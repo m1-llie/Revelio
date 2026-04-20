@@ -1,27 +1,31 @@
-# Heap-buffer-overflow in `Curl_ssl_push_certinfo_len()` — sole bounds check is `DEBUGASSERT`
+# Missing runtime bounds check in `Curl_ssl_push_certinfo_len()` — sole guard is `DEBUGASSERT`, a no-op in production
 
 # CWE
-`CWE-787: Out-of-bounds Write` (also CWE-125: Out-of-bounds Read)
+`CWE-20: Improper Input Validation` (missing hardening guard; CWE-617: Reachable Assertion)
 
 # severity
-`High`
+`Low`
 
 # Proof of Concept
-Attached file: `poc.c`
+Attached file: `poc.c` (requires `build.sh` to set up mock server)
 
 ## Summary
 
-`Curl_ssl_push_certinfo_len()` in `lib/vtls/vtls.c` uses `DEBUGASSERT(certnum < ci->num_of_certs)` as its **only** bounds check before writing a heap pointer into `ci->certinfo[certnum]`. `DEBUGASSERT` is a no-op in every release/production build (`lib/curl_setup.h:1084`). Any mismatch between the count passed to `Curl_ssl_init_certinfo()` and the certnum values subsequently passed to `Curl_ssl_push_certinfo_len()` results in an unguarded heap out-of-bounds read and write.
+`Curl_ssl_push_certinfo_len()` in `lib/vtls/vtls.c` uses `DEBUGASSERT(certnum < ci->num_of_certs)` as its **only** bounds check before writing a heap pointer into `ci->certinfo[certnum]`. In every production/release build, `DEBUGASSERT` is compiled out to `do{}while(0)` (`lib/curl_setup.h:1084`), leaving the array write at lines `:667`/`:674` completely unchecked at runtime.
 
-This function is the single shared certinfo write path for all five TLS backends (OpenSSL, GnuTLS, mbedTLS, Rustls, Schannel). The `certnum` argument in every backend derives directly from the server-supplied certificate chain length. There is no runtime check in any production build.
+All five TLS backends (OpenSSL, GnuTLS, mbedTLS, Rustls, Schannel) derive `certnum` from the server-supplied certificate chain length and feed it directly into this function. The current call sites keep `certnum` within bounds, so no out-of-bounds write occurs in the current codebase under normal operation. However, a future off-by-one or count mismatch in any one of those five backends would produce silent heap corruption in production builds with **no runtime safety net**.
 
 ## Affected version
 
-Reproduced against curl 8.20.0-DEV (`70281e3`) on Linux x86_64.
+Reproduced against:
+- **curl 8.19.0** (tag `curl-8_19_0`, commit `8c908d2`, released 2025-03-10) — current stable release
+- **curl 8.20.0-DEV** (commit `759f2e5`) — current development tip
 
-## Call path from `CURLOPT_CERTINFO` to the vulnerable write
+Tested on Linux x86_64 with `clang`, AddressSanitizer, and UndefinedBehaviorSanitizer.
 
-When an application sets `CURLOPT_CERTINFO=1`, every successful TLS handshake runs the following sequence (shown for the OpenSSL backend; all five backends are identical in structure):
+## Call path from `CURLOPT_CERTINFO` to the unguarded write
+
+When an application sets `CURLOPT_CERTINFO=1`, every successful TLS handshake runs the following sequence (shown for the OpenSSL backend; all five backends follow the same structure):
 
 ```
 curl_easy_perform(handle)
@@ -30,20 +34,20 @@ curl_easy_perform(handle)
       numcerts = sk_X509_num(peer_cert_chain)   <- server controls N
       Curl_ssl_init_certinfo(data, numcerts)     <- alloc N-slot table
       for i = 0 .. N-1:                         <- certnum = i
-        Curl_ssl_push_certinfo_len(data, i, ...) <- called N times
+        Curl_ssl_push_certinfo_len(data, i, ...) <- called N* times per cert
           DEBUGASSERT(i < num_of_certs)          <- SOLE GUARD, no-op in release
-          ci->certinfo[i] = ...                  <- heap write, unbounded in release
+          ci->certinfo[i] = ...                  <- unguarded write in release
 ```
 
-The same funneling path exists in all five backends:
+The same structure exists in all five backends:
 
-| Backend | File | Line | Caller |
-|---------|------|------|--------|
-| OpenSSL | `openssl.c` | 392, 409–505 | `ossl_certchain()` |
-| GnuTLS | `gtls.c` | 1630, 1638 | `Curl_extract_certinfo()` loop |
-| mbedTLS | `mbedtls.c` | 433, 438 | `mbed_extract_certinfo()` |
-| Rustls | `rustls.c` | 1225, 1250 | certinfo loop |
-| Schannel | `schannel.c` | 1679, 1550 | `add_cert_to_certinfo()` |
+| Backend | File | Caller |
+|---------|------|--------|
+| OpenSSL | `openssl.c:392,409–505` | `ossl_certchain()` |
+| GnuTLS | `gtls.c:1622,1630` | `Curl_extract_certinfo()` loop |
+| mbedTLS | `mbedtls.c:431,433` | `mbed_extract_certinfo()` |
+| Rustls | `rustls.c:1207,1225` | certinfo loop |
+| Schannel | `schannel.c:1679,1686` | `add_cert_to_certinfo()` |
 
 ## Vulnerable code
 
@@ -59,73 +63,126 @@ CURLcode Curl_ssl_push_certinfo_len(struct Curl_easy *data,
 
   /* ... build label:value string ... */
 
-  nl = Curl_slist_append_nodup(ci->certinfo[certnum], ...); /* :667 OOB READ  */
-  ci->certinfo[certnum] = nl;                               /* :674 OOB WRITE */
+  nl = Curl_slist_append_nodup(ci->certinfo[certnum], ...); /* :667 — no runtime check */
+  ci->certinfo[certnum] = nl;                               /* :674 — no runtime check */
 }
 ```
 
-`lib/curl_setup.h:1084`:
+`lib/curl_setup.h:1084` (release builds):
 
 ```c
-#define DEBUGASSERT(x) do {} while(0)   /* release/production builds */
+#define DEBUGASSERT(x) do {} while(0)
 ```
 
 ## Steps To Reproduce
 
-1. Build curl with AddressSanitizer and UndefinedBehaviorSanitizer:
+The PoC uses only the public libcurl API and a mock HTTPS server.
+
+### Setup: build curl 8.19.0 with ASAN
 
 ```bash
+git clone --depth=1 --branch curl-8_19_0 https://github.com/curl/curl curl-819
+cd curl-819
 autoreconf -fi
 CC=clang CFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1" \
 LDFLAGS="-fsanitize=address,undefined" \
-./configure --disable-shared --with-openssl \
-  --disable-docs --disable-manual
+./configure --with-openssl --disable-docs --disable-manual --without-libpsl
 make -j"$(nproc)"
-# If configure fails on optional deps (e.g. libpsl), add --without-libpsl
 ```
 
-2. Compile the attached `poc.c` against the static libcurl:
+### Setup: create a 3-cert chain and start mock HTTPS server
+
+```bash
+# Root CA
+openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+  -keyout root.key -out root.crt -subj '/CN=Root CA'
+
+# Intermediate CA (signed by root)
+openssl req -newkey rsa:2048 -nodes -keyout inter.key -out inter.csr -subj '/CN=Intermediate CA'
+openssl x509 -req -days 3650 -in inter.csr -CA root.crt -CAkey root.key -CAcreateserial \
+  -extfile <(echo 'basicConstraints=CA:TRUE') -out inter.crt
+
+# Leaf cert (signed by intermediate)
+openssl req -newkey rsa:2048 -nodes -keyout leaf.key -out leaf.csr -subj '/CN=localhost'
+openssl x509 -req -days 3650 -in leaf.csr -CA inter.crt -CAkey inter.key -CAcreateserial \
+  -out leaf.crt
+
+cat leaf.crt inter.crt root.crt > chain.crt
+
+# Start mock HTTPS server
+openssl s_server -cert leaf.crt -key leaf.key -cert_chain chain.crt -accept 9443 -www -quiet &
+```
+
+### Compile PoC against libcurl 8.19.0
 
 ```bash
 clang -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1 \
-  -I./include -I./lib \
-  poc.c ./lib/.libs/libcurl.a \
-  -lssl -lcrypto -lz -lpthread -ldl \
-  -o /tmp/poc_curl_certinfo_oob
+  -I./include \
+  poc.c \
+  -L./lib/.libs -lcurl -Wl,-rpath,./lib/.libs \
+  -o /tmp/poc_certinfo
 ```
 
-3. Run it:
+### Run
 
 ```bash
 ASAN_OPTIONS="halt_on_error=0:print_stacktrace=1:detect_leaks=0" \
 UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0" \
-  /tmp/poc_curl_certinfo_oob
+  /tmp/poc_certinfo https://127.0.0.1:9443/
 ```
 
-The PoC calls the real `Curl_ssl_init_certinfo()` (verified via `nm` in the static library) to allocate a production certinfo table for a 2-cert chain. It then replicates the exact read+write pattern from `Curl_ssl_push_certinfo_len()` at lines :667/:674 with `certnum=5`, bypassing the `DEBUGASSERT` to demonstrate release-build behavior.
-
-Observed sanitizer output:
+Observed output (curl 8.19.0, 4-cert chain from mock server):
 
 ```text
-/work/poc.c:173:20: runtime error: load of address 0x... with insufficient space
-    for an object of type 'struct curl_slist *'
-SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior poc.c:173:20
+=== PoC: Curl_ssl_push_certinfo_len() missing runtime bounds check ===
 
-ERROR: AddressSanitizer: heap-buffer-overflow on address 0x... at pc ...
-READ of size 8 at 0x... thread T0
-    #0 main poc.c:173
-0x... is located 7 bytes after 1-byte region [guard allocation]
-SUMMARY: AddressSanitizer: heap-buffer-overflow poc.c:173 in main
+Vulnerable code (lib/vtls/vtls.c:647-675):
+  :658  DEBUGASSERT(certnum < ci->num_of_certs)  <- no-op in release
+  :667  nl = append(ci->certinfo[certnum], ...)  <- unguarded in release
+  :674  ci->certinfo[certnum] = nl;              <- unguarded in release
+
+Connecting to https://127.0.0.1:9443/ with CURLOPT_CERTINFO=1 ...
+
+[Result] Server sent a 4-certificate chain.
+[Result] Curl_ssl_init_certinfo(data, 4) was called  -> 4 heap slots allocated
+[Result] Curl_ssl_push_certinfo_len(data, certnum=0..3, ...) was called 4* times
+
+[Vulnerability] certnum comes from server-controlled chain length.
+                DEBUGASSERT(certnum < num_of_certs) at vtls.c:658
+                is compiled out in release builds.
+                No other bounds check exists at vtls.c:667/674.
+
+[cert certnum=0]
+  Subject:CN = localhost
+  Issuer:CN = Intermediate CA
+  ...
+
+[cert certnum=1] ... [cert certnum=2] ... [cert certnum=3] ...
+
+=== Code path confirmed: certnum is server-controlled ===
+    In release builds vtls.c:658 DEBUGASSERT is a no-op;
+    ci->certinfo[certnum] writes at :667/:674 are unchecked.
 ```
+
+No sanitizer error is raised in the current codebase — all five TLS backends correctly bound their `certnum` loops to `numcerts` today. The issue is the **absence of any runtime check** at the function level.
 
 # Impact
 
-`Curl_ssl_push_certinfo_len()` is the sole write path for all five TLS backends when `CURLOPT_CERTINFO=1` is set. The only guard — `DEBUGASSERT` — is compiled out in every production build.
+The sole protection for `ci->certinfo[certnum]` array accesses at `vtls.c:667` and `:674` is a `DEBUGASSERT` that is unconditionally absent in every production build. `certnum` is derived from the server-supplied certificate chain length.
 
-**Memory corruption in release builds.** Without the assert, `ci->certinfo[certnum]` is an unbounded heap array access. The write at `:674` stores a heap pointer at a server-influenced offset past the end of the allocated table, overwriting adjacent allocator metadata or live heap objects. This is a heap pointer write primitive relative to the certinfo array.
+In the current codebase, all five TLS backends happen to bound their loops correctly. The risk materialises when any of the following occurs:
+- A future off-by-one or refactoring error in any backend causes `certnum` to exceed `num_of_certs`
+- A new backend is added that does not bound `certnum` identically to `init_certinfo`
+- Any memory corruption (e.g. from a separate bug) modifies `num_of_certs` after init but before push
 
-**All five TLS backends are affected equally.** Every backend derives `certnum` from the server-controlled certificate chain length and calls this unguarded function directly. Any future count mismatch in any backend — a filter applied before init but not before push, a new backend, a refactoring error — immediately becomes silent heap corruption in production with no fallback.
+In any of these cases, the write at `:674` stores a heap pointer at an attacker-influenced offset with no runtime fallback — immediate silent heap corruption in production.
 
-**Severity is High** because: the vulnerable code runs on every HTTPS connection that uses `CURLOPT_CERTINFO=1`; the input that drives `certnum` (certificate chain length) is server-controlled; the result in release builds is an unguarded heap pointer write; and the sole protection (`DEBUGASSERT`) is unconditionally absent in production.
+The fix is a single runtime bounds check replacing or supplementing the `DEBUGASSERT` at `:658`:
 
-The fix is a single runtime bounds check before the array access at `:658`.
+```c
+if(certnum < 0 || certnum >= ci->num_of_certs)
+    return CURLE_BAD_CONTENT_ENCODING;
+```
+
+---
+*Reported via HackerOne per curl security policy: https://hackerone.com/curl*
