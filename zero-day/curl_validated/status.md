@@ -1,5 +1,5 @@
 # Security related
-vuln-05: reported to HackerOne on Apr 18. Responded.
+vuln-05: reported to HackerOne on Apr 18, curl #3682666. Responded.
 Response: experimental functionality, API misuse, a bug and they said will probably make the function return error when called from within a callback.
 
 vuln-08: reported to HackerOne on Apr 19 using will0w, curl #3684603. Responded.
