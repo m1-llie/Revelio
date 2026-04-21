@@ -25,6 +25,7 @@ from vulagent.orchestrator.scan_filter_stages import (
     dedup_hypotheses,
     format_check_analysis_context,
     format_constraint_context,
+    hypothesis_priority_key,
     make_batches,
     parse_functions,
     phase_analyze_focused,
@@ -50,7 +51,13 @@ EXCLUDED_DIRS = {
 
 
 def _convert_hypothesis(hyp: dict, index: int, file_path: str) -> VulnHypothesis:
-    """Convert a scan_and_filter dict hypothesis to a VulnHypothesis dataclass."""
+    """Convert a scan_and_filter dict hypothesis to a VulnHypothesis dataclass.
+
+    Propagates Stage 2 triage metadata (``_severity``/``_primitive``/
+    ``_attacker_controls``/``_sanitizers``/``_cwe_ids``) and Stage 2
+    reachability (``_reachable``/``_fuzz_targets``) onto the dataclass so
+    downstream ranking can use them.
+    """
     h = hyp.get("hypothesis", hyp)
     hotspots = h.get("hotspots", [])
     references = [
@@ -65,6 +72,7 @@ def _convert_hypothesis(hyp: dict, index: int, file_path: str) -> VulnHypothesis
     ]
     func = hotspots[0].get("function") if hotspots else None
     warnings = h.get("warnings", [])
+    reachable = hyp.get("_reachable")
     return VulnHypothesis(
         hypothesis_id=f"SF{index:02d}",
         title=h.get("summary", "Unknown vulnerability"),
@@ -76,6 +84,13 @@ def _convert_hypothesis(hyp: dict, index: int, file_path: str) -> VulnHypothesis
         expected_crash="; ".join(str(w) for w in warnings) if warnings else None,
         confidence=hyp.get("_filter_confidence", 0.5),
         references=references,
+        severity=str(hyp.get("_severity", "none")),
+        primitive=str(hyp.get("_primitive", "none")),
+        attacker_controls=str(hyp.get("_attacker_controls", "none")),
+        sanitizers=list(hyp.get("_sanitizers", [])),
+        cwe_ids=[str(c) for c in hyp.get("_cwe_ids", [])],
+        reachable=(bool(reachable) if reachable is not None else None),
+        fuzz_targets=list(hyp.get("_fuzz_targets", [])),
     )
 
 
@@ -84,7 +99,7 @@ class ScanFilterOrchestrator:
 
     Stages:
     1. Multi-pass hypothesis generation (summarize + whole-file + focused + per-function)
-    2. LLM classification & dedup (is_vulnerability, is_asan, CWE, then LLM dedup)
+    2. LLM classification & dedup (is_vulnerability, sanitizers{asan,ubsan,msan}, CWE, then LLM dedup)
     3. Docker sub-agent filtering (verify VALID/INVALID via code inspection)
     """
 
@@ -131,10 +146,177 @@ class ScanFilterOrchestrator:
         self.agent_step_limit = agent_step_limit
         self.agent_cost_limit = agent_cost_limit
         self.model_kwargs = model_kwargs or {"temperature": 1.0, "drop_params": True}
+        # Per-function reachability cache: function symbol -> list of fuzz-target
+        # binaries whose nm table contains it. ``None`` means lookup failed or
+        # the ``arvo`` wrapper doesn't support ``targets`` (non-multi-sanitizer
+        # images). Populated lazily by ``_lookup_fuzz_targets``.
+        self._reachability_cache: dict[str, list[str] | None] = {}
+        # Remember whether ``arvo targets`` is usable in this container. If the
+        # first probe fails or returns an error, stop issuing further lookups.
+        self._arvo_targets_available: bool | None = None
 
     def _log(self, message: str) -> None:
         if self.log_fn:
             self.log_fn(message)
+
+    def _lookup_fuzz_targets(self, function: str | None) -> list[str] | None:
+        """Return fuzzer binaries whose symbol table contains ``function``.
+
+        Uses the ``arvo targets <symbol>`` nm-based lookup. Returns:
+            * ``list[str]`` — matching binaries (possibly empty = unreachable).
+            * ``None``      — lookup is not available (original ARVO images,
+                              stripped binaries, missing `arvo targets`, etc.).
+                              Callers should treat this as "unknown".
+
+        Results are cached per function symbol for the life of this
+        orchestrator instance.
+        """
+        if not function:
+            return None
+        if self._arvo_targets_available is False:
+            return None
+        if function in self._reachability_cache:
+            return self._reachability_cache[function]
+
+        # Probe once: if `arvo targets` isn't supported, disable further lookups.
+        try:
+            result = self.env.execute(
+                f"arvo targets {function} 2>/dev/null; echo __rc=$?"
+            )
+        except Exception as e:
+            self._log(f"[scan_filter] reachability probe failed: {e}")
+            self._arvo_targets_available = False
+            self._reachability_cache[function] = None
+            return None
+
+        output = (result.get("output") or "").strip()
+        lines = output.splitlines()
+        rc_line = lines[-1] if lines else ""
+        body_lines = lines[:-1] if rc_line.startswith("__rc=") else lines
+        rc = rc_line.split("=", 1)[1] if rc_line.startswith("__rc=") else ""
+
+        if rc not in ("", "0"):
+            # Non-zero rc means the wrapper doesn't understand `targets` or
+            # /out/$SANITIZER isn't present. Disable further probing.
+            self._arvo_targets_available = False
+            self._reachability_cache[function] = None
+            return None
+
+        self._arvo_targets_available = True
+        matches = [line.strip() for line in body_lines if line.strip()]
+        self._reachability_cache[function] = matches
+        return matches
+
+    @staticmethod
+    def _file_slug(file_path: str) -> str:
+        return file_path.replace("/", "_").replace(".", "_")
+
+    def _save_incremental(
+        self,
+        file_path: str,
+        file_hypotheses: list[VulnHypothesis],
+        aggregate_hypotheses: list[VulnHypothesis],
+        *,
+        files_done: int,
+        files_total: int,
+    ) -> None:
+        """Persist per-file and running-aggregate progress after each file.
+
+        Writes are idempotent (overwrite) so an interrupted run retains the
+        latest snapshot on disk. Exceptions are swallowed so that I/O hiccups
+        cannot abort the in-progress scan.
+        """
+        slug = self._file_slug(file_path)
+        try:
+            per_file = VulnHypotheses(
+                hypotheses=list(file_hypotheses),
+                generation_notes=(
+                    f"scan_filter results for {file_path}: "
+                    f"{len(file_hypotheses)} final hypotheses."
+                ),
+            )
+            self.store.write_handoff("file_hypothesis", per_file, hypothesis_id=slug)
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"[scan_filter] failed to save per-file handoff for {file_path}: {exc}")
+
+        try:
+            partial = VulnHypotheses(
+                hypotheses=list(aggregate_hypotheses),
+                generation_notes=(
+                    f"PARTIAL: {files_done}/{files_total} files processed, "
+                    f"{len(aggregate_hypotheses)} hypotheses so far."
+                ),
+            )
+            self.store.write_handoff("hypotheses_partial", partial)
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"[scan_filter] failed to save partial aggregate: {exc}")
+
+        self.store.append_event(
+            "file_hypothesis_completed",
+            {
+                "file_path": file_path,
+                "hypotheses_count": len(file_hypotheses),
+                "aggregate_count": len(aggregate_hypotheses),
+                "progress": f"{files_done}/{files_total}",
+            },
+        )
+
+    def _persist_stage3_trace(
+        self,
+        index: int,
+        hypothesis: dict,
+        filter_result: dict,
+        rel_path: str,
+        safe_name: str,
+    ) -> None:
+        """Write a single sub-agent's trace + verdict to disk.
+
+        Called once per hypothesis right after its filter agent returns so that
+        a crash or interrupt in a later hypothesis never discards the work of
+        completed ones. I/O errors are logged and swallowed.
+        """
+        summary = hypothesis.get("hypothesis", hypothesis).get("summary", "")
+        try:
+            self.store.save_trace(
+                f"stage3_filter/hyp_{index:02d}_{safe_name}.json",
+                {
+                    "file": rel_path,
+                    "hypothesis_index": index,
+                    "summary": summary,
+                    "verdict": filter_result.get("verdict", ""),
+                    "confidence": filter_result.get("confidence", 0.0),
+                    "reason": filter_result.get("reason", ""),
+                    "reasoning": filter_result.get("reasoning", ""),
+                    "model_cost": filter_result.get("model_cost", 0),
+                    "model_calls": filter_result.get("model_calls", 0),
+                    "trajectory": filter_result.get("trajectory", []),
+                    "error": filter_result.get("error"),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._log(
+                f"[scan_filter] failed to save stage3 trace for hyp {index} "
+                f"in {rel_path}: {exc}"
+            )
+            return
+
+        try:
+            self.store.append_event(
+                "filter_agent_completed",
+                {
+                    "file_path": rel_path,
+                    "hypothesis_index": index,
+                    "verdict": filter_result.get("verdict", ""),
+                    "confidence": filter_result.get("confidence", 0.0),
+                    "model_cost": filter_result.get("model_cost", 0),
+                    "model_calls": filter_result.get("model_calls", 0),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._log(
+                f"[scan_filter] failed to append filter_agent_completed event "
+                f"for hyp {index} in {rel_path}: {exc}"
+            )
 
     def _enumerate_files(self, project_path: str) -> list[str]:
         """Enumerate matching source files inside the container.
@@ -166,11 +348,58 @@ class ScanFilterOrchestrator:
                 relative.append(rel)
         return relative
 
-    def _read_file_from_container(self, project_path: str, rel_path: str) -> str:
-        """Read a file's contents from the Docker container."""
-        full_path = f"{project_path.rstrip('/')}/{rel_path}"
-        result = self.env.execute(f"cat '{full_path}'")
-        return result.get("output") or ""
+    def _read_file_from_container(self, project_path: str, rel_path: str) -> tuple[str, str]:
+        """Read a file's contents from the Docker container.
+
+        Returns ``(source, resolved_rel_path)``. If the direct path
+        ``{project_path}/{rel_path}`` is not a regular file (e.g. because the
+        project sits under a subdirectory like ``/src/openssl/``), fall back
+        to searching for any file matching the relative path beneath
+        ``project_path`` and use the first hit. On failure both return values
+        are empty strings and a warning is logged.
+
+        Previously this method blindly ``cat``ed the composed path and merged
+        stderr into stdout, so a missing-file error message ended up being fed
+        into the tree-sitter parser and the summarizer as if it were source
+        code (producing "0 functions" and harness-only hypotheses).
+        """
+        project_root = project_path.rstrip("/")
+        direct = f"{project_root}/{rel_path}"
+
+        check = self.env.execute(f"test -f '{direct}' && echo OK || echo NO")
+        status = (check.get("output") or "").strip().splitlines()
+        resolved = direct if status and status[-1] == "OK" else ""
+
+        if not resolved:
+            # File isn't at the naive path. Try to locate it under project_root.
+            safe_rel = rel_path.replace("'", "'\\''")
+            locate_cmd = (
+                f"find {project_root} -path '*/{safe_rel}' -type f "
+                f"2>/dev/null | head -1"
+            )
+            found = (self.env.execute(locate_cmd).get("output") or "").strip().splitlines()
+            candidate = found[0].strip() if found else ""
+            if candidate:
+                resolved = candidate
+                self._log(
+                    f"[scan_filter] target-file {rel_path!r} not at {direct!r}; "
+                    f"using discovered path {resolved!r}"
+                )
+
+        if not resolved:
+            self._log(
+                f"[scan_filter] WARNING: could not locate {rel_path!r} under "
+                f"{project_root!r}; skipping file"
+            )
+            return "", ""
+
+        cat = self.env.execute(f"cat '{resolved}'")
+        source = cat.get("output") or ""
+
+        # Recompute rel_path relative to project_root so downstream artefacts
+        # point at the real location the model/PoC stages will see.
+        new_rel = resolved[len(project_root) + 1:] if resolved.startswith(project_root + "/") else rel_path
+        return source, new_rel
 
     def _discover_harness(self, project_path: str) -> tuple[str, str]:
         """Find and read the fuzzer harness (LLVMFuzzerTestOneInput) source.
@@ -418,16 +647,23 @@ class ScanFilterOrchestrator:
                 done += 1
                 try:
                     classifications[idx] = future.result()
-                    is_vuln = classifications[idx]["is_vulnerability"]
-                    is_asan = classifications[idx]["is_asan"]
+                    c = classifications[idx]
+                    is_vuln = c["is_vulnerability"]
+                    sans = c.get("sanitizers", [])
+                    if is_vuln and sans:
+                        tag = "+".join(s.upper() for s in sans)
+                    elif is_vuln:
+                        tag = "VUL(no-san)"
+                    else:
+                        tag = "NOT"
                     self._log(
                         f"  [scan_filter] [{done}/{len(all_hypotheses)}] "
-                        f"{('ASAN' if is_asan else 'VUL') if is_vuln else 'NOT'} — "
-                        f"{classifications[idx]['reason'][:70]}"
+                        f"{tag} — {c['reason'][:70]}"
                     )
                 except Exception as e:
                     classifications[idx] = {
-                        "is_vulnerability": False, "is_asan": False, "cwe_ids": [], "reason": f"error: {e}",
+                        "is_vulnerability": False, "sanitizers": [], "is_asan": False,
+                        "cwe_ids": [], "reason": f"error: {e}",
                         "raw_response": "", "prompt": "",
                     }
 
@@ -439,31 +675,44 @@ class ScanFilterOrchestrator:
                 "index": i,
                 "summary": h.get("hypothesis", h).get("summary", ""),
                 "is_vulnerability": c["is_vulnerability"],
-                "is_asan": c["is_asan"],
+                "sanitizers": c.get("sanitizers", []),
+                "is_asan": c.get("is_asan", False),  # back-compat
+                "attacker_controls": c.get("attacker_controls", "none"),
+                "primitive": c.get("primitive", "none"),
+                "severity": c.get("severity", "none"),
                 "cwe_ids": c["cwe_ids"],
                 "reason": c["reason"],
                 "raw_response": c.get("raw_response", ""),
                 "prompt": c.get("prompt", ""),
             })
 
-        # Filter: keep only ASAN-triggerable vulnerabilities
+        # Filter: keep vulnerabilities triggerable by ANY supported sanitizer
+        # (ASAN/UBSAN/MSAN — matches what tools/validate.py actually tests
+        # and what crash_signals.py recognizes).
         valid_indices = [
             i for i in range(len(all_hypotheses))
-            if classifications[i]["is_vulnerability"] and classifications[i]["is_asan"]
+            if classifications[i]["is_vulnerability"]
+            and bool(classifications[i].get("sanitizers"))
         ]
         self._log(
-            f"  [scan_filter] Filtered: {len(all_hypotheses) - len(valid_indices)} non-asan, "
+            f"  [scan_filter] Filtered: "
+            f"{len(all_hypotheses) - len(valid_indices)} not sanitizer-triggerable, "
             f"{len(valid_indices)} remain"
         )
 
         for i, h in enumerate(all_hypotheses):
-            h["_cwe_ids"] = classifications[i]["cwe_ids"]
-            h["_is_vulnerability"] = classifications[i]["is_vulnerability"]
-            h["_is_asan"] = classifications[i]["is_asan"]
-            if not classifications[i]["is_vulnerability"]:
-                h["_removed"] = f"Not a vulnerability: {classifications[i]['reason']}"
-            elif not classifications[i]["is_asan"]:
-                h["_removed"] = f"Not ASAN-triggerable: {classifications[i]['reason']}"
+            c = classifications[i]
+            h["_cwe_ids"] = c["cwe_ids"]
+            h["_is_vulnerability"] = c["is_vulnerability"]
+            h["_sanitizers"] = c.get("sanitizers", [])
+            h["_is_asan"] = c.get("is_asan", False)  # back-compat
+            h["_attacker_controls"] = c.get("attacker_controls", "none")
+            h["_primitive"] = c.get("primitive", "none")
+            h["_severity"] = c.get("severity", "none")
+            if not c["is_vulnerability"]:
+                h["_removed"] = f"Not a vulnerability: {c['reason']}"
+            elif not c.get("sanitizers"):
+                h["_removed"] = f"Not sanitizer-triggerable: {c['reason']}"
 
         valid_hyps = [all_hypotheses[i] for i in valid_indices]
         cwe_map = {j: classifications[valid_indices[j]]["cwe_ids"] for j in range(len(valid_indices))}
@@ -484,12 +733,52 @@ class ScanFilterOrchestrator:
 
         return kept, classify_trace, dedup_trace
 
+    def _annotate_reachability(self, kept: list[dict], rel_path: str) -> None:
+        """Annotate ``kept`` hypotheses in-place with reachability metadata.
+
+        Sets on each hypothesis dict:
+            * ``_reachable`` — ``True`` if at least one fuzz-target binary
+              links the hotspot function, ``False`` if none, ``None`` if the
+              lookup is unavailable (non-multi-sanitizer image, stripped
+              binaries, missing ``arvo targets`` command).
+            * ``_fuzz_targets`` — list of binary names that link the function.
+
+        Reachability is a *ranking signal only*; it does not remove any
+        hypothesis from ``kept``.
+        """
+        reach_counts = {"true": 0, "false": 0, "unknown": 0}
+        for h in kept:
+            inner = h.get("hypothesis", h)
+            hotspots = inner.get("hotspots", [])
+            func = hotspots[0].get("function") if hotspots else None
+            matches = self._lookup_fuzz_targets(func)
+            if matches is None:
+                h["_reachable"] = None
+                h["_fuzz_targets"] = []
+                reach_counts["unknown"] += 1
+            else:
+                h["_reachable"] = len(matches) > 0
+                h["_fuzz_targets"] = matches
+                reach_counts["true" if matches else "false"] += 1
+        self._log(
+            f"  [scan_filter] Reachability ({rel_path}): "
+            f"{reach_counts['true']} reachable, {reach_counts['false']} "
+            f"unreachable, {reach_counts['unknown']} unknown"
+        )
+
     def _run_stage3(
         self, kept: list[dict], target_file: str,
         cost_tracker: CostTracker | None = None,
         check_results: list[dict] | None = None,
+        safe_name: str | None = None,
     ) -> tuple[list[dict], dict[int, dict]]:
-        """Run Stage 3 (Docker sub-agent filtering). Returns (final_hypotheses, filter_results)."""
+        """Run Stage 3 (Docker sub-agent filtering). Returns (final_hypotheses, filter_results).
+
+        When ``safe_name`` is provided, each sub-agent's trace is persisted to
+        ``stage3_filter/hyp_<i>_<safe_name>.json`` immediately after the agent
+        returns, so a crash or interrupt mid-stage never loses the work of
+        already-completed sub-agents.
+        """
         self._log(f"  [scan_filter] Stage 3: filtering {len(kept)} hypotheses with sub-agents...")
 
         filter_results: dict[int, dict] = {}
@@ -504,7 +793,6 @@ class ScanFilterOrchestrator:
                     check_results=check_results,
                 )
                 v = filter_results[i]
-                # Accumulate filter agent cost
                 if cost_tracker is not None:
                     cost_tracker.add(v.get("model_cost", 0), v.get("model_calls", 0))
                 self._log(
@@ -517,6 +805,11 @@ class ScanFilterOrchestrator:
                     "verdict": "VALID", "confidence": 0.0, "reason": str(e),
                     "reasoning": "", "error": str(e),
                 }
+
+            # Persist this sub-agent's trace immediately so partial progress
+            # survives an interrupt or later crash in the same stage.
+            if safe_name:
+                self._persist_stage3_trace(i, h, filter_results[i], target_file, safe_name)
 
         final_hypotheses = []
         for i, h in enumerate(kept):
@@ -593,15 +886,21 @@ class ScanFilterOrchestrator:
             self._log(f"[triage] Proceeding with {len(files)} file(s) after static triage")
 
         all_vuln_hypotheses: list[VulnHypothesis] = []
+        files_completed = 0
 
         for rel_path in files:
             self._log(f"\n[scan_filter] === Processing {rel_path} ===")
+            files_completed += 1
 
-            # Read source from container
-            source = self._read_file_from_container(project_path, rel_path)
+            # Read source from container. The resolver may rewrite rel_path
+            # (e.g. 'ssl/ssl_rsa.c' -> 'openssl/ssl/ssl_rsa.c') when the
+            # project lives under a subdirectory of project_path.
+            source, resolved_rel = self._read_file_from_container(project_path, rel_path)
             if not source.strip():
-                self._log(f"[scan_filter] Skipping empty file: {rel_path}")
+                self._log(f"[scan_filter] Skipping empty/unreadable file: {rel_path}")
                 continue
+            if resolved_rel and resolved_rel != rel_path:
+                rel_path = resolved_rel
 
             # Sanitize filename for trace filenames
             safe_name = rel_path.replace("/", "__").replace(".", "_")
@@ -705,11 +1004,22 @@ class ScanFilterOrchestrator:
                 self._log(f"[scan_filter] No hypotheses survived classification/dedup for {rel_path}")
                 continue
 
-            # Stage 3: Docker sub-agent filtering
+            # Reachability annotation (between Stage 2 and Stage 3): use
+            # ``arvo targets <symbol>`` to discover which fuzz-target binaries
+            # link each hypothesis's hotspot function. Result is advisory
+            # (a ranking signal), NOT a hard filter — unreachable-from-fuzzer
+            # bugs are still worth reporting, they just drop in priority.
+            if arvo_mode:
+                self._annotate_reachability(kept, rel_path)
+
+            # Stage 3: Docker sub-agent filtering.
+            # Traces are persisted per-hypothesis inside _run_stage3 as each
+            # sub-agent returns, so partial progress survives an interrupt.
             self._log(f"[scan_filter] Stage 3: Sub-agent filtering for {rel_path}")
             cost_before = cost_tracker.snapshot()
             final, filter_results = self._run_stage3(
                 kept, rel_path, cost_tracker=cost_tracker, check_results=check_results,
+                safe_name=safe_name,
             )
             s3_cost, s3_calls = cost_tracker.snapshot()
             s3_cost -= cost_before[0]
@@ -719,30 +1029,28 @@ class ScanFilterOrchestrator:
                 f"(${s3_cost:.4f}, {s3_calls} calls)"
             )
 
-            # Save Stage 3 traces (one file per hypothesis)
-            for i, h in enumerate(kept):
-                fr_item = filter_results.get(i, {})
-                self.store.save_trace(f"stage3_filter/hyp_{i:02d}_{safe_name}.json", {
-                    "file": rel_path,
-                    "hypothesis_index": i,
-                    "summary": h.get("hypothesis", h).get("summary", ""),
-                    "verdict": fr_item.get("verdict", ""),
-                    "confidence": fr_item.get("confidence", 0.0),
-                    "reason": fr_item.get("reason", ""),
-                    "reasoning": fr_item.get("reasoning", ""),
-                    "model_cost": fr_item.get("model_cost", 0),
-                    "model_calls": fr_item.get("model_calls", 0),
-                    "trajectory": fr_item.get("trajectory", []),
-                    "error": fr_item.get("error"),
-                })
-
             # Convert to VulnHypothesis
+            file_vuln_hypotheses: list[VulnHypothesis] = []
             for i, hyp in enumerate(final):
                 vh = _convert_hypothesis(hyp, len(all_vuln_hypotheses) + 1, rel_path)
                 all_vuln_hypotheses.append(vh)
+                file_vuln_hypotheses.append(vh)
 
-        # Sort by confidence descending and re-number
-        all_vuln_hypotheses.sort(key=lambda h: h.confidence, reverse=True)
+            # Real-time persistence: save per-file hypotheses and the
+            # running aggregate after every file so that an interrupted
+            # run retains completed progress on disk.
+            self._save_incremental(
+                rel_path,
+                file_vuln_hypotheses,
+                all_vuln_hypotheses,
+                files_done=files_completed,
+                files_total=len(files),
+            )
+
+        # Rank by (reachable, severity, confidence) — descending — so that
+        # reachable-from-fuzzer, higher-severity, higher-confidence hypotheses
+        # land at the top of hypotheses.json and survive ``--top-n``.
+        all_vuln_hypotheses.sort(key=hypothesis_priority_key, reverse=True)
         for idx, h in enumerate(all_vuln_hypotheses, start=1):
             h.hypothesis_id = f"SF{idx:02d}"
 

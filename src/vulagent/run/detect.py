@@ -21,9 +21,10 @@ import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import typer
+import yaml
 from rich.console import Console
 
 from vulagent.artifacts.schema import CodeReference, VulnHypotheses, VulnHypothesis
@@ -89,11 +90,18 @@ def load_arvo_targets() -> list[str]:
 
 
 def get_run_name(arvo_image: str | None, project_path: Path | None) -> str:
-    """Generate a run name based on the target source."""
+    """Generate a run name based on the target source.
+
+    For Docker images, take everything after the last '/' (i.e. drop the
+    registry/namespace prefix) and replace ':' with '-' so the project name is
+    preserved in the run id. Examples:
+        vulagent/openssl:latest       -> openssl-latest
+        n132/arvo:42470801-vul        -> arvo-42470801-vul
+        arvo:latest                   -> arvo-latest
+    """
     if arvo_image:
-        # Extract tag from image name: n132/arvo:42470801-vul -> arvo-42470801-vul
-        tag = arvo_image.split(":")[-1] if ":" in arvo_image else arvo_image
-        return f"arvo-{tag}"
+        name = arvo_image.rsplit("/", 1)[-1]
+        return name.replace(":", "-")
     elif project_path:
         return project_path.name
     return "unknown"
@@ -106,18 +114,15 @@ def save_hypotheses(hypotheses: VulnHypotheses, path: Path) -> Path:
     return path
 
 
-def load_hypotheses(path: Path) -> VulnHypotheses:
-    """Load hypotheses from a previously saved JSON file.
+def _hypotheses_from_items(items: list[dict[str, Any]]) -> list[VulnHypothesis]:
+    """Build VulnHypothesis objects from a list of dicts (payload/file format).
 
-    Accepts both standalone format (from save_hypotheses) and
-    handoff-wrapped format (from ArtifactStore.write_handoff).
+    Accepts both the new schema (with severity/primitive/attacker_controls/
+    sanitizers/cwe_ids/reachable/fuzz_targets) and older files that lack those
+    fields. Unknown fields default to the dataclass defaults.
     """
-    data = json.loads(path.read_text())
-    # Unwrap handoff envelope if present
-    if "data" in data and "hypotheses" in data["data"]:
-        data = data["data"]
-    hyps = []
-    for h in data.get("hypotheses", []):
+    hyps: list[VulnHypothesis] = []
+    for h in items:
         refs = [
             CodeReference(
                 file_path=r["file_path"],
@@ -128,6 +133,7 @@ def load_hypotheses(path: Path) -> VulnHypotheses:
             )
             for r in h.get("references", [])
         ]
+        reachable = h.get("reachable")
         hyps.append(VulnHypothesis(
             hypothesis_id=h["hypothesis_id"],
             title=h["title"],
@@ -139,8 +145,76 @@ def load_hypotheses(path: Path) -> VulnHypotheses:
             expected_crash=h.get("expected_crash"),
             confidence=h.get("confidence", 0.0),
             references=refs,
+            severity=h.get("severity", "none"),
+            primitive=h.get("primitive", "none"),
+            attacker_controls=h.get("attacker_controls", "none"),
+            sanitizers=list(h.get("sanitizers", [])),
+            cwe_ids=[str(c) for c in h.get("cwe_ids", [])],
+            reachable=(bool(reachable) if reachable is not None else None),
+            fuzz_targets=list(h.get("fuzz_targets", [])),
         ))
-    return VulnHypotheses(hypotheses=hyps, generation_notes=data.get("generation_notes"))
+    return hyps
+
+
+def load_hypotheses(path: Path) -> VulnHypotheses:
+    """Load hypotheses from a previously saved JSON file.
+
+    Accepts both standalone format (from save_hypotheses) and
+    handoff-wrapped format (from ArtifactStore.write_handoff).
+    """
+    data = json.loads(path.read_text())
+    # Unwrap handoff envelope if present
+    if "data" in data and "hypotheses" in data["data"]:
+        data = data["data"]
+    return VulnHypotheses(
+        hypotheses=_hypotheses_from_items(data.get("hypotheses", [])),
+        generation_notes=data.get("generation_notes"),
+    )
+
+
+def extract_hypotheses_from_submission(submission: str, target_file: str | None = None) -> VulnHypotheses:
+    """Parse hypotheses from the YAML submission string returned by the `finish` tool.
+
+    The file_hypothesis agent returns a YAML blob with structure:
+        status: success|failure
+        analysis: ...
+        payload:
+          summary: ...
+          files_reviewed: [...]
+          harness_entry: ...
+          call_chains: [...]
+          warnings: [...]
+          hypotheses: [{hypothesis_id, title, description, ...}, ...]
+
+    Returns an empty VulnHypotheses if parsing fails or no hypotheses are present.
+    """
+    try:
+        data = yaml.safe_load(submission) or {}
+    except yaml.YAMLError:
+        return VulnHypotheses(hypotheses=[], generation_notes="failed to parse submission YAML")
+
+    if not isinstance(data, dict):
+        return VulnHypotheses(hypotheses=[], generation_notes="submission is not a mapping")
+
+    payload = data.get("payload") or {}
+    items = payload.get("hypotheses", []) if isinstance(payload, dict) else []
+    if not isinstance(items, list):
+        items = []
+
+    notes_parts: list[str] = []
+    if target_file:
+        notes_parts.append(f"file={target_file}")
+    if isinstance(payload, dict):
+        if payload.get("summary"):
+            notes_parts.append(str(payload["summary"]))
+        if payload.get("harness_entry"):
+            notes_parts.append(f"harness_entry={payload['harness_entry']}")
+    generation_notes = " | ".join(notes_parts) if notes_parts else None
+
+    return VulnHypotheses(
+        hypotheses=_hypotheses_from_items(items),
+        generation_notes=generation_notes,
+    )
 
 
 @app.command()
@@ -526,31 +600,25 @@ def main(
             store.write_aggregated_trajectory({"agents": {traj_key: run_result.trajectory}})
             log_console.print(f"\n[bold green]Trajectory saved to:[/bold green] {store.aggregated_trajectory_path}")
 
-            try:
-                messages = run_result.trajectory.get("messages", [])
-                hypotheses_payload = None
-                
-                for msg in reversed(messages):
-                    if msg.get("role") == "assistant" and "tool_calls" in msg:
-                        for tc in msg["tool_calls"]:
-                            if tc.get("name") == "finish":
-                                args_str = tc.get("arguments", "{}")
-                                args_dict = json.loads(args_str) if isinstance(args_str, str) else args_str
-                                hypotheses_payload = args_dict.get("payload")
-                                break
-                    if hypotheses_payload:
-                        break
-
-                if hypotheses_payload:
-                    hyp_path = run_dir / "hypotheses.json"
-                    with open(hyp_path, "w", encoding="utf-8") as f:
-                        json.dump(hypotheses_payload, f, indent=2, ensure_ascii=False)
-                    log_console.print(f"[bold green]Hypotheses extracted and saved to:[/bold green] {hyp_path}")
-                else:
-                    log_console.print("[bold yellow]Could not extract 'payload' from finish tool call in trajectory.[/bold yellow]")
-
-            except Exception as e:
-                log_console.print(f"[bold red]Failed to save hypotheses.json:[/bold red] {e}")
+            # Extract structured hypotheses from the agent's submission and save
+            # them as a standalone hypotheses.json (same format as scan_filter),
+            # so downstream tooling (--hypotheses-file) can consume file-pipeline
+            # results directly.
+            hypotheses = extract_hypotheses_from_submission(
+                run_result.result or "", target_file=target_file,
+            )
+            if hypotheses.hypotheses:
+                store.write_handoff("hypotheses", hypotheses)
+                hyp_path = save_hypotheses(hypotheses, run_dir / "hypotheses.json")
+                log_console.print(
+                    f"[bold green]Hypotheses ({len(hypotheses.hypotheses)}) saved to:[/bold green] {hyp_path}\n"
+                    f"  Reuse later with: --hypotheses-file {hyp_path}"
+                )
+            else:
+                log_console.print(
+                    "[bold yellow]No structured hypotheses parsed from submission; "
+                    "skipping hypotheses.json.[/bold yellow]"
+                )
 
         else:
             # Project or detect pipeline mode

@@ -6,16 +6,15 @@ from dataclasses import dataclass, asdict
 from typing import Iterable, Sequence
 
 from vulagent import Environment
-
-DEFAULT_CRASH_SIGNATURES: Sequence[str] = (
-    "AddressSanitizer",
-    "heap-buffer-overflow",
-    "stack-buffer-overflow",
-    "use-after-free",
-    "Segmentation fault",
-    "core dumped",
-    "SIGSEGV",
+from vulagent.run.crash_signals import (
+    CRASH_SIGNATURES,
+    check_crash,
+    collect_indicators,
 )
+
+# Exposed for backwards compatibility with callers/tests that imported the
+# old constant name. The canonical signatures live in crash_signals.
+DEFAULT_CRASH_SIGNATURES: Sequence[str] = tuple(sorted(CRASH_SIGNATURES))
 
 
 @dataclass
@@ -41,6 +40,14 @@ def run_verification(
 ) -> VerificationResult:
     """Execute *command* inside *env* and determine whether it crashed.
 
+    A crash is recorded only when the output contains a sanitizer / libFuzzer
+    banner (see ``vulagent.run.crash_signals.CRASH_SIGNATURES``) or the
+    process is killed by a signal (return code >= 128 or one of the common
+    explicit signal codes). A bare non-zero return code is intentionally
+    *not* sufficient, because many language runtimes (V8/d8, Node, wasm)
+    exit with code 1 on ordinary syntax/compile/runtime errors that are
+    unrelated to memory safety.
+
     Parameters
     ----------
     env:
@@ -48,35 +55,20 @@ def run_verification(
     command:
         Shell command to run (typically the agent-proposed reproduction).
     cwd:
-        Working directory inside the environment (default: inherited from env).
+        Working directory inside the environment.
     crash_signatures:
-        Optional iterable of strings to search for in stdout. The default covers
-        common sanitizer / crash indicators. Matching any signature counts as a
-        crash even if the return code is zero (some sanitizers exit 1, some 77).
+        Optional override for the crash-signature set. Defaults to the
+        canonical ASan/MSan/UBSan/libFuzzer set.
     timeout:
         Optional execution timeout passed to the environment.
-
-    Returns
-    -------
-    VerificationResult
-        Structured information about the run, including whether a crash was
-        detected. This structure can be serialized into the trajectory metadata.
     """
 
-    crash_patterns = list(crash_signatures or DEFAULT_CRASH_SIGNATURES)
     result = env.execute(command, cwd=cwd, timeout=timeout)
     output: str = result.get("output", "") or ""
     returncode: int = int(result.get("returncode", 0))
 
-    indicators: list[str] = []
-    if returncode != 0:
-        indicators.append(f"non-zero return code ({returncode})")
-    lowered = output.lower()
-    for pattern in crash_patterns:
-        if pattern.lower() in lowered:
-            indicators.append(f"pattern: {pattern}")
-
-    crash_detected = bool(indicators)
+    crash_detected = check_crash(output, returncode, signatures=crash_signatures)
+    indicators = collect_indicators(output, returncode, signatures=crash_signatures)
 
     return VerificationResult(
         command=command,

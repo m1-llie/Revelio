@@ -36,6 +36,20 @@ class DockerEnvironmentConfig:
     """Timeout in seconds for pulling images."""
     post_start_commands: list[str] = field(default_factory=list)
     """Commands to run inside the container immediately after it starts (e.g. cleanup)."""
+    sanitizer_compatible: bool = True
+    """If True, relax Docker's default seccomp/cap filters so code sanitizers
+    (MSan, ASan, UBSan) can initialize inside the container.
+
+    Docker's default seccomp profile blocks ``personality()``. MSan calls
+    ``personality(ADDR_NO_RANDOMIZE)`` during startup to disable ASLR for its
+    shadow memory layout; when the syscall is blocked MSan aborts before the
+    harness runs, which our crash detector (SIGABRT + "MemorySanitizer" banner)
+    would otherwise misclassify as a real memory-safety crash.
+
+    Concretely this adds to ``docker run``:
+      - ``--security-opt seccomp=unconfined`` (unblocks ``personality()``)
+      - ``--cap-add SYS_PTRACE`` (needed by ASan/LSan stack symbolizers)
+    """
 
 
 class DockerEnvironment:
@@ -54,6 +68,16 @@ class DockerEnvironment:
     def _start_container(self):
         """Start the Docker container and return the container ID."""
         container_name = f"vulagent-{uuid.uuid4().hex[:8]}"
+        sanitizer_args: list[str] = []
+        if self.config.sanitizer_compatible:
+            # See DockerEnvironmentConfig.sanitizer_compatible for rationale.
+            # Only injected if the caller hasn't already specified equivalents,
+            # so explicit user config always wins.
+            user_args = self.config.run_args
+            if not any("seccomp" in a for a in user_args):
+                sanitizer_args.extend(["--security-opt", "seccomp=unconfined"])
+            if "--cap-add" not in user_args:
+                sanitizer_args.extend(["--cap-add", "SYS_PTRACE"])
         cmd = [
             self.config.executable,
             "run",
@@ -62,6 +86,7 @@ class DockerEnvironment:
             container_name,
             "-w",
             self.config.cwd,
+            *sanitizer_args,
             *self.config.run_args,
             self.config.image,
             "sleep",

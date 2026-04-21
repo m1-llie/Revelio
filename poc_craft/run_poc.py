@@ -62,8 +62,8 @@ FUZZER_MAP = {
 
 CRASH_PATTERN = re.compile(
     r"AddressSanitizer|MemorySanitizer|UndefinedBehaviorSanitizer|"
-    r"LeakSanitizer|ThreadSanitizer|"
-    r"ERROR.*[AMTU]SAN|"
+    r"LeakSanitizer|"
+    r"ERROR.*[AMU]SAN|"
     r"heap-buffer-overflow|stack-buffer-overflow|"
     r"use-after-free|heap-use-after-free|"
     r"global-buffer-overflow|stack-overflow|"

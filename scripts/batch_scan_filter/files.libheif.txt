@@ -1,0 +1,28 @@
+# Top 10 files for scan_filter, ranked by OSS-Fuzz coverage signal.
+# Score = uncovered_lines * (1 - coverage_pct/100), with +40% boost
+# for parser/decoder/format paths; test/fuzz/demo dirs excluded.
+# Source: coverage summary for libheif under /src/libheif/
+# Paths are relative to the project root inside the container.
+#
+# Ranked list (score | line cov | covered/total | path):
+#       801 |   1.1% |     9/819   | libheif/sequences/track.cc
+#       663 |   2.6% |    13/499   | libheif/api/libheif/heif_uncompressed.cc
+#       594 |  36.2% |   376/1040  | libheif/codecs/uncompressed/unc_boxes.cc
+#       571 |   0.0% |     0/408   | libheif/codecs/uncompressed/unc_codec.cc
+#       554 |  41.2% |   661/1603  | libheif/pixelimage.cc
+#       460 |  17.2% |   115/670   | libheif/image-items/tiled.cc
+#       458 |   0.0% |     0/458   | libheif/sequences/track_visual.cc
+#       456 |   0.0% |     0/456   | libheif/api/libheif/heif_sequences.cc
+#       433 |  44.6% |   630/1412  | libheif/context.cc
+#       408 |  58.4% |   984/1685  | libheif/sequences/seq_boxes.cc
+
+libheif/sequences/track.cc
+libheif/api/libheif/heif_uncompressed.cc
+libheif/codecs/uncompressed/unc_boxes.cc
+libheif/codecs/uncompressed/unc_codec.cc
+libheif/pixelimage.cc
+libheif/image-items/tiled.cc
+libheif/sequences/track_visual.cc
+libheif/api/libheif/heif_sequences.cc
+libheif/context.cc
+libheif/sequences/seq_boxes.cc

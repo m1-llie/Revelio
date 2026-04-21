@@ -1,0 +1,28 @@
+# Top 10 files for scan_filter, ranked by OSS-Fuzz coverage signal.
+# Score = uncovered_lines * (1 - coverage_pct/100), with +40% boost
+# for parser/decoder/format paths; test/fuzz/demo dirs excluded.
+# Source: coverage summary for openssl under /src/openssl/
+# Paths are relative to the project root inside the container.
+#
+# Ranked list (score | line cov | covered/total | path):
+#      2968 |  25.1% |  1332/5297  | ssl/ssl_lib.c
+#      2175 |  32.5% |  1111/3414  | ssl/quic/quic_impl.c
+#      1693 |  15.4% |   260/1689  | ssl/ech/ech_internal.c
+#      1535 |   2.2% |    25/1146  | crypto/cms/cms_sd.c
+#      1456 |  41.9% |  1294/3085  | ssl/statem/statem_srvr.c
+#      1350 |   4.8% |    51/1064  | crypto/cms/cms_env.c
+#      1323 |   0.9% |     9/963   | crypto/pkcs7/pk7_doit.c
+#      1247 |   0.0% |     0/1247  | crypto/ec/ecp_nistp256.c
+#      1233 |   0.4% |     4/889   | ssl/ech/ech_store.c
+#      1227 |  19.5% |   264/1353  | crypto/evp/ctrl_params_translate.c
+
+ssl/ssl_lib.c
+ssl/quic/quic_impl.c
+ssl/ech/ech_internal.c
+crypto/cms/cms_sd.c
+ssl/statem/statem_srvr.c
+crypto/cms/cms_env.c
+crypto/pkcs7/pk7_doit.c
+crypto/ec/ecp_nistp256.c
+ssl/ech/ech_store.c
+crypto/evp/ctrl_params_translate.c

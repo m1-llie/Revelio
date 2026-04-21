@@ -1,0 +1,8 @@
+=== Mode 1: ASan+UBSan (OOB data used, substr exception) ===
+Parsing IDManifest binary: /poc/poc.bin (267 bytes)
+Exception: basic_string::substr: __pos (which is 2) > this->size() (which is 0)
+
+=== Mode 2: _GLIBCXX_DEBUG assertion (assertion __pos <= size() failed) ===
+Parsing IDManifest binary: /poc/poc.bin (267 bytes)
+/usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.h:1071: reference std::basic_string<char>::operator[](size_type) [_CharT = char, _Traits = std::char_traits<char>, _Alloc = std::allocator<char>]: Assertion '__pos <= size()' failed.
+Aborted (core dumped)

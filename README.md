@@ -1,6 +1,6 @@
 # vul-agent
 
-A trustworthy and precise vulnerability detection AI agent that discovers software vulnerabilities and validates them through automated PoC testing.
+A trustworthy and precise vulnerability detection AI agent that discovers memory safety related software vulnerabilities and validates them through automated PoC testing.
 
 - **Discovers vulnerabilities** through code review
 - **Validates findings** by building and running PoC inputs

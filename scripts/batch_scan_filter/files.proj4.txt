@@ -1,0 +1,28 @@
+# Top 10 files for scan_filter, ranked by OSS-Fuzz coverage signal.
+# Score = uncovered_lines * (1 - coverage_pct/100), with +40% boost
+# for parser/decoder/format paths; test/fuzz/demo dirs excluded.
+# Source: coverage summary for proj4 under /src/PROJ/
+# Paths are relative to the project root inside the container.
+#
+# Ranked list (score | line cov | covered/total | path):
+#      4432 |  12.5% |   720/5782  | src/iso19111/c_api.cpp
+#      3182 |   8.4% |   226/2706  | src/grids.cpp
+#      2606 |  29.3% |  1529/5216  | src/iso19111/crs.cpp
+#      2419 |  54.4% |  4518/8306  | src/iso19111/factory.cpp
+#      1641 |   1.5% |    25/1691  | src/networkfilemanager.cpp
+#      1543 |  67.2% |  6872/10230 | src/iso19111/io.cpp
+#      1489 |  50.5% |  2193/4342  | src/iso19111/operation/singleoperation.cpp
+#      1285 |  36.9% |   849/2303  | src/iso19111/operation/conversion.cpp
+#       613 |  23.6% |   177/750   | src/transformations/gridshift.cpp
+#       423 |  36.4% |   272/747   | src/projections/isea.cpp
+
+src/iso19111/c_api.cpp
+src/grids.cpp
+src/iso19111/crs.cpp
+src/iso19111/factory.cpp
+src/networkfilemanager.cpp
+src/iso19111/io.cpp
+src/iso19111/operation/singleoperation.cpp
+src/iso19111/operation/conversion.cpp
+src/transformations/gridshift.cpp
+src/projections/isea.cpp

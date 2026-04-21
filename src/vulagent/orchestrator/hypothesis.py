@@ -55,6 +55,67 @@ class HypothesisOrchestrator:
         if self.log_fn:
             self.log_fn(message)
 
+    @staticmethod
+    def _file_slug(file_path: str) -> str:
+        return file_path.replace("/", "_").replace(".", "_")
+
+    def _save_incremental(
+        self,
+        file_path: str,
+        file_hypotheses: VulnHypotheses | None,
+        aggregate_hypotheses: list[VulnHypothesis],
+        aggregate_trajectories: dict[str, Any],
+        files_done: int,
+        files_total: int,
+    ) -> None:
+        """Persist per-file and running-aggregate progress after each file.
+
+        Writes are idempotent (overwrite) so an interrupted run retains the
+        latest snapshot on disk. Exceptions are swallowed so that I/O hiccups
+        cannot abort the in-progress scan.
+        """
+        slug = self._file_slug(file_path)
+        try:
+            # Per-file handoff: every file produces a record, even when it
+            # yielded zero hypotheses, so the caller can see what was scanned.
+            payload = file_hypotheses or VulnHypotheses(
+                hypotheses=[],
+                generation_notes=f"No hypotheses produced for {file_path}.",
+            )
+            self.store.write_handoff("file_hypothesis", payload, hypothesis_id=slug)
+        except Exception as exc:  # noqa: BLE001 - best-effort persistence
+            self._log(f"HypothesisOrchestrator: failed to save per-file handoff for {file_path}: {exc}")
+
+        # Snapshot the running aggregate. IDs are provisional until the final
+        # sort/renumber, so mark it clearly as a partial view.
+        try:
+            partial = VulnHypotheses(
+                hypotheses=list(aggregate_hypotheses),
+                generation_notes=(
+                    f"PARTIAL: {files_done}/{files_total} files processed, "
+                    f"{len(aggregate_hypotheses)} hypotheses so far."
+                ),
+            )
+            self.store.write_handoff("hypotheses_partial", partial)
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"HypothesisOrchestrator: failed to save partial aggregate: {exc}")
+
+        # Flush trajectories too so interrupted runs keep completed agent logs.
+        try:
+            self.store.write_aggregated_trajectory({"agents": aggregate_trajectories})
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"HypothesisOrchestrator: failed to flush trajectories: {exc}")
+
+        self.store.append_event(
+            "file_hypothesis_completed",
+            {
+                "file_path": file_path,
+                "hypotheses_count": len(file_hypotheses.hypotheses) if file_hypotheses else 0,
+                "aggregate_count": len(aggregate_hypotheses),
+                "progress": f"{files_done}/{files_total}",
+            },
+        )
+
     def _get_next_api_key(self) -> str | None:
         """Assign an API key via round-robin from the pool."""
         if not self.api_keys:
@@ -168,6 +229,7 @@ class HypothesisOrchestrator:
         all_trajectories: dict[str, Any] = {}
         total_cost = 0.0
         total_calls = 0
+        files_completed = 0
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
@@ -178,6 +240,7 @@ class HypothesisOrchestrator:
             for future in as_completed(futures):
                 file_path = futures[future]
                 fp, run_result, hypotheses = future.result()
+                files_completed += 1
 
                 if run_result:
                     key = f"file_hypothesis_{fp.replace('/', '_')}"
@@ -187,6 +250,18 @@ class HypothesisOrchestrator:
 
                 if hypotheses and hypotheses.hypotheses:
                     all_hypotheses.extend(hypotheses.hypotheses)
+
+                # Real-time persistence: save per-file hypotheses and a running
+                # aggregate after every completed file so an interrupted run
+                # retains partial progress on disk.
+                self._save_incremental(
+                    fp,
+                    hypotheses,
+                    all_hypotheses,
+                    all_trajectories,
+                    files_completed,
+                    len(files),
+                )
 
         # Sort by confidence descending and re-number IDs globally
         all_hypotheses.sort(key=lambda h: h.confidence, reverse=True)

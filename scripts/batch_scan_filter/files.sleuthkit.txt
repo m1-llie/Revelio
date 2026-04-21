@@ -1,0 +1,28 @@
+# Top 10 files for scan_filter, ranked by OSS-Fuzz coverage signal.
+# Score = uncovered_lines * (1 - coverage_pct/100), with +40% boost
+# for parser/decoder/format paths; test/fuzz/demo dirs excluded.
+# Source: coverage summary for sleuthkit under /src/sleuthkit/
+# Paths are relative to the project root inside the container.
+#
+# Ranked list (score | line cov | covered/total | path):
+#      3203 |   6.7% |   177/2630  | tsk/fs/btrfs.cpp
+#      2958 |   0.0% |     0/2113  | tsk/fs/yaffs.cpp
+#      2176 |   0.0% |     0/1554  | tsk/fs/ffs.cpp
+#      1751 |   0.0% |     0/1251  | tsk/fs/logical_fs.cpp
+#      1564 |   9.3% |   127/1359  | tsk/fs/apfs_compat.cpp
+#      1443 |  36.4% |   928/2549  | tsk/fs/ext2fs.cpp
+#      1259 |  51.3% |  1950/3798  | tsk/fs/hfs.cpp
+#      1099 |  53.9% |  1995/3699  | tsk/fs/ntfs.cpp
+#       927 |   0.0% |     0/662   | tsk/fs/decmpfs.cpp
+#       764 |   0.0% |     0/546   | tsk/fs/xfs.cpp
+
+tsk/fs/btrfs.cpp
+tsk/fs/yaffs.cpp
+tsk/fs/ffs.cpp
+tsk/fs/logical_fs.cpp
+tsk/fs/apfs_compat.cpp
+tsk/fs/ext2fs.cpp
+tsk/fs/hfs.cpp
+tsk/fs/ntfs.cpp
+tsk/fs/decmpfs.cpp
+tsk/fs/xfs.cpp
