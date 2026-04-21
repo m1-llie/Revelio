@@ -1,23 +1,15 @@
-# Shift Exponent Overflow in TIFF Predictor Bit Accumulation (CWE-682)
+# Shift Exponent Overflow in TIFF Predictor Bit Accumulation
 
 ## Summary
 
-`StreamPredictor::getNextLine()` in `poppler/Stream.cc` uses `if (outBits >= 8)`
-at line 899 to drain accumulated bits into the output buffer. Because `if` only
-drains once per outer loop iteration, `outBits` can accumulate across iterations
-when `BitsPerComponent` (nBits) >= 9. When `outBits` reaches or exceeds 64,
-the shift expression `outBuf >> (outBits - 8)` at line 900 becomes a shift of
-a 64-bit type by an exponent >= 64, which is undefined behavior in C++.
+`StreamPredictor::getNextLine()` in `poppler/Stream.cc` uses `if (outBits >= 8)` at line 899 to drain accumulated bits into the output buffer. Because `if` only drains once per outer loop iteration, `outBits` can accumulate across iterations when `BitsPerComponent` (nBits) >= 9. When `outBits` reaches or exceeds 64, the shift expression `outBuf >> (outBits - 8)` at line 900 becomes a shift of a 64-bit type by an exponent >= 64, which is undefined behavior in C++.
 
 - **Affected file:** `poppler/Stream.cc`
-- **Confirmed on commit:** `e3d56a0` (2026-04-04, poppler 26.04.90)
+- **Confirmed on commit:** `e3d56a0` (2026-04-04, poppler 26.04.90 dev; also affects stable 26.04.0)
 - **Crash site:** `Stream.cc:900` — `outBuf >> (outBits - 8)`
 - **Sanitizer:** UBSan
 - **CWE:** CWE-682 (Incorrect Calculation)
 - **CVSS:** 5.5 (Medium) — AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:H
-- **Related bug:** `04-stream-tiff-neg-shift` (same root cause, same fix)
-
----
 
 ## Vulnerable Code
 
@@ -46,17 +38,12 @@ for (int i = 0; i < pixBytes; ++i) {
 }
 ```
 
-Using `if` instead of `while` at line 899 means that when `nBits >= 9`, a single
-loop iteration adds more than 8 bits to `outBits`, but only 8 are removed. Over
-multiple iterations `outBits` grows unboundedly. When `outBits - 8 >= 64`, the
-right-shift at line 900 is undefined behavior.
+Using `if` instead of `while` at line 899 means that when `nBits >= 9`, a single loop iteration adds more than 8 bits to `outBits`, but only 8 are removed. Over multiple iterations `outBits` grows unboundedly. When `outBits - 8 >= 64`, the right-shift at line 900 is undefined behavior.
 
----
 
 ## Proof of Concept
 
-Three PoC files are included in this directory, each exercising a different
-`BitsPerComponent` value:
+Three PoC files are included in this directory, each exercising a different `BitsPerComponent` value:
 
 | File             | /BitsPerComponent | UBSan shift exponent |
 |------------------|:-----------------:|:--------------------:|
@@ -72,17 +59,22 @@ Each PDF contains a stream with:
 
 ### Reproduction
 
+**Standard CLI:**
+```bash
+# nBits = 12
+pdftoppm poc_nBits12.pdf /dev/null
+# nBits = 11
+pdftoppm poc_nBits11.pdf /dev/null
+```
+
+**With UBSan (definitive confirmation):**
+use a fuzz target from oss-fuzz as a program entry point.
+
 ```bash
 # nBits = 12 (shift exponent 64)
-docker run --rm \
-  -v /scr2/yiwei/vul-agent/zero-day/poppler_validated/03-stream-tiff-shift-ub:/work \
-  vulagent/poppler:latest \
   /out/ubsan/pdf_draw_fuzzer /work/poc_nBits12.pdf
 
 # nBits = 11 (shift exponent 66)
-docker run --rm \
-  -v /scr2/yiwei/vul-agent/zero-day/poppler_validated/03-stream-tiff-shift-ub:/work \
-  vulagent/poppler:latest \
   /out/ubsan/pdf_draw_fuzzer /work/poc_nBits11.pdf
 ```
 
@@ -98,26 +90,20 @@ poppler/Stream.cc:900:75: runtime error: shift exponent 64 is too large for 64-b
 poppler/Stream.cc:900:75: runtime error: shift exponent 66 is too large for 64-bit type 'unsigned long'
 ```
 
----
-
 ## Impact
 
-The undefined behavior from an out-of-range shift produces unpredictable results
-that vary by compiler and optimization level. Observed effects include:
+The undefined behavior from an out-of-range shift produces unpredictable results that vary by compiler and optimization level. Observed effects include:
 
-- Incorrect pixel data written to `predLine`, causing downstream heap operations
-  to work on corrupted data.
+- Incorrect pixel data written to `predLine`, causing downstream heap operations to work on corrupted data.
 - Potential crash or memory corruption when `predLine` bounds are exceeded.
 
-Any PDF using `/Predictor 2` (TIFF predictor) with `/BitsPerComponent` in the
-range 9–15 can trigger this path.
+Any PDF using `/Predictor 2` (TIFF predictor) with `/BitsPerComponent` in the range 9–15 can trigger this path.
 
 ---
 
 ## Suggested Fix
 
-Replace `if (outBits >= 8)` with `while (outBits >= 8)` to fully drain all
-accumulated bits each iteration before proceeding:
+Replace `if (outBits >= 8)` with `while (outBits >= 8)` to fully drain all accumulated bits each iteration before proceeding:
 
 ```diff
 -    if (outBits >= 8) {
@@ -127,6 +113,4 @@ accumulated bits each iteration before proceeding:
      }
 ```
 
-This ensures `outBits` never exceeds `nBits - 1` after the drain loop, making
-the shift exponent always well-defined. The same change also fixes the negative
-shift described in `04-stream-tiff-neg-shift`.
+This ensures `outBits` never exceeds `nBits - 1` after the drain loop, making the shift exponent always well-defined. The same change also fixes the negative shift described in `04-stream-tiff-neg-shift`.

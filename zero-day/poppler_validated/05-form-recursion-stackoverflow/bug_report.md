@@ -1,21 +1,14 @@
-# Stack Overflow via Unbounded Recursion in PDF AcroForm /Kids Traversal (CWE-674)
+# Stack Overflow via Unbounded Recursion in PDF AcroForm /Kids Traversal
 
 ## Summary
 
-`FormField::FormField()` in `poppler/Form.cc` iterates the /Kids array of an
-AcroForm field dictionary and calls `Form::createFieldFromDict()` for each child,
-which in turn constructs new `FormField` objects — establishing mutual recursion
-with no depth limit. Although a `usedParents` set prevents cycles, it does not
-prevent deeply nested linear /Kids chains. A PDF with a 5000-level deep /Kids
-hierarchy exhausts the call stack and crashes the process.
+`FormField::FormField()` in `poppler/Form.cc` iterates the /Kids array of an AcroForm field dictionary and calls `Form::createFieldFromDict()` for each child, which in turn constructs new `FormField` objects — establishing mutual recursion with no depth limit. Although a `usedParents` set prevents cycles, it does not prevent deeply nested linear /Kids chains. A PDF with a 5000-level deep /Kids hierarchy exhausts the call stack and crashes the process.
 
 - **Affected files:** `poppler/Form.cc:1032` (FormField constructor), `poppler/Form.cc:2677` (createFieldFromDict)
-- **Confirmed on commit:** `e3d56a0` (2026-04-04, poppler 26.04.90)
+- **Confirmed on commit:** `e3d56a0` (2026-04-04, poppler 26.04.90 dev; also affects stable 26.04.0)
 - **Sanitizer:** ASan (`AddressSanitizer: stack-overflow`)
 - **CWE:** CWE-674 (Uncontrolled Recursion)
 - **CVSS:** 7.5 (High) — AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:H
-
----
 
 ## Vulnerable Code
 
@@ -49,27 +42,26 @@ std::unique_ptr<FormField> Form::createFieldFromDict(
 }
 ```
 
-The `usedParents` set (passed by pointer) correctly detects back-edges (cycles)
-but does not bound the recursion depth for acyclic linear chains. Each recursive
-level also copies or passes the `usedParents` set, producing O(n²) work for an
+The `usedParents` set (passed by pointer) correctly detects back-edges (cycles) but does not bound the recursion depth for acyclic linear chains. Each recursive level also copies or passes the `usedParents` set, producing O(n²) work for an
 n-level chain.
 
----
 
 ## Proof of Concept
 
-PoC file: `poc.pdf` (located in this directory, ~490 KB).
+PoC file: `poc.pdf` (~490 KB).
 
-The PDF contains an AcroForm with a 5000-level deep /Kids hierarchy:
-each field dictionary has a /Kids array containing exactly one child field,
-chained 5000 times.
+The PDF contains an AcroForm with a 5000-level deep /Kids hierarchy: each field dictionary has a /Kids array containing exactly one child field, chained 5000 times.
 
 ### Reproduction
 
+**Standard CLI:**
 ```bash
-docker run --rm \
-  -v /scr2/yiwei/vul-agent/zero-day/poppler_validated/05-form-recursion-stackoverflow:/work \
-  vulagent/poppler:latest \
+pdftotext poc.pdf /dev/null
+# AcroForm fields are enumerated during document open; stack overflow occurs before any text extraction work begins.
+```
+
+**With ASan (definitive confirmation):**
+```bash
   /out/asan/pdf_fuzzer /work/poc.pdf
 ```
 
@@ -85,25 +77,17 @@ AddressSanitizer: stack-overflow on address 0x... (pc 0x... ...)
     ... (repeating)
 ```
 
----
 
 ## Impact
 
-Any PDF containing a sufficiently deep AcroForm /Kids hierarchy causes a
-stack overflow, crashing the poppler process (or the application embedding it).
-The PoC is 490 KB and requires no special privileges. The crash is reachable
-via any poppler entry point that processes AcroForms, including rendering,
-text extraction, and form filling.
+Any PDF containing a sufficiently deep AcroForm /Kids hierarchy causes a stack overflow, crashing the poppler process (or the application embedding it). The PoC is 490 KB and requires no special privileges. The crash is reachable via any poppler entry point that processes AcroForms, including rendering, text extraction, and form filling.
 
----
 
 ## Suggested Fix
 
 Two complementary changes are needed:
 
-1. **Add a depth limit.** Pass a `depth` counter through `createFieldFromDict`
-   and the `FormField` constructor; abort with an error when depth exceeds a
-   safe threshold (e.g., 500):
+1. **Add a depth limit.** Pass a `depth` counter through `createFieldFromDict` and the `FormField` constructor; abort with an error when depth exceeds a safe threshold (e.g., 500):
 
 ```diff
  std::unique_ptr<FormField> Form::createFieldFromDict(
@@ -123,5 +107,4 @@ Two complementary changes are needed:
  }
 ```
 
-2. **Convert to iterative traversal** (preferred for robustness) using an
-   explicit stack to eliminate call-stack consumption entirely.
+2. **Convert to iterative traversal** (preferred for robustness) using an explicit stack to eliminate call-stack consumption entirely.
