@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Zero-Day Bug Dashboard — 8 Open-Source Projects</title>
+<title>Zero-Day Bug Dashboard — 10 Open-Source Projects</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root {
@@ -21,121 +21,53 @@
     --api: #b37feb;
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.55;
-  }
-  header {
-    padding: 28px 36px 18px;
-    border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, #121820 0%, #0f1419 100%);
-  }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; }
+  header { padding: 28px 36px 18px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, #121820 0%, #0f1419 100%); }
   h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: .2px; }
   header p { margin: 0; color: var(--muted); font-size: 14px; }
 
   .controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: center;
-    padding: 18px 36px;
-    border-bottom: 1px solid var(--border);
-    background: var(--panel);
-    position: sticky;
-    top: 0;
-    z-index: 20;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 14px 36px; border-bottom: 1px solid var(--border);
+    background: var(--panel); position: sticky; top: 0; z-index: 20;
   }
-  .controls .label {
-    color: var(--muted);
-    font-size: 13px;
-    margin-right: 4px;
-  }
+  .ctrl-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
+  .controls .label { color: var(--muted); font-size: 13px; margin-right: 2px; white-space: nowrap; }
   .btn {
-    background: var(--panel-2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    padding: 7px 14px;
-    border-radius: 999px;
-    font-size: 13px;
-    cursor: pointer;
-    font-weight: 500;
-    transition: all .15s ease;
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    padding: 5px 12px; border-radius: 999px; font-size: 12.5px; cursor: pointer;
+    font-weight: 500; transition: all .15s ease;
   }
   .btn:hover { border-color: var(--accent); }
-  .btn.active {
-    background: var(--accent);
-    color: #0b1117;
-    border-color: var(--accent);
-  }
+  .btn.active { background: var(--accent); color: #0b1117; border-color: var(--accent); }
   .btn.sev-critical.active { background: var(--crit); border-color: var(--crit); color: #fff; }
   .btn.sev-high.active { background: var(--high); border-color: var(--high); color: #0b1117; }
   .btn.sev-medium.active { background: var(--med); border-color: var(--med); color: #0b1117; }
   .btn.sev-low.active { background: var(--low); border-color: var(--low); color: #0b1117; }
+  .status-select {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    padding: 5px 10px; border-radius: 8px; font-size: 12.5px; cursor: pointer;
+  }
   .search {
-    flex: 1;
-    min-width: 220px;
-    max-width: 340px;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 7px 12px;
-    border-radius: 8px;
-    font-size: 13px;
+    flex: 1; min-width: 200px; max-width: 320px; background: var(--panel-2);
+    border: 1px solid var(--border); color: var(--text); padding: 5px 12px;
+    border-radius: 8px; font-size: 13px;
   }
-  .counter {
-    margin-left: auto;
-    color: var(--muted);
-    font-size: 13px;
-  }
+  .counter { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
 
   main { padding: 22px 36px 60px; }
-  .project {
-    margin: 22px 0 30px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-  }
-  .project-head {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
-    background: var(--panel-2);
-  }
-  .project-head h2 {
-    margin: 0;
-    font-size: 18px;
-    letter-spacing: .3px;
-  }
-  .project-head .slug {
-    color: var(--muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12px;
-  }
-  .project-head .summary {
-    margin-left: auto;
-    color: var(--muted);
-    font-size: 12.5px;
-  }
+  .project { margin: 22px 0 30px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .project-head { display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
+  .project-head h2 { margin: 0; font-size: 17px; letter-spacing: .3px; }
+  .project-head .slug { color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  .project-head .summary { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; }
 
-  .vuln-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-    gap: 14px;
-    padding: 18px 20px;
-  }
+  .vuln-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; padding: 16px 18px; }
   .vuln {
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    border-left: 4px solid var(--border);
-    border-radius: 10px;
-    padding: 14px 16px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-left: 4px solid var(--border); border-radius: 10px; padding: 13px 15px;
     transition: transform .1s ease, border-color .15s ease;
+    display: flex; flex-direction: column;
   }
   .vuln:hover { transform: translateY(-1px); border-color: #3b4554; }
   .vuln.sev-critical { border-left-color: var(--crit); }
@@ -143,86 +75,52 @@
   .vuln.sev-medium { border-left-color: var(--med); }
   .vuln.sev-low { border-left-color: var(--low); }
 
-  .vuln-head {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    align-items: flex-start;
-  }
-  .vuln-title {
-    font-weight: 600;
-    font-size: 14.5px;
-    margin: 0;
-  }
-  .vuln-id {
-    color: var(--muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 11.5px;
-    margin-top: 2px;
-  }
+  .vuln-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+  .vuln-title { font-weight: 600; font-size: 14px; margin: 0; }
+  .vuln-id { color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; margin-top: 2px; }
 
-  .badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 10px 0 8px;
-  }
+  .badges { display: flex; flex-wrap: wrap; gap: 5px; margin: 9px 0 7px; }
   .badge {
-    display: inline-block;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 9px;
-    border-radius: 999px;
-    letter-spacing: .3px;
-    text-transform: uppercase;
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 999px; letter-spacing: .3px; text-transform: uppercase;
   }
   .badge.sev-critical { background: rgba(255,77,79,.15); color: var(--crit); border: 1px solid rgba(255,77,79,.4); }
   .badge.sev-high { background: rgba(255,122,69,.15); color: var(--high); border: 1px solid rgba(255,122,69,.4); }
   .badge.sev-medium { background: rgba(250,173,20,.15); color: var(--med); border: 1px solid rgba(250,173,20,.4); }
   .badge.sev-low { background: rgba(82,196,26,.15); color: var(--low); border: 1px solid rgba(82,196,26,.4); }
-  .badge.type {
-    background: rgba(88,166,255,.12);
-    color: var(--accent);
-    border: 1px solid rgba(88,166,255,.35);
-    text-transform: none;
+  .badge.type { background: rgba(88,166,255,.12); color: var(--accent); border: 1px solid rgba(88,166,255,.35); text-transform: none; }
+  .badge.api { background: rgba(179,127,235,.13); color: var(--api); border: 1px solid rgba(179,127,235,.4); text-transform: none; }
+  .badge.cwe { background: rgba(139,148,158,.12); color: var(--muted); border: 1px solid var(--border); text-transform: none; font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+  .vuln-desc { color: #c9d1d9; font-size: 12.5px; margin: 0 0 5px; flex: 1; }
+  .vuln-loc { color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; word-break: break-all; }
+
+  .vuln-footer {
+    display: flex; align-items: center; gap: 7px; margin-top: 10px;
+    padding-top: 8px; border-top: 1px solid var(--border); flex-wrap: wrap;
   }
-  .badge.api {
-    background: rgba(179,127,235,.13);
-    color: var(--api);
-    border: 1px solid rgba(179,127,235,.4);
-    text-transform: none;
-  }
-  .badge.cwe {
-    background: rgba(139,148,158,.12);
-    color: var(--muted);
-    border: 1px solid var(--border);
-    text-transform: none;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  .badge.channel {
+    background: rgba(139,148,158,.08); color: #7d8693; border: 1px solid var(--border);
+    text-transform: none; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10.5px;
   }
 
-  .vuln-desc {
-    color: #c9d1d9;
-    font-size: 13px;
-    margin: 0 0 6px;
-  }
-  .vuln-loc {
-    color: var(--muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 11.5px;
-    word-break: break-all;
-  }
+  /* Status badge colors */
+  .badge.st-awaiting          { background: rgba(24,144,255,.13);  color: #1890ff; border: 1px solid rgba(24,144,255,.4); }
+  .badge.st-confirmed-fixed   { background: rgba(82,196,26,.13);   color: #52c41a; border: 1px solid rgba(82,196,26,.4); }
+  .badge.st-cve-requested     { background: rgba(19,194,194,.13);  color: #13c2c2; border: 1px solid rgba(19,194,194,.4); }
+  .badge.st-dismissed-api     { background: rgba(179,127,235,.13); color: #b37feb; border: 1px solid rgba(179,127,235,.4); }
+  .badge.st-dismissed-ns      { background: rgba(250,140,22,.13);  color: #fa8c16; border: 1px solid rgba(250,140,22,.4); }
+  .badge.st-dismissed-closed  { background: rgba(212,136,6,.13);   color: #d48806; border: 1px solid rgba(212,136,6,.4); }
+  .badge.st-responded-fix     { background: rgba(54,207,201,.13);  color: #36cfc9; border: 1px solid rgba(54,207,201,.4); }
+
+  .vuln-link { margin-left: auto; color: var(--accent); font-size: 11.5px; text-decoration: none; white-space: nowrap; }
+  .vuln-link:hover { text-decoration: underline; }
 
   .hidden { display: none !important; }
-
-  footer {
-    padding: 20px 36px;
-    color: var(--muted);
-    font-size: 12px;
-    border-top: 1px solid var(--border);
-  }
+  footer { padding: 20px 36px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
 
   @media (max-width: 720px) {
-    header, .controls, main, footer { padding-left: 18px; padding-right: 18px; }
+    header, .controls, main, footer { padding-left: 16px; padding-right: 16px; }
     .vuln-grid { grid-template-columns: 1fr; }
   }
 </style>
@@ -230,226 +128,548 @@
 <body>
 <header>
   <h1>Zero-Day Bug Dashboard</h1>
-  <p>Manually validated memory-safety bugs and API contract issues across eight open-source projects · Findings date: 2026-04-17</p>
+  <p>Validated memory-safety bugs across 10 open-source projects · Last updated: 2026-04-21</p>
 </header>
 
 <section class="controls" id="controls">
-  <span class="label">Severity:</span>
-  <button class="btn active" data-filter="all">All</button>
-  <button class="btn sev-critical" data-filter="critical">Critical</button>
-  <button class="btn sev-high" data-filter="high">High</button>
-  <button class="btn sev-medium" data-filter="medium">Medium</button>
-  <button class="btn sev-low" data-filter="low">Low</button>
-  <span class="label" style="margin-left:14px">Class:</span>
-  <button class="btn" data-class="memory">Memory-Safety Only</button>
-  <button class="btn" data-class="api">API Misuse Only</button>
-  <input class="search" id="search" placeholder="Search title, CWE, type, location…" />
-  <span class="counter" id="counter"></span>
+  <div class="ctrl-row">
+    <span class="label">Severity:</span>
+    <button class="btn active" data-filter="all">All</button>
+    <button class="btn sev-critical" data-filter="critical">Critical</button>
+    <button class="btn sev-high" data-filter="high">High</button>
+    <button class="btn sev-medium" data-filter="medium">Medium</button>
+    <button class="btn sev-low" data-filter="low">Low</button>
+    <span class="label" style="margin-left:10px">Class:</span>
+    <button class="btn" data-class="memory">Memory-Safety</button>
+    <button class="btn" data-class="api">API Misuse</button>
+    <span class="label" style="margin-left:10px">Status:</span>
+    <select class="status-select" id="statusFilter">
+      <option value="all">All Statuses</option>
+      <option value="awaiting">Awaiting Response</option>
+      <option value="confirmed-fixed">Confirmed &amp; Fixed</option>
+      <option value="cve-requested">CVE Requested</option>
+      <option value="responded-fix">Will Fix</option>
+      <option value="dismissed-api">Dismissed: API Misuse</option>
+      <option value="dismissed-ns">Dismissed: Not Security</option>
+      <option value="dismissed-closed">Dismissed: Closed</option>
+    </select>
+    <input class="search" id="search" placeholder="Search title, CWE, type…" />
+    <span class="counter" id="counter"></span>
+  </div>
 </section>
 
 <main id="main"></main>
 
 <footer>
-  Data sourced from <code>/scr2/yiwei/vul-agent/zero-day/&lt;project&gt;_validated/</code>. Severity estimates follow each project's reporting guide; where no explicit severity was provided, a reasonable estimate is given based on CWE/impact. A bug marked "API misuse" is reachable only by an application mis-using the library API, not by a remote attacker-controlled file/input stream.
+  Data sourced from <code>/scr2/yiwei/vul-agent/zero-day/&lt;project&gt;/</code>.
+  Severity follows each project's reporting guide; CVSS estimates used where explicit scores were provided.
+  "API misuse" = reachable only via documented but incorrectly used API, not via attacker-controlled file/stream alone.
+  "Awaiting" = reported, no response yet. "Not reported" = validated but not yet submitted.
 </footer>
 
 <script>
+const STATUS_LABELS = {
+  "awaiting":         "Awaiting Response",
+  "confirmed-fixed":  "Confirmed & Fixed",
+  "cve-requested":    "CVE Requested",
+  "responded-fix":    "Will Fix",
+  "dismissed-api":    "Dismissed: API Misuse",
+  "dismissed-ns":     "Dismissed: Not Security",
+  "dismissed-closed": "Closed"
+};
+
 const data = [
+  // ── ASSIMP ─────────────────────────────────────────────────────────────────
   {
-    project: "curl",
-    slug: "curl_validated",
-    summary: "10 confirmed vulnerabilities across TLS, SSL session export, MIME, WebSockets",
+    project: "assimp", slug: "assimp",
+    summary: "4 confirmed stack-overflow / assertion bugs in FBX and COLLADA parsers",
     vulns: [
-      { id: "vuln-01-tls-null-deref-client-cert", title: "NULL deref in EVP_PKEY_copy_parameters()", sev: "low", type: "NULL Pointer Dereference", cwe: ["CWE-476"], apiOnly: false, loc: "lib/vtls/openssl.c:1559", desc: "X509_get_pubkey() return value unchecked in client_cert(); malformed client certificate crashes any TLS connection using CURLOPT_SSLCERT." },
-      { id: "vuln-02-tls-privkey-null-deref", title: "NULL deref in EVP_PKEY_id()", sev: "low", type: "NULL Pointer Dereference", cwe: ["CWE-476","CWE-252"], apiOnly: false, loc: "lib/vtls/openssl.c:1568", desc: "SSL_get_privatekey() return value unchecked on the ENGINE/deprecated code path." },
-      { id: "vuln-03-certinfo-oob-write", title: "Heap OOB write in Curl_ssl_push_certinfo_len()", sev: "medium", type: "Heap Out-of-Bounds Write", cwe: ["CWE-787","CWE-20"], apiOnly: false, loc: "lib/vtls/vtls.c:658", desc: "certnum bounds-check exists only as a DEBUGASSERT — stripped in release builds, leaving silent heap corruption if any call site exceeds MAX_ALLOWED_CERT_AMOUNT." },
-      { id: "vuln-04-easy-stack-overflow", title: "Stack buffer overflow in populate_fds()", sev: "medium", type: "Stack Buffer Overflow", cwe: ["CWE-121"], apiOnly: false, loc: "lib/easy.c (DEBUGBUILD only)", desc: "fds[4] overflows when 5+ concurrent sockets are registered via the debug-only curl_easy_perform_ev() API." },
-      { id: "vuln-05-ssls-export-uaf", title: "Heap-UAF in Curl_ssl_session_export()", sev: "high", type: "Use-After-Free", cwe: ["CWE-416"], apiOnly: false, loc: "lib/vtls/vtls_scache.c:1214 (USE_SSLS_EXPORT)", desc: "Iterator invalidated when the export callback re-enters curl_easy_ssls_import(); subsequent iteration dereferences freed cache entry." },
-      { id: "vuln-06-ssls-import-oob-read", title: "OOB read in curl_easy_ssls_import()", sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false, loc: "lib/vtls/vtls_scache.c (USE_SSLS_EXPORT)", desc: "shmac_len validates declared size but buffer can be smaller — reads 22 bytes past the end of the caller's blob." },
-      { id: "vuln-07-ssls-import-null-deref", title: "NULL deref in Curl_ssl_session_import()", sev: "low", type: "NULL Pointer Dereference", cwe: ["CWE-476"], apiOnly: false, loc: "lib/vtls/vtls_scache.c (USE_SSLS_EXPORT)", desc: "sdata=NULL with sdata_len>0 reaches spack_dec8(*NULL) in release builds." },
-      { id: "vuln-08-mime-recursion-stack-overflow", title: "Unbounded recursion → stack overflow", sev: "low", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false, loc: "lib/mime.c:684", desc: "~9500 nested curl_mime_subparts() exhausts the 8 MB stack — DoS from attacker-supplied MIME structure." },
-      { id: "vuln-09-mime-base64-int-overflow", title: "Signed integer overflow in encoder_base64_size()", sev: "low", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false, loc: "lib/mime.c:427", desc: "datasize=LLONG_MAX wraps to negative, corrupting Content-Length header." },
-      { id: "vuln-10-ws-send-missing-nwritten", title: "Missing *pnwritten write in ws_send_raw_blocking()", sev: "low", type: "API Contract Violation", cwe: ["CWE-252"], apiOnly: true, loc: "lib/ws.c", desc: "*pnwritten never set on success path; callers observe sent=0 despite successful transmission. Not a memory-safety bug — API contract only." }
+      { id: "01-assimp-fbx-stack-overflow",
+        title: "Unbounded recursion in FBX binary ReadScope()",
+        sev: "medium", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false,
+        loc: "code/AssetLib/FBX/FBXBinaryTokenizer.cpp:334 (ReadScope)",
+        desc: "~4000 nested FBX nodes exhaust the 8 MB stack. No depth limit on ReadScope() recursion. ASan stack-overflow confirmed.",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/assimp/assimp/security/advisories/GHSA-638c-2vw5-m7v7" },
+      { id: "02-assimp-collada-xml-stack-overflow",
+        title: "pugixml XML parser unbounded recursion (COLLADA import)",
+        sev: "medium", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false,
+        loc: "contrib/pugixml/src/pugixml.cpp:251",
+        desc: "~5000 nested COLLADA <animation>/<node> elements exhaust the stack during XML parsing via bundled pugixml, before Assimp's own parser runs. ASan confirmed.",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/assimp/assimp/security/advisories/GHSA-55j2-wfv2-h69r" },
+      { id: "03-assimp-collada-buildhierarchy-stack-overflow",
+        title: "Circular <instance_node> → infinite recursion in BuildHierarchy()",
+        sev: "medium", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false,
+        loc: "code/AssetLib/Collada/ColladaLoader.cpp:235 (BuildHierarchy)",
+        desc: "COLLADA circular <instance_node> references cause BuildHierarchy() to recurse without termination, exhausting the stack. Distinct from the pugixml crash (#02).",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/assimp/assimp/security/advisories/GHSA-fj7r-qfp4-5954" },
+      { id: "04-assimp-collada-empty-attrs-abrt",
+        title: "Empty id/url COLLADA attributes → assertion abort (SIGABRT)",
+        sev: "medium", type: "Reachable Assertion", cwe: ["CWE-617","CWE-20"], apiOnly: false,
+        loc: "code/AssetLib/Collada/ColladaLoader.cpp (attribute parsing)",
+        desc: "Empty id=\"\" and url=\"\" trigger url[0] access and id.size()-1 unsigned underflow, causing SIGABRT (assertion failure) in both debug and release builds.",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/assimp/assimp/security/advisories/GHSA-2jwp-w933-3qjh" }
     ]
   },
+
+  // ── CAIRO ──────────────────────────────────────────────────────────────────
   {
-    project: "dnsmasq",
-    slug: "dnsmasq_validated",
+    project: "cairo", slug: "cairo",
+    summary: "5 confirmed UBSan/ASan bugs in fixed-point arithmetic and font subsetting",
+    vulns: [
+      { id: "06-cairo-fixed-imgmask-overflow",
+        title: "INT_MIN negation UB in _cairo_fixed_integer_floor()",
+        sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
+        loc: "cairo/src/cairo-fixed-private.h:233",
+        desc: "Negating f == INT_MIN is undefined behavior. Triggered when a PDF ImageMask is scaled so that a fixed-point coordinate hits CAIRO_FIXED_MIN. UBSan confirmed. CVSS 5.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/cairo/cairo/-/work_items/942" },
+      { id: "07-cairo-slope-path-overflow",
+        title: "Coordinate subtraction overflow in _cairo_slope_init()",
+        sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
+        loc: "cairo/src/cairo-slope-private.h:49",
+        desc: "b->x - a->x overflows int32 when path endpoints span the full fixed-point range (near INT_MAX to near INT_MIN). Triggered via cairo stroke paths. UBSan confirmed. CVSS 5.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/cairo/cairo/-/work_items/943" },
+      { id: "08-cairo-pathbounds-overflow",
+        title: "Stroke-extent addition overflow in _cairo_path_fixed_approximate_stroke_extents()",
+        sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
+        loc: "cairo/src/cairo-path-bounds.c:180",
+        desc: "box_extents.p2.x += fixed_from_double(dx) overflows int32 when Bezier control points place the bbox near INT_MAX and any stroke width is applied. UBSan confirmed. CVSS 5.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/cairo/cairo/-/work_items/944" },
+      { id: "09-cairo-truetype-heapboflow",
+        title: "Heap OOB read in find_name() — TrueType name table (CWE-122)",
+        sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-122"], apiOnly: false,
+        loc: "cairo/src/cairo-truetype-subset.c:1462",
+        desc: "find_name() reads 2 bytes at data+record->offset without bounding against the name-table buffer. Reachable via an embedded TrueType font in a PDF. ASan heap-buffer-overflow confirmed. CVSS 7.8.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/cairo/cairo/-/work_items/945" },
+      { id: "10-cairo-type1-intovf",
+        title: "Type1 font metric multiplication overflow",
+        sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
+        loc: "cairo/src/cairo-type1-subset.c:667",
+        desc: "55882 × 52845 overflows int32 (~2.95 × 10⁹ > INT_MAX). Triggered by LaTeX-style Type1 fonts (CMBX12, CMR10) via PDF annotation rendering. UBSan confirmed. CVSS 5.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/cairo/cairo/-/work_items/946" }
+    ]
+  },
+
+  // ── CURL ───────────────────────────────────────────────────────────────────
+  {
+    project: "curl", slug: "curl",
+    summary: "10 confirmed bugs across TLS, SSL session export, MIME, and WebSockets",
+    vulns: [
+      { id: "vuln-01-tls-null-deref-client-cert",
+        title: "NULL deref: EVP_PKEY_copy_parameters() return unchecked",
+        sev: "low", type: "NULL Pointer Dereference", cwe: ["CWE-476"], apiOnly: false,
+        loc: "lib/vtls/openssl.c:1559",
+        desc: "X509_get_pubkey() return value unchecked in client_cert(). Malformed certificate can crash any TLS connection using CURLOPT_SSLCERT.",
+        channel: "GitHub Issue", status: "dismissed-api",
+        url: "https://github.com/curl/curl/issues/21366" },
+      { id: "vuln-02-tls-privkey-null-deref",
+        title: "NULL deref: SSL_get_privatekey() return unchecked",
+        sev: "low", type: "NULL Pointer Dereference", cwe: ["CWE-476","CWE-252"], apiOnly: false,
+        loc: "lib/vtls/openssl.c:1568",
+        desc: "SSL_get_privatekey() return value unchecked on the ENGINE/deprecated code path in client_cert().",
+        channel: "GitHub Issue", status: "dismissed-api",
+        url: "https://github.com/curl/curl/issues/21367" },
+      { id: "vuln-03-certinfo-oob-write",
+        title: "Heap OOB write in Curl_ssl_push_certinfo_len() — DEBUGASSERT only",
+        sev: "medium", type: "Heap Out-of-Bounds Write", cwe: ["CWE-787","CWE-20"], apiOnly: false,
+        loc: "lib/vtls/vtls.c:658",
+        desc: "certnum bounds-check exists only as a DEBUGASSERT — stripped in release builds, leaving silent heap corruption if any call site exceeds MAX_ALLOWED_CERT_AMOUNT.",
+        channel: "HackerOne", status: "dismissed-ns",
+        url: null },
+      { id: "vuln-04-easy-stack-overflow",
+        title: "Stack buffer overflow in populate_fds() — fds[4] overrun",
+        sev: "medium", type: "Stack Buffer Overflow", cwe: ["CWE-121","CWE-787"], apiOnly: false,
+        loc: "lib/easy.c (DEBUGBUILD only)",
+        desc: "fds[4] overflows when 5+ concurrent sockets are registered via debug-only curl_easy_perform_ev() API.",
+        channel: "GitHub Issue", status: "dismissed-api",
+        url: "https://github.com/curl/curl/issues/21368" },
+      { id: "vuln-05-ssls-export-uaf",
+        title: "Heap-UAF in Curl_ssl_session_export() via callback re-entrancy",
+        sev: "high", type: "Use-After-Free", cwe: ["CWE-416"], apiOnly: false,
+        loc: "lib/vtls/vtls_scache.c:1214 (USE_SSLS_EXPORT)",
+        desc: "Iterator invalidated when the export callback re-enters curl_easy_ssls_import(); subsequent iteration dereferences freed cache entry. Developer acknowledged, will add error return.",
+        channel: "HackerOne", status: "responded-fix",
+        url: null },
+      { id: "vuln-06-ssls-import-oob-read",
+        title: "OOB read in curl_easy_ssls_import() — shmac_len unchecked",
+        sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false,
+        loc: "lib/vtls/vtls_scache.c (USE_SSLS_EXPORT)",
+        desc: "shmac_len validates declared size but buffer can be shorter — reads 22 bytes past the end of caller's blob.",
+        channel: "GitHub Issue", status: "dismissed-api",
+        url: "https://github.com/curl/curl/issues/21369" },
+      { id: "vuln-07-ssls-import-null-deref",
+        title: "NULL deref in Curl_ssl_session_import() — sdata=NULL unguarded",
+        sev: "low", type: "NULL Pointer Dereference", cwe: ["CWE-476"], apiOnly: false,
+        loc: "lib/vtls/vtls_scache.c (USE_SSLS_EXPORT)",
+        desc: "sdata=NULL with sdata_len>0 reaches spack_dec8(*NULL) in release builds.",
+        channel: "GitHub Issue", status: "dismissed-api",
+        url: "https://github.com/curl/curl/issues/21370" },
+      { id: "vuln-08-mime-recursion-stack-overflow",
+        title: "Stack exhaustion via deeply nested MIME subparts",
+        sev: "low", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false,
+        loc: "lib/mime.c:684",
+        desc: "~9500 nested curl_mime_subparts() calls exhaust the 8 MB stack. Developer responded: PoC uses a private function, not the libcurl API; threat model requires code execution.",
+        channel: "HackerOne", status: "dismissed-ns",
+        url: null },
+      { id: "vuln-09-mime-base64-int-overflow",
+        title: "Signed integer overflow in encoder_base64_size()",
+        sev: "low", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
+        loc: "lib/mime.c:427",
+        desc: "datasize=LLONG_MAX wraps to negative, corrupting the Content-Length header.",
+        channel: "GitHub Issue", status: "dismissed-api",
+        url: "https://github.com/curl/curl/issues/21371" },
+      { id: "vuln-10-ws-send-missing-nwritten",
+        title: "*pnwritten never set in ws_send_raw_blocking() success path",
+        sev: "low", type: "API Contract Violation", cwe: ["CWE-252"], apiOnly: true,
+        loc: "lib/ws.c",
+        desc: "*pnwritten remains 0 on the blocking success path; callers observe sent=0 despite successful send. Developer confirmed and fixed in commit ebed4aa.",
+        channel: "GitHub Issue", status: "confirmed-fixed",
+        url: "https://github.com/curl/curl/issues/21372" }
+    ]
+  },
+
+  // ── DNSMASQ ────────────────────────────────────────────────────────────────
+  {
+    project: "dnsmasq", slug: "dnsmasq",
     summary: "1 confirmed network-reachable heap buffer overflow (DNSSEC path)",
     vulns: [
-      { id: "01-log_query-ds-heap-overflow", title: "Heap buffer overflow in log_query() via DS record", sev: "high", type: "Heap Buffer Overflow", cwe: ["CWE-122","CWE-787","CWE-120"], apiOnly: false, loc: "src/cache.c:2358 (log_query)", desc: "sprintf() writes 58 bytes into the 46-byte daemon->addrbuff when a DS record carries unassigned algorithm=255 and digest_type=255 and triggers the \"(not supported)\" branch in dnssec.c:1104. Network-reachable when DNSSEC validation + query logging are enabled. CVSS ~7.5." }
+      { id: "01-log_query-ds-heap-overflow",
+        title: "Heap buffer overflow in log_query() via DS record with unassigned algorithms",
+        sev: "high", type: "Heap Buffer Overflow", cwe: ["CWE-122","CWE-787","CWE-120"], apiOnly: false,
+        loc: "src/cache.c:2358 (log_query)",
+        desc: "sprintf() writes 58 bytes into the 46-byte daemon->addrbuff when a DS record carries algorithm=255 + digest_type=255, triggering the \"(not supported)\" branch. Network-reachable with DNSSEC + query logging enabled. CVSS ~7.5. Maintainer confirmed; CVE requested.",
+        channel: "Email", status: "cve-requested",
+        url: null }
     ]
   },
+
+  // ── GPAC ───────────────────────────────────────────────────────────────────
   {
-    project: "libheif",
-    slug: "libheif_validated",
-    summary: "12 confirmed bugs — 5 file-parsing + 7 C API contract violations",
+    project: "gpac", slug: "gpac",
+    summary: "2 confirmed bugs in IPMP and ELST MP4 box parsers",
     vulns: [
-      { id: "01-track-oob-chunk-access", title: "OOB chunk vector access in Track::get_next_sample_raw_data()", sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-193"], apiOnly: false, loc: "sequences/track.cc:1087", desc: "stco chunk count < stsz sample count → off-by-one (> vs >=) stores chunkIdx = m_chunks.size(); subsequent read is OOB. Triggered by malicious HEIF file." },
-      { id: "02-unci-empty-null-parameters", title: "NULL parameters in heif_context_add_empty_unci_image()", sev: "low", type: "NULL Pointer Dereference (API)", cwe: ["CWE-476"], apiOnly: true, loc: "image-items/unc_image.cc:113", desc: "parameters pointer passed to add_unci_item() without null-check, though prototype / out_handle are guarded. API-level DoS." },
-      { id: "03-gimi-component-id-overflow", title: "uint32 overflow → heap OOB write in heif_image_set_gimi_component_content_id()", sev: "medium", type: "Integer Overflow → Heap OOB Write (API)", cwe: ["CWE-190","CWE-122"], apiOnly: true, loc: "api/libheif/heif_uncompressed.cc:784", desc: "component_idx+1 wraps to 0 when component_idx = UINT32_MAX; ids.resize(0) followed by ids[UINT32_MAX] writes ~136 GiB past base." },
-      { id: "04-saiz-sampleauxinfo-oob", title: "SampleAuxInfoReader OOB via saiz/stco mismatch", sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-617"], apiOnly: false, loc: "sequences/track.cc:141", desc: "assert() is debug-only; release builds advance current_chunk past chunks.size() and perform OOB access. Triggered by malicious HEIF." },
-      { id: "05-tild-ntiles-overflow", title: "Integer overflow in nTiles_h()/nTiles_v() → SIGSEGV", sev: "high", type: "Integer Overflow → SEGV", cwe: ["CWE-190","CWE-125"], apiOnly: false, loc: "image-items/tiled.cc:87-96", desc: "(image_width + tile_width - 1) wraps to 0 → nTiles=0 → m_offsets.resize(0) → m_offsets[0] SEGV. File-parsing DoS, no user interaction beyond opening file." },
-      { id: "06-track-null-iloc-deref", title: "NULL iloc dereference in Track::load()", sev: "low", type: "NULL Pointer Dereference", cwe: ["CWE-476"], apiOnly: false, loc: "sequences/track.cc:478", desc: "get_child_box<Box_iloc>() returns nullptr for trak>meta with infe(uri) but no iloc; pointer used unchecked in read_data()." },
-      { id: "07-track-api-oob-no-size", title: "Missing size param in heif_context_get_track_ids() / heif_track_get_track_reference_types()", sev: "medium", type: "Heap Buffer Overflow (API)", cwe: ["CWE-120","CWE-122"], apiOnly: true, loc: "api/libheif/heif_sequences.cc:73,760", desc: "Functions write all entries to caller's array with no capacity or max_count parameter." },
-      { id: "08-track-release-double-free", title: "Double-free / UAF in heif_track_release()", sev: "medium", type: "Double Free / Use-After-Free (API)", cwe: ["CWE-415","CWE-416"], apiOnly: true, loc: "api/libheif/heif_sequences.cc:57", desc: "Bare `delete track` with no null guard; second release destructs already-freed object and corrupts shared_ptr<HeifContext>." },
-      { id: "09-context-api-null-data", title: "NULL data in heif_context_read_from_memory() / heif_context_add_generic_metadata()", sev: "low", type: "NULL Pointer Dereference (API)", cwe: ["CWE-476"], apiOnly: true, loc: "bitstream.cc:83 / context.cc:1796", desc: "data pointer passed directly to memcpy() without null-check when size>0." },
-      { id: "10-context-api-negative-size", title: "Signed→size_t wrap in metadata size parameter", sev: "medium", type: "Signed-to-Unsigned Conversion (API)", cwe: ["CWE-195"], apiOnly: true, loc: "context.cc (~1790)", desc: "int size parameter of heif_context_add_generic_metadata / _XMP_ / _exif_ accepts -1; resize((size_t)-1) throws std::length_error → SIGABRT." },
-      { id: "11-metadata-invalid-compression-enum", title: "Unvalidated heif_metadata_compression enum", sev: "low", type: "API Misuse / Undefined Behavior", cwe: ["CWE-20","CWE-704"], apiOnly: true, loc: "context.cc:1728,1762,1767,1774,1783", desc: "heif_context_add_XMP_metadata2() accepts any int cast to enum (e.g. 99), triggers 8 UBSan errors and silent type confusion (stored without content_encoding header while returning heif_error_Ok)." },
-      { id: "12-snuc-memory-exhaustion", title: "Memory exhaustion in Box_snuc::parse() bypassing limits", sev: "low", type: "Uncontrolled Resource Consumption", cwe: ["CWE-400","CWE-770"], apiOnly: false, loc: "codecs/uncompressed/unc_boxes.cc:1323", desc: "61-byte file allocates ~1.88 GB (two vector::resize calls under 1G-pixel limit) bypassing MemoryHandle tracking." }
+      { id: "01-gpac-ipmp-heap-overflow",
+        title: "Heap buffer overflow in IPMP descriptor parsing",
+        sev: "high", type: "Heap Buffer Overflow", cwe: ["CWE-122"], apiOnly: false,
+        loc: "gpac IPMP OD parser (GPAC_MINIMAL_ODF path)",
+        desc: "Heap-based OOB write in IPMP descriptor parsing. Developer confirmed bug and fixed it (dead code path under GPAC_MINIMAL_ODF); not classified as a security issue. Fix: commit c84397070cd0.",
+        channel: "GitHub Issue", status: "confirmed-fixed",
+        url: "https://github.com/gpac/gpac/issues/3514" },
+      { id: "02-gpac-elst-infinite-loop",
+        title: "Infinite loop via malformed elst MP4 box",
+        sev: "medium", type: "Infinite Loop", cwe: ["CWE-835","CWE-400"], apiOnly: false,
+        loc: "gpac MP4 box parser (elst handler)",
+        desc: "A malformed edit-list (elst) box causes an infinite loop — 100% CPU until the process is killed. Developer confirmed and fixed (commit cf6ac48c972e).",
+        channel: "GitHub Issue", status: "confirmed-fixed",
+        url: "https://github.com/gpac/gpac/issues/3515" }
     ]
   },
+
+  // ── LIBHEIF ────────────────────────────────────────────────────────────────
   {
-    project: "OpenEXR",
-    slug: "openexr_validated",
+    project: "libheif", slug: "libheif",
+    summary: "6 confirmed bugs reported (file-parsing + C API contract violations)",
+    vulns: [
+      { id: "01-track-oob-chunk-access",
+        title: "OOB chunk vector access in Track::get_next_sample_raw_data()",
+        sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-193"], apiOnly: false,
+        loc: "sequences/track.cc:1087",
+        desc: "stco chunk count < stsz sample count → off-by-one (> vs >=) stores chunkIdx = m_chunks.size(); subsequent read is OOB. Triggered by malicious HEIF file. CVSS 6.5.",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/strukturag/libheif/security/advisories/GHSA-wqjg-4x9g-6cvg" },
+      { id: "03-gimi-component-id-overflow",
+        title: "uint32 overflow → heap OOB write in heif_image_set_gimi_component_content_id()",
+        sev: "medium", type: "Integer Overflow → Heap OOB Write (API)", cwe: ["CWE-190","CWE-122"], apiOnly: true,
+        loc: "api/libheif/heif_uncompressed.cc:784",
+        desc: "component_idx+1 wraps to 0 when component_idx = UINT32_MAX; ids.resize(0) followed by ids[UINT32_MAX] writes ~136 GiB past base. CVSS 6.1.",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/strukturag/libheif/security/advisories/GHSA-jfgf-gc66-f3xw" },
+      { id: "04-saiz-sampleauxinfo-oob",
+        title: "SampleAuxInfoReader OOB via saiz/stco size mismatch",
+        sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-617"], apiOnly: false,
+        loc: "sequences/track.cc:141",
+        desc: "assert() is debug-only; release builds advance current_chunk past chunks.size() and OOB-read. Triggered by malicious HEIF. CVSS 6.5.",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/strukturag/libheif/security/advisories/GHSA-9hxj-whrv-m7cc" },
+      { id: "05-tild-ntiles-overflow",
+        title: "Integer overflow in nTiles_h/v() → SIGSEGV (tild box)",
+        sev: "high", type: "Integer Overflow → SEGV", cwe: ["CWE-190","CWE-125"], apiOnly: false,
+        loc: "image-items/tiled.cc:87-96",
+        desc: "(image_width + tile_width - 1) wraps to 0 → nTiles=0 → m_offsets.resize(0) → m_offsets[0] SEGV. File-parsing DoS requiring no user interaction beyond opening file. CVSS 6.5.",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/strukturag/libheif/security/advisories/GHSA-x6gq-f8qg-rm7w" },
+      { id: "07-track-api-oob-no-size",
+        title: "Missing capacity param in heif_context_get_track_ids()",
+        sev: "medium", type: "Heap Buffer Overflow (API)", cwe: ["CWE-120","CWE-122"], apiOnly: true,
+        loc: "api/libheif/heif_sequences.cc:73,760",
+        desc: "Functions write all entries to caller's array with no capacity or max_count parameter. Maintainer closed advisory — strengthened API comments instead, citing API-contract responsibility on caller. CVSS 6.1.",
+        channel: "GitHub Advisory", status: "dismissed-closed",
+        url: "https://github.com/strukturag/libheif/security/advisories/GHSA-ggxm-xvfh-454m" },
+      { id: "08-track-release-double-free",
+        title: "Double-free / UAF in heif_track_release()",
+        sev: "medium", type: "Double Free / Use-After-Free (API)", cwe: ["CWE-415","CWE-416"], apiOnly: true,
+        loc: "api/libheif/heif_sequences.cc:57",
+        desc: "Bare delete track with no null guard; second release destructs already-freed object and corrupts shared_ptr<HeifContext>. CVSS 6.1.",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/strukturag/libheif/security/advisories/GHSA-pfwf-3248-7j44" }
+    ]
+  },
+
+  // ── OPENEXR ────────────────────────────────────────────────────────────────
+  {
+    project: "OpenEXR", slug: "openexr",
     summary: "3 confirmed bugs in ImfIDManifest.cpp (idmanifest attribute parser)",
     vulns: [
-      { id: "01-idmanifest-ubsan-shift-overflow", title: "Shift exponent overflow in readVariableLengthInteger()", sev: "high", type: "Undefined Behavior (Shift Overflow)", cwe: ["CWE-190","CWE-1335"], apiOnly: false, loc: "src/lib/OpenEXR/ImfIDManifest.cpp:122", desc: "No upper bound on shift counter; after 10 continuation bytes (uint64_t) << 70 is UB per C++14 §5.8/2. Triggered by crafted EXR file. CVSS ~6.5–7.5." },
-      { id: "02-idmanifest-oob-string-prefix", title: "Missing size check before 2-byte prefix read", sev: "high", type: "Out-of-Bounds Read", cwe: ["CWE-125","CWE-119"], apiOnly: false, loc: "src/lib/OpenEXR/ImfIDManifest.cpp:342-343", desc: "IDManifest::init() reads stringList[i][0] and [1] without verifying size ≥ 2. 0-byte string makes both reads OOB (ASan + _GLIBCXX_DEBUG confirmed)." },
-      { id: "03-idmanifest-oob-mapping-vector", title: "Off-by-one bounds check → NULL ptr deref on empty mapping vector", sev: "low", type: "Out-of-Bounds Read / NULL Deref", cwe: ["CWE-125","CWE-129","CWE-476"], apiOnly: false, loc: "src/lib/OpenEXR/ImfIDManifest.cpp (~521)", desc: "size_t(stringIndex) > stringList.size() should be >=; empty stringList + stringIndex=0 passes check and mapping[0] dereferences null." }
+      { id: "01-idmanifest-ubsan-shift-overflow",
+        title: "Shift exponent overflow in readVariableLengthInteger()",
+        sev: "high", type: "Undefined Behavior (Shift Overflow)", cwe: ["CWE-190","CWE-1335"], apiOnly: false,
+        loc: "src/lib/OpenEXR/ImfIDManifest.cpp:122",
+        desc: "No upper bound on shift counter; after 10 continuation bytes (uint64_t) << 70 is UB per C++14 §5.8/2. Triggered by crafted EXR. Confirmed and fixed; CVE requested. CVSS ~6.5–7.5.",
+        channel: "GitHub Advisory", status: "cve-requested",
+        url: "https://github.com/AcademySoftwareFoundation/openexr/security/advisories/GHSA-3c67-4wwp-w52m" },
+      { id: "02-idmanifest-oob-string-prefix",
+        title: "Missing size check before 2-byte string prefix read",
+        sev: "high", type: "Out-of-Bounds Read", cwe: ["CWE-125","CWE-119"], apiOnly: false,
+        loc: "src/lib/OpenEXR/ImfIDManifest.cpp:342-343",
+        desc: "IDManifest::init() reads stringList[i][0] and [1] without verifying size ≥ 2. A 0-byte string makes both reads OOB (ASan + _GLIBCXX_DEBUG confirmed). Confirmed and fixed; CVE requested.",
+        channel: "GitHub Advisory", status: "cve-requested",
+        url: "https://github.com/AcademySoftwareFoundation/openexr/security/advisories/GHSA-65j8-95g9-jgj4" },
+      { id: "03-idmanifest-oob-mapping-vector",
+        title: "Off-by-one (> vs >=) → NULL ptr deref on empty mapping vector",
+        sev: "low", type: "Out-of-Bounds Read / NULL Deref", cwe: ["CWE-125","CWE-129","CWE-476"], apiOnly: false,
+        loc: "src/lib/OpenEXR/ImfIDManifest.cpp (~521)",
+        desc: "size_t(stringIndex) > stringList.size() should be >=; empty stringList + stringIndex=0 passes check and mapping[0] dereferences nullptr → SIGSEGV. Reported as public issue.",
+        channel: "GitHub Issue", status: "awaiting",
+        url: "https://github.com/AcademySoftwareFoundation/openexr/issues/2379" }
     ]
   },
+
+  // ── OPENSSL ────────────────────────────────────────────────────────────────
   {
-    project: "OpenSSL",
-    slug: "openssl_validated",
-    summary: "14 confirmed crashes across 7 issue groups (master 04623f1)",
+    project: "OpenSSL", slug: "openssl",
+    summary: "3 confirmed crashes reported as public issues (master 04623f1)",
     vulns: [
-      { id: "01-pkcs7-type-confusion", title: "Systemic PKCS7 type confusion (5 crash sites)", sev: "high", type: "Type Confusion → Heap OOB Read", cwe: ["CWE-843","CWE-125"], apiOnly: false, loc: "crypto/pkcs7/pk7_doit.c:271,272,286,804", desc: "PKCS7_dataInit/Final/Verify dispatch on p7->type OID without validating that p7->d matches declared type — same systemic root cause unfixed from 3.3. Reads 4–8 bytes past heap allocation." },
-      { id: "02-pkcs7-negidx-encdat", title: "PKCS7 negative index + NULL enc_data SEGVs", sev: "low", type: "NULL Pointer Dereference", cwe: ["CWE-476","CWE-129"], apiOnly: false, loc: "pk7_doit.c:1177, 286", desc: "PKCS7_get_issuer_and_serial() uses negative idx → sk_value returns NULL → member-access SEGV. Enveloped branch in PKCS7_dataInit() dereferences NULL enc_data." },
-      { id: "03-evp-null-write", title: "NULL/arbitrary write in fix_rsa_padding_mode() / fix_rsa_pss_saltlen()", sev: "high", type: "NULL Pointer / Arbitrary Write", cwe: ["CWE-476","CWE-787","CWE-824"], apiOnly: false, loc: "crypto/evp/ctrl_params_translate.c:1363,1443", desc: "orig_p2 stores caller's p2=NULL, then unconditionally writes *(int*)orig_p2 = value in POST phase. Any freed/attacker-controlled pointer becomes a 4-byte arbitrary-write primitive." },
-      { id: "04-ssl-oob-reads", title: "Stack OOB reads in dane_tlsa_add() / validate_cert_type()", sev: "high", type: "Stack Out-of-Bounds Read", cwe: ["CWE-125","CWE-126"], apiOnly: false, loc: "ssl/ssl_lib.c:328, 8389", desc: "memcpy(t->data, data, dlen) and val[0..len-1] trust caller-supplied length without verifying buffer size — 256-byte and 1-byte OOB reads confirmed by ASAN." },
-      { id: "05-ec-null-scalar", title: "ecp_nistz256_windowed_mul() NULL scalar SEGV", sev: "low", type: "NULL Pointer Dereference (API contract)", cwe: ["CWE-476","CWE-252"], apiOnly: true, loc: "crypto/ec/ecp_nistz256.c:637", desc: "Documented contract says NULL scalar = zero; BN_num_bits(scalar[i]) crashes instead. Broken API contract, not reachable from untrusted input." },
-      { id: "06-alpn-overread", title: "ALPN callback heap OOB read (up to 255 bytes)", sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false, loc: "ssl/statem/statem_srvr.c:2392", desc: "tls_handle_alpn() trusts callback-supplied selected_len — OPENSSL_memdup(selected, selected_len) reads past the callback's actual buffer." },
-      { id: "07-quic-peeraddr-oob", title: "QUIC set_initial_peer_addr stack OOB read", sev: "medium", type: "Stack Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false, loc: "ssl/quic/quic_impl.c:1309", desc: "BIO_ADDR_copy always reads sizeof(BIO_ADDR)=112 bytes from caller's peer_addr without size validation." }
+      { id: "02-pkcs7-negidx-encdat",
+        title: "PKCS7 negative index bypass → NULL dereference",
+        sev: "low", type: "NULL Pointer Dereference", cwe: ["CWE-476","CWE-129"], apiOnly: false,
+        loc: "crypto/pkcs7/pk7_doit.c:1177",
+        desc: "PKCS7_get_issuer_and_serial() uses negative idx → sk_value returns NULL → member-access SEGV. Signed comparison allows idx=-1 to bypass bounds guard.",
+        channel: "GitHub Issue", status: "awaiting",
+        url: "https://github.com/openssl/openssl/issues/30910" },
+      { id: "03-evp-null-write",
+        title: "NULL/arbitrary write in fix_rsa_padding_mode() / fix_rsa_pss_saltlen()",
+        sev: "high", type: "NULL Pointer / Arbitrary Write", cwe: ["CWE-476","CWE-787","CWE-824"], apiOnly: false,
+        loc: "crypto/evp/ctrl_params_translate.c:1363,1443",
+        desc: "orig_p2 stores caller's p2=NULL, then unconditionally writes *(int*)orig_p2 = value in POST phase. Any freed/attacker-controlled pointer becomes a 4-byte arbitrary-write primitive.",
+        channel: "GitHub Issue", status: "awaiting",
+        url: "https://github.com/openssl/openssl/issues/30911" },
+      { id: "05-ec-null-scalar",
+        title: "ecp_nistz256_windowed_mul() crashes on NULL scalar — API contract broken",
+        sev: "low", type: "NULL Pointer Dereference (API contract)", cwe: ["CWE-476","CWE-252"], apiOnly: true,
+        loc: "crypto/ec/ecp_nistz256.c:637",
+        desc: "Documented contract: NULL scalar = zero. BN_num_bits(scalar[i]) crashes instead. Broken API contract; not reachable from untrusted input. Deprecated EC_POINTs_mul path only.",
+        channel: "GitHub Issue", status: "awaiting",
+        url: "https://github.com/openssl/openssl/issues/30912" }
     ]
   },
+
+  // ── POPPLER ────────────────────────────────────────────────────────────────
   {
-    project: "poppler",
-    slug: "poppler_validated",
-    summary: "13 confirmed bugs on poppler 26.04.90 (commit e3d56a0) — 8 in poppler proper + 5 in cairo (triggered via poppler render pipeline)",
+    project: "poppler", slug: "poppler",
+    summary: "8 confirmed bugs on commit e3d56a0 (26.04.90 dev / 26.04.0 stable) — integer overflows, UB shifts, stack overflows, DoS",
     vulns: [
-      { id: "01-stream-intovf-cmyk", title: "Integer overflow in ImageStream() (CMYK)", sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false, loc: "poppler/Stream.cc:596", desc: "nVals = width * nComps computed BEFORE the INT_MAX/nComps guard — overflow corrupts nVals. Triggered by CMYK (nComps=4) image XObject with /Width ≥ 536,870,912. UBSan confirmed. CVSS 5.5." },
-      { id: "02-stream-intovf-rgb", title: "Integer overflow in ImageStream() (RGB)", sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false, loc: "poppler/Stream.cc:596", desc: "Same defect as #01 triggered via /DeviceRGB (nComps=3) with /Width ≥ 715,827,883. Same one-line fix resolves both. UBSan confirmed. CVSS 5.5." },
-      { id: "03-stream-tiff-shift-ub", title: "Shift exponent overflow in TIFF predictor bit accumulation", sev: "medium", type: "Shift Overflow (UB)", cwe: ["CWE-682"], apiOnly: false, loc: "poppler/Stream.cc:900", desc: "`if (outBits >= 8)` should be `while` — when /BitsPerComponent ≥ 9, outBits accumulates past 64, making outBuf >> (outBits-8) UB on uint64. UBSan confirmed shift exponent 64 and 66. CVSS 5.5." },
-      { id: "04-stream-tiff-neg-shift", title: "Negative shift exponent in TIFF predictor final flush", sev: "medium", type: "Shift Overflow (UB)", cwe: ["CWE-682"], apiOnly: false, loc: "poppler/Stream.cc:906", desc: "Same root cause as #03; final-flush branch then computes (8 - outBits) with outBits > 8 → negative shift (observed −22). Same one-line fix. UBSan confirmed. CVSS 5.5." },
-      { id: "05-form-recursion-stackoverflow", title: "Stack overflow in AcroForm /Kids traversal", sev: "low", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false, loc: "poppler/Form.cc:1032 / :2677", desc: "FormField ctor ↔ Form::createFieldFromDict mutual recursion with no depth limit; 5000-level /Kids chain exhausts stack. usedParents only detects cycles, not linear depth. ASan stack-overflow confirmed. CVSS 7.5." },
-      { id: "06-cairo-fixed-imgmask-overflow", title: "INT_MIN negation in _cairo_fixed_integer_floor() [cairo]", sev: "medium", type: "Integer Overflow (cairo)", cwe: ["CWE-190"], apiOnly: false, loc: "cairo/src/cairo-fixed-private.h:233", desc: "`-f` on f == INT_MIN is UB; reached from poppler CairoOutputDev when a PDF ImageMask is scaled so fixed-point coordinate hits CAIRO_FIXED_MIN. Root cause in cairo. UBSan confirmed. CVSS 5.5." },
-      { id: "07-cairo-slope-path-overflow", title: "Coordinate subtraction overflow in _cairo_slope_init() [cairo]", sev: "medium", type: "Integer Overflow (cairo)", cwe: ["CWE-190"], apiOnly: false, loc: "cairo/src/cairo-slope-private.h:49", desc: "b->x - a->x computed in int32 overflows when path endpoints span the full fixed-point range (near INT_MAX to near INT_MIN). Triggered via CairoOutputDev::stroke. UBSan confirmed. CVSS 5.5." },
-      { id: "08-cairo-pathbounds-overflow", title: "Stroke-extent addition overflow in _cairo_path_fixed_approximate_stroke_extents() [cairo]", sev: "medium", type: "Integer Overflow (cairo)", cwe: ["CWE-190"], apiOnly: false, loc: "cairo/src/cairo-path-bounds.c:180", desc: "box_extents.p2.x += fixed-from-double(dx) overflows int32 when Bezier ctrl points put bbox near INT_MAX and any stroke width is applied. Triggered via CairoOutputDev::stroke. UBSan confirmed. CVSS 5.5." },
-      { id: "09-cairo-truetype-heapboflow", title: "Heap OOB read in find_name() (TrueType name table) [cairo]", sev: "high", type: "Heap Out-of-Bounds Read (cairo)", cwe: ["CWE-125","CWE-122"], apiOnly: false, loc: "cairo/src/cairo-truetype-subset.c:1462", desc: "find_name() reads 2 bytes at data+record->offset without bounding record->offset/length against the name-table buffer. Reachable via embedded TrueType font in a PDF annotation. ASan heap-buffer-overflow confirmed. CVSS 7.8." },
-      { id: "10-cairo-type1-intovf", title: "Type1 font metric multiplication overflow [cairo]", sev: "medium", type: "Integer Overflow (cairo)", cwe: ["CWE-190"], apiOnly: false, loc: "cairo/src/cairo-type1-subset.c:667", desc: "`55882 * 52845` in int32 ≈ 2.95e9 > INT_MAX. Triggered by LaTeX-style Type1 fonts (CMBX12, CMR10) via poppler annotation rendering. UBSan confirmed. CVSS 5.5." },
-      { id: "11-pdfdoc-inline-img-dos", title: "CPU DoS via unbounded inline-image dimensions", sev: "high", type: "Uncontrolled Resource Consumption", cwe: ["CWE-400"], apiOnly: false, loc: "poppler/Gfx.cc (BI/ID/EI handling)", desc: "Inline image parser trusts declared /W and /H (up to 32767×32767) without validating against actual stream bytes. 485 B PDF → ~57 s CPU (~1455× slowdown). CVSS 7.5." },
-      { id: "12-textout-dos", title: "CPU+memory DoS via oversized page + text blocks", sev: "high", type: "Uncontrolled Resource Consumption", cwe: ["CWE-400"], apiOnly: false, loc: "splash/SplashBitmap.cc ctor + poppler/TextOutputDev.cc (TextPage::coalesce)", desc: "Two joined defects: SplashBitmap allocates height*rowSize with no height cap (~240 MB for MediaBox 300×200050), and TextPage::coalesce()/visitDepthFirst is O(n²) over isolated text blocks. 347 KB PoC → ~20 s, ~290 MB RSS. CVSS 7.5." },
-      { id: "13-outline-recursion-stackoverflow", title: "Stack overflow in outline /First chain traversal", sev: "low", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false, loc: "cpp/poppler-toc.cpp:84 / utils/HtmlOutputDev.cc:1729", desc: "toc_item_private::load_children() and HtmlOutputDev::newHtmlOutlineLevel() both recurse into outline kids without any depth check; 100k-level /First chain overflows the stack (ASan stack-overflow with ulimit -s 1024). Reachable via poppler-cpp create_toc() and pdftohtml. CVSS 7.5." }
+      { id: "01-stream-intovf-cmyk",
+        title: "Integer overflow in ImageStream() before bounds check (CMYK)",
+        sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
+        loc: "poppler/Stream.cc:596",
+        desc: "nVals = width × nComps computed BEFORE the INT_MAX/nComps guard — overflow corrupts nVals. CMYK (nComps=4), /Width ≥ 536,870,912. Downstream heap allocation uses corrupted value. UBSan. CVSS 5.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1701" },
+      { id: "02-stream-intovf-rgb",
+        title: "Integer overflow in ImageStream() before bounds check (RGB)",
+        sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
+        loc: "poppler/Stream.cc:596",
+        desc: "Same defect as #01 via /DeviceRGB (nComps=3), /Width ≥ 715,827,883. One-line fix resolves both. UBSan. CVSS 5.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1702" },
+      { id: "03-stream-tiff-shift-ub",
+        title: "Shift exponent ≥ 64 in TIFF predictor bit accumulation",
+        sev: "medium", type: "Shift Overflow (UB)", cwe: ["CWE-682"], apiOnly: false,
+        loc: "poppler/Stream.cc:900",
+        desc: "if (outBits >= 8) should be while — with /BitsPerComponent ≥ 9, outBits grows past 64, making outBuf >> (outBits-8) undefined (observed exponent 64, 66). UBSan. CVSS 5.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1703" },
+      { id: "04-stream-tiff-neg-shift",
+        title: "Negative shift exponent in TIFF predictor final byte flush",
+        sev: "medium", type: "Shift Overflow (UB)", cwe: ["CWE-682"], apiOnly: false,
+        loc: "poppler/Stream.cc:906",
+        desc: "Same root cause as #03 — final flush computes (8 - outBits) with outBits > 8 → negative shift (observed −22). Same one-line fix. UBSan. CVSS 5.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1704" },
+      { id: "05-form-recursion-stackoverflow",
+        title: "Stack overflow in AcroForm /Kids traversal — no depth limit",
+        sev: "high", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false,
+        loc: "poppler/Form.cc:1032 / :2677",
+        desc: "FormField ctor ↔ Form::createFieldFromDict mutual recursion with no depth limit; 5000-level /Kids chain exhausts stack. usedParents only prevents cycles. ASan stack-overflow. CVSS 7.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1705" },
+      { id: "11-pdfdoc-inline-img-dos",
+        title: "CPU DoS via unbounded inline-image dimensions (/W 32767 /H 32767)",
+        sev: "high", type: "Uncontrolled Resource Consumption", cwe: ["CWE-400"], apiOnly: false,
+        loc: "poppler/Gfx.cc (BI/ID/EI inline image handling)",
+        desc: "Inline image parser trusts declared /W and /H without validating against actual stream bytes. 485-byte PDF → ~21 s CPU (~43,000× amplification). Attack vector in server-side PDF pipelines. CVSS 7.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1706" },
+      { id: "12-textout-dos",
+        title: "CPU+memory DoS — oversized MediaBox + O(n²) text coalescing",
+        sev: "high", type: "Uncontrolled Resource Consumption", cwe: ["CWE-400"], apiOnly: false,
+        loc: "splash/SplashBitmap.cc ctor + poppler/TextOutputDev.cc (TextPage::coalesce)",
+        desc: "SplashBitmap allocates height×rowSize with no height cap (~240 MB for tall page); TextPage::coalesce() is O(n²) over isolated text blocks. 347 KB PoC → ~20 s, ~290 MB RSS. CVSS 7.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1707" },
+      { id: "13-outline-recursion-stackoverflow",
+        title: "Stack overflow in outline /First chain traversal — no depth limit",
+        sev: "high", type: "Uncontrolled Recursion", cwe: ["CWE-674"], apiOnly: false,
+        loc: "cpp/poppler-toc.cpp:84 / utils/HtmlOutputDev.cc:1729",
+        desc: "toc_item_private::load_children() and HtmlOutputDev::newHtmlOutlineLevel() both recurse without depth check. 100k-level /First chain crashes via public create_toc() API and pdftohtml. ASan. CVSS 7.5.",
+        channel: "GitLab Issue", status: "awaiting",
+        url: "https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1708" }
     ]
   },
+
+  // ── SLEUTH KIT ─────────────────────────────────────────────────────────────
   {
-    project: "PROJ (proj4)",
-    slug: "proj4_validated",
-    summary: "11 confirmed DoS-class bugs (master 324ed21)",
+    project: "The Sleuth Kit", slug: "sleuthkit",
+    summary: "3 confirmed bugs reported — FFS and NTFS filesystem parsers",
     vulns: [
-      { id: "01-io-SF09-wktnode-stack-overflow", title: "WKTNode::toString() unbounded recursion", sev: "low", type: "Uncontrolled Recursion (Stack Overflow)", cwe: ["CWE-674"], apiOnly: false, loc: "src/io.cpp (WKTNode::toString)", desc: "Deeply nested WKT tree causes stack exhaustion during string export. File-parsing DoS." },
-      { id: "02-crs-SF01-projjson-stack-overflow", title: "DerivedCRS::_exportToJSON() + PROJJSON parser recursion", sev: "low", type: "Uncontrolled Recursion (Stack Overflow)", cwe: ["CWE-674"], apiOnly: false, loc: "src/iso19111/crs.cpp", desc: "No depth limit in JSON export / PROJJSON parse paths. Malicious JSON crashes the process." },
-      { id: "03-net-SF23-nfm-null-deref", title: "proj_is_download_needed(ctx, NULL) SEGV", sev: "low", type: "NULL Pointer Dereference (API)", cwe: ["CWE-476"], apiOnly: true, loc: "src/networkfilemanager.cpp (nfm_is_tilde_slash)", desc: "NULL URL string passed through to nfm_is_tilde_slash() without null-check." },
-      { id: "04-net-SF24-download-null-deref", title: "proj_download_file(ctx, NULL, …) SEGV", sev: "low", type: "NULL Pointer Dereference (API)", cwe: ["CWE-476"], apiOnly: true, loc: "src/networkfilemanager.cpp", desc: "Shares root cause with #03 — path not null-checked before downstream use." },
-      { id: "05-isea-SF08-silent-inverse-failure", title: "ISEA inverse returns {inf,inf} with errno=0", sev: "medium", type: "Logic Error / Silent Failure (API misuse class)", cwe: ["CWE-252","CWE-754"], apiOnly: true, loc: "src/projections/isea.cpp", desc: "For non-default configs the inverse projection returns infinities with no error indication. Not a memory-safety bug." },
-      { id: "06-capi-SF22-null-deref-api-functions", title: "4 C API functions dereference obj without NULL check", sev: "low", type: "NULL Pointer Dereference (API)", cwe: ["CWE-476"], apiOnly: true, loc: "src/c_api.cpp (4 functions)", desc: "Calling any of the four with obj=NULL immediately SEGVs." },
-      { id: "07-capi-SF04-dangling-string-ptr", title: "proj_uom_get_info_from_database() dangling string pointer", sev: "medium", type: "Use-After-Free / Dangling Pointer (API)", cwe: ["CWE-416","CWE-825"], apiOnly: true, loc: "src/c_api.cpp (proj_uom_get_info_from_database)", desc: "Second call may free the std::string backing the prior c_str() return, giving the caller a dangling pointer." },
-      { id: "08-conv-SF02-null-deref-stack-oob", title: "proj_create_conversion() NULL params + stack OOB", sev: "low", type: "NULL Deref / Stack OOB (API)", cwe: ["CWE-476","CWE-125"], apiOnly: true, loc: "src/iso19111/coordinateoperation.cpp", desc: "param_count>0 with NULL params array → NULL deref + stack OOB read." },
-      { id: "09-grids-SF01-proj-grid-info-null", title: "proj_grid_info(NULL) throws std::logic_error (abort)", sev: "medium", type: "Uncaught Exception (API)", cwe: ["CWE-248","CWE-755"], apiOnly: true, loc: "src/grids.cpp", desc: "C entry point allows std::logic_error to escape → SIGABRT." },
-      { id: "10-grids-SF10-ntv2-destructor-overflow", title: "NTv2 parent-child destructor unbounded recursion", sev: "low", type: "Uncontrolled Recursion (Stack Overflow)", cwe: ["CWE-674"], apiOnly: false, loc: "src/grids.cpp (NTv2 destructor)", desc: "Malformed NTv2 grid with deep parent-child chain causes destructor chain to exhaust the stack." },
-      { id: "11-singleop-SF01-concatop-stack-overflow", title: "ConcatenatedOperation::_exportToWKT/JSON() unbounded recursion", sev: "low", type: "Uncontrolled Recursion (Stack Overflow)", cwe: ["CWE-674"], apiOnly: false, loc: "src/iso19111/coordinateoperation.cpp", desc: "Export of deeply nested concatenated operations lacks depth limit." }
-    ]
-  },
-  {
-    project: "The Sleuth Kit (sleuthkit)",
-    slug: "sleuthkit_validated",
-    summary: "13 confirmed bugs across APFS / btrfs / HFS+ / FFS / NTFS / XFS / YAFFS2 parsers",
-    vulns: [
-      { id: "01-apfs-btree-keycount-oob", title: "APFS btree key_count OOB iterator (MSan)", sev: "medium", type: "Use of Uninitialized Value / OOB Iteration", cwe: ["CWE-908","CWE-125"], apiOnly: false, loc: "pool/apfs_pool_compat.cpp (apfs_btree_node)", desc: "Attacker-controlled key_count iterates past buffer; MSan flags use-of-uninitialized-value. ASAN alone does not catch." },
-      { id: "02-apfs-getimageinfo-uninit-alloc", title: "APFSPoolCompat::getImageInfo unvalidated num_img", sev: "high", type: "Alloc-Too-Big / Uninit Var → Heap", cwe: ["CWE-456","CWE-190","CWE-122"], apiOnly: false, loc: "pool/apfs_pool_compat.cpp (getImageInfo)", desc: "num_img field unvalidated → calloc size overflow → allocation-size-too-big (ASAN crash). Potential heap corruption if allocation succeeds." },
-      { id: "03-btrfs-sf01-zero-items", title: "btrfs number_of_items=0 integer underflow", sev: "high", type: "Integer Underflow → Heap OOB Read", cwe: ["CWE-191","CWE-125"], apiOnly: false, loc: "fs/btrfs.c (tree node parser)", desc: "number_of_items=0 causes count-1 underflow to SIZE_MAX, walks past heap allocation." },
-      { id: "04-btrfs-sf06-stripe-oob", title: "btrfs chunk item stripe_count OOB", sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-20"], apiOnly: false, loc: "fs/btrfs.c (chunk item parser)", desc: "Attacker-supplied stripe_count not bounded against chunk-item length." },
-      { id: "05-btrfs-sf07-large-num-items", title: "btrfs large number_of_items OOB", sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-20"], apiOnly: false, loc: "fs/btrfs.c (tree node parser)", desc: "Large number_of_items makes item table walk exceed node size." },
-      { id: "06-btrfs-sf09-dir-entry-oob", title: "btrfs dir entry data_len OOB", sev: "high", type: "Heap OOB Read / Potential OOB Write", cwe: ["CWE-125","CWE-787"], apiOnly: false, loc: "fs/btrfs.c (dir entry parser)", desc: "data_len trusted; read walks past buffer. `new uint8_t[data_len]` also potential write path." },
-      { id: "07-decmpfs-uncsize-overflow", title: "decmpfs uncSize integer overflow → allocation-size-too-big", sev: "high", type: "Integer Overflow / Alloc-Too-Big", cwe: ["CWE-190","CWE-122"], apiOnly: false, loc: "fs/decmpfs.c (HFS+ decompressed attr)", desc: "uncSize field not bounded; multiplication overflow triggers huge allocation and potential heap overflow if allocation succeeds." },
-      { id: "08-12-decmpfs-noncompressed-oob", title: "decmpfs noncompressed attr rawSize ignored (OOB 65536 B)", sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-119"], apiOnly: false, loc: "fs/decmpfs.c (noncompressed branch)", desc: "rawSize header field ignored; read uses attacker-controlled uncSize instead. 65536-byte OOB read." },
-      { id: "10-ffs-cgiusedoff-oob", title: "FFS cg_iusedoff signed comparison bypass", sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-122","CWE-125","CWE-681"], apiOnly: false, loc: "fs/ffs.c (cylinder group parser)", desc: "Signed vs unsigned comparison allows cg_iusedoff to bypass bounds check." },
-      { id: "11-ffs-itoo-oob", title: "FFS itoo_lcl OOB via anomalous fs_inopb", sev: "high", type: "Heap Out-of-Bounds Read (128 B)", cwe: ["CWE-122","CWE-119","CWE-20"], apiOnly: false, loc: "fs/ffs.c (inode table)", desc: "Unchecked fs_inopb value produces out-of-bounds inode table index." },
-      { id: "13-ntfs-idxrec-oob", title: "ntfs_fix_idxrec upd_seq array OOB", sev: "medium", type: "Heap Out-of-Bounds Read (1 B)", cwe: ["CWE-125","CWE-787"], apiOnly: false, loc: "fs/ntfs.c (ntfs_fix_idxrec)", desc: "upd_seq array read past end by 1 byte; write path has OOB-write variant." },
-      { id: "14-xfs-uint32-overflow", title: "XFS xfs_inode_get_offset uint32 × uint32 overflow", sev: "medium", type: "Integer Overflow (UBSan, unsigned)", cwe: ["CWE-190","CWE-125"], apiOnly: false, loc: "fs/xfs.c (xfs_inode_get_offset)", desc: "Attacker-controlled inputs overflow uint32 multiplication; wrong forensic offsets / information disclosure." },
-      { id: "15-yaffs2-uaf", title: "yaffs2_open() returns dangling pointer", sev: "high", type: "Use-After-Free", cwe: ["CWE-416","CWE-825"], apiOnly: false, loc: "fs/yaffs.cpp (yaffs2_open)", desc: "Open function returns dangling pointer; subsequent tsk_fs_fls() reliably triggers heap-use-after-free (potential RCE)." }
+      { id: "10-ffs-cgiusedoff-oob",
+        title: "FFS cg_iusedoff signed comparison bypass → heap OOB read",
+        sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-122","CWE-125","CWE-681"], apiOnly: false,
+        loc: "fs/ffs.c (cylinder group parser)",
+        desc: "Signed vs unsigned comparison allows attacker-controlled cg_iusedoff to bypass bounds check.",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/sleuthkit/sleuthkit/security/advisories/GHSA-37pc-73q7-q3xp" },
+      { id: "11-ffs-itoo-oob",
+        title: "FFS itoo_lcl OOB via anomalous fs_inopb — 128-byte OOB read",
+        sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-122","CWE-119","CWE-20"], apiOnly: false,
+        loc: "fs/ffs.c (inode table)",
+        desc: "Unchecked fs_inopb value produces an out-of-bounds inode table index, reading 128 bytes past the allocation.",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/sleuthkit/sleuthkit/security/advisories/GHSA-c38p-mv63-gw85" },
+      { id: "13-ntfs-idxrec-oob",
+        title: "ntfs_fix_idxrec upd_seq array OOB — 1-byte read + potential OOB write",
+        sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-787"], apiOnly: false,
+        loc: "fs/ntfs.c (ntfs_fix_idxrec)",
+        desc: "upd_seq array read past end by 1 byte; write path (cur_seq == orig_seq) has OOB-write variant deriving pointers from OOB address.",
+        channel: "GitHub Advisory", status: "awaiting",
+        url: "https://github.com/sleuthkit/sleuthkit/security/advisories/GHSA-9qww-mgj6-72rf" }
     ]
   }
 ];
 
+// ── Render ──────────────────────────────────────────────────────────────────
+
+function sevLabel(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function statusBadge(st) {
+  const cls = "badge st-" + st;
+  return `<span class="${cls}">${STATUS_LABELS[st] || st}</span>`;
+}
+
+function channelBadge(ch) {
+  if (!ch || ch === "—") return "";
+  return `<span class="badge channel">${ch}</span>`;
+}
+
 function render() {
   const main = document.getElementById("main");
-  main.innerHTML = data.map(p => `
+  main.innerHTML = data.map(p => {
+    const totalCount = p.vulns.length;
+    const reportedCount = p.vulns.filter(v => v.status !== "not-reported").length;
+    return `
     <section class="project" data-project="${p.slug}">
       <div class="project-head">
         <h2>${p.project}</h2>
-        <span class="slug">${p.slug}/</span>
-        <span class="summary">${p.summary} · <b>${p.vulns.length}</b> issue${p.vulns.length===1?'':'s'}</span>
+        <span class="slug">zero-day/${p.slug}/</span>
+        <span class="summary">${p.summary} &middot; <b>${reportedCount}/${totalCount}</b> reported</span>
       </div>
       <div class="vuln-grid">
         ${p.vulns.map(v => renderVuln(v)).join("")}
       </div>
-    </section>
-  `).join("");
+    </section>`;
+  }).join("");
 }
 
 function renderVuln(v) {
-  const sevLabel = v.sev.charAt(0).toUpperCase() + v.sev.slice(1);
   const cweBadges = v.cwe.map(c => `<span class="badge cwe">${c}</span>`).join("");
-  const apiBadge = v.apiOnly ? `<span class="badge api">API misuse</span>` : "";
-  const typeClass = v.apiOnly ? "api" : "type";
+  const apiBadge  = v.apiOnly ? `<span class="badge api">API misuse</span>` : "";
+  const linkHtml  = v.url
+    ? `<a class="vuln-link" href="${v.url}" target="_blank" rel="noopener">↗ View Report</a>`
+    : "";
+  const searchStr = (v.title + " " + v.type + " " + v.cwe.join(" ") + " " + v.loc + " " + v.desc + " " + v.channel + " " + (STATUS_LABELS[v.status]||"")).toLowerCase();
   return `
     <article class="vuln sev-${v.sev}"
       data-sev="${v.sev}"
-      data-api="${v.apiOnly?'1':'0'}"
-      data-search="${(v.title+' '+v.type+' '+v.cwe.join(' ')+' '+v.loc+' '+v.desc).toLowerCase()}">
+      data-api="${v.apiOnly ? "1" : "0"}"
+      data-status="${v.status}"
+      data-search="${searchStr}">
       <div class="vuln-head">
         <div>
           <h3 class="vuln-title">${v.title}</h3>
           <div class="vuln-id">${v.id}</div>
         </div>
-        <span class="badge sev-${v.sev}">${sevLabel}</span>
+        <span class="badge sev-${v.sev}">${sevLabel(v.sev)}</span>
       </div>
       <div class="badges">
-        <span class="badge ${typeClass}">${v.type}</span>
+        <span class="badge ${v.apiOnly ? "api" : "type"}">${v.type}</span>
         ${apiBadge}
         ${cweBadges}
       </div>
       <p class="vuln-desc">${v.desc}</p>
       <div class="vuln-loc">${v.loc}</div>
+      <div class="vuln-footer">
+        ${channelBadge(v.channel)}
+        ${statusBadge(v.status)}
+        ${linkHtml}
+      </div>
     </article>`;
 }
 
-let sevFilter = "all";
-let classFilter = "all";
+// ── Filters ─────────────────────────────────────────────────────────────────
+
+let sevFilter    = "all";
+let classFilter  = "all";
+let statusFilter = "all";
 let searchFilter = "";
 
 function applyFilters() {
   let shown = 0, total = 0;
   document.querySelectorAll(".vuln").forEach(el => {
     total++;
-    const sev = el.dataset.sev;
-    const isApi = el.dataset.api === "1";
-    const text = el.dataset.search;
-    const sevOk = sevFilter === "all" || sevFilter === sev;
-    const classOk = classFilter === "all"
+    const sevOk    = sevFilter    === "all" || sevFilter    === el.dataset.sev;
+    const isApi    = el.dataset.api === "1";
+    const classOk  = classFilter  === "all"
       || (classFilter === "memory" && !isApi)
-      || (classFilter === "api" && isApi);
-    const searchOk = !searchFilter || text.includes(searchFilter);
-    if (sevOk && classOk && searchOk) { el.classList.remove("hidden"); shown++; }
-    else { el.classList.add("hidden"); }
+      || (classFilter === "api"    &&  isApi);
+    const statusOk = statusFilter === "all" || statusFilter === el.dataset.status;
+    const searchOk = !searchFilter || el.dataset.search.includes(searchFilter);
+    const show = sevOk && classOk && statusOk && searchOk;
+    el.classList.toggle("hidden", !show);
+    if (show) shown++;
   });
   document.querySelectorAll(".project").forEach(sec => {
     const visible = sec.querySelectorAll(".vuln:not(.hidden)").length;
     sec.classList.toggle("hidden", visible === 0);
   });
-  document.getElementById("counter").textContent = `Showing ${shown} / ${total}`;
+  document.getElementById("counter").textContent = `${shown} / ${total} issues`;
 }
 
 function wire() {
@@ -471,6 +691,10 @@ function wire() {
       }
       applyFilters();
     });
+  });
+  document.getElementById("statusFilter").addEventListener("change", e => {
+    statusFilter = e.target.value;
+    applyFilters();
   });
   document.getElementById("search").addEventListener("input", e => {
     searchFilter = e.target.value.trim().toLowerCase();
