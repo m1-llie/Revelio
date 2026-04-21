@@ -99,6 +99,7 @@ cat > "$BUILD/include/openexr_compression.h" << "EOF"
 extern "C" {
 #endif
 typedef int exr_result_t;
+#define EXR_ERR_SUCCESS 0
 static inline exr_result_t exr_uncompress_buffer(void*c,const void*d,size_t ds,void*out,size_t ous,size_t*s){return -1;}
 static inline size_t exr_compress_max_buffer_size(size_t s){return s*2+64;}
 static inline exr_result_t exr_compress_buffer(void*c,int l,const void*s,size_t ss,void*d,size_t dc,size_t*cs){return -1;}
