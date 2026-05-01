@@ -1,22 +1,27 @@
 security issues:
 
 01-track-oob-chunk-access: reported via GitHub Security and Quality portal on Apr 20, GHSA-wqjg-4x9g-6cvg.
+Type: CWE-125 OUt-of-bounds read.
 No response yet.
 
 04-saiz-sampleauxinfo-oob: reported via GitHub Security and Quality portal on Apr 20, GHSA-9hxj-whrv-m7cc.
+Type: CWE-125 OUt-of-bounds read; CWE-617 Reachable Assertion.
 No response yet.
 
 05-tild-ntiles-overflow:reported via GitHub Security and Quality portal on Apr 20, GHSA-x6gq-f8qg-rm7w.
+Type: CWE-125 OUt-of-bounds read; CWE-190 Integer Overflow or Wraparound.
 No response yet.
 
 
 03-gimi-component-id-overflow:reported via GitHub Security and Quality portal on Apr 20, GHSA-jfgf-gc66-f3xw.
+Type: CWE-122 Heap-based Buffer Overflow; CWE-190 Integer Overflow or Wraparound.
 No response yet.
 
 
 07-track-api-oob-no-size: reported via GitHub Private Security Advisory portal on Apr 20, GHSA-ggxm-xvfh-454m.
 Response: Advisory closed. See this as an API-contract issue rather than a file-driven vulnerability. 
 Link: https://github.com/strukturag/libheif/security/advisories/GHSA-ggxm-xvfh-454m.
+Type: CWE-120 Buffer Copy without Checking Size of Input ('Classic Buffer Overflow'); CWE-122 Heap-based Buffer Overflow.
 "There is a heif_context_number_of_sequence_tracks() query whose purpose is to tell the caller exactly how large the array should be, and the header comments already required the caller to use them. The overflow is only reachable when a caller ignores that contract; the file contents alone don't control the buffer size.
 We considered adding a capacity parameter but decided against it:
 A cap parameter invites hardcoded sizes (heif_context_get_track_ids(ctx, buf, 16)) and silent truncation, which is arguably a worse failure mode than a loud crash from a documented contract violation.
@@ -26,4 +31,5 @@ Thanks again; the API comment was added in 4652161(https://github.com/strukturag
 
 
 08-track-release-double-free:reported via GitHub Security and Quality portal on Apr 20, GHSA-pfwf-3248-7j44.
+Type: CWE-415 Double Free; CWE-416 Use After Free.
 No response yet.
