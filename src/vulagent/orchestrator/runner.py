@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
+import shlex
 from typing import Any
 
 import yaml
@@ -46,11 +47,33 @@ def _discover_fuzz_targets(env: Any, function: str | None) -> list[str]:
     """
     if not function:
         return []
-    result = env.execute(f"arvo targets {function} 2>/dev/null || true")
-    output = (result.get("output") or "").strip()
-    if not output:
+
+    try:
+        result = env.execute(
+            f"arvo targets {shlex.quote(function)} 2>/dev/null; "
+            "rc=$?; printf '\\n__rc=%s\\n' \"$rc\""
+        )
+    except Exception:
         return []
-    return [line.strip() for line in output.splitlines() if line.strip()]
+
+    output = result.get("output") or ""
+    lines = output.splitlines()
+    rc_line = lines[-1].strip() if lines else ""
+    if not rc_line.startswith("__rc="):
+        return []
+
+    rc = rc_line.split("=", 1)[1]
+    if rc != "0":
+        return []
+
+    raw_targets = [line.strip() for line in lines[:-1] if line.strip()]
+    if any("Unknown command" in line for line in raw_targets):
+        return []
+
+    return [
+        line for line in raw_targets
+        if not line.startswith("mesg:")
+    ]
 
 
 def _asdict(obj: Any) -> dict[str, Any]:
@@ -422,55 +445,76 @@ class MultiAgentOrchestrator:
             crash_detected = False
             poc_recipe = None
             poc_section: dict = {}
+            env_vars = getattr(getattr(self.env, "config", None), "env", None)
+            default_fuzzer_sentinel = object()
+            previous_default_fuzzer = (
+                env_vars.get("DEFAULT_FUZZER", default_fuzzer_sentinel)
+                if isinstance(env_vars, dict)
+                else default_fuzzer_sentinel
+            )
 
-            for fuzz_target in target_attempts:
-                if fuzz_target:
-                    self.env.execute(f"export DEFAULT_FUZZER={fuzz_target}")
-                    self._log(f"  Trying target: {fuzz_target}")
+            try:
+                for fuzz_target in target_attempts:
+                    if isinstance(env_vars, dict):
+                        if fuzz_target:
+                            env_vars["DEFAULT_FUZZER"] = fuzz_target
+                        else:
+                            env_vars.pop("DEFAULT_FUZZER", None)
+                    elif fuzz_target:
+                        self.env.execute(f"export DEFAULT_FUZZER={shlex.quote(fuzz_target)}")
 
-                poc_context = self._context_builder.build(
-                    poc_builder.name,
-                    run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
-                    hypothesis=hypothesis_dict,
-                )
-                extra_vars = {
-                    **common_vars,
-                    "hypothesis_id": item.hypothesis_id,
-                    "hypothesis_title": item.title,
-                    "hypothesis_description": item.description,
-                    "context_packet": render_context_packet(poc_context),
-                    "max_validate_attempts": self.max_poc_attempts,
-                    "fuzz_target": fuzz_target or "",
-                }
+                    if fuzz_target:
+                        self._log(f"  Trying target: {fuzz_target}")
 
-                poc_run = runner.run(
-                    poc_builder, extra_vars=extra_vars, tools=[validate_tool],
-                )
-                self._record_trajectory(poc_run, hypothesis_id=item.hypothesis_id)
+                    poc_context = self._context_builder.build(
+                        poc_builder.name,
+                        run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
+                        hypothesis=hypothesis_dict,
+                    )
+                    extra_vars = {
+                        **common_vars,
+                        "hypothesis_id": item.hypothesis_id,
+                        "hypothesis_title": item.title,
+                        "hypothesis_description": item.description,
+                        "context_packet": render_context_packet(poc_context),
+                        "max_validate_attempts": self.max_poc_attempts,
+                        "fuzz_target": fuzz_target or "",
+                    }
 
-                if self._check_run_status(poc_run, "poc_builder"):
-                    self._log(f"  PoCBuilder failed for target {fuzz_target or 'default'}")
-                    continue
+                    poc_run = runner.run(
+                        poc_builder, extra_vars=extra_vars, tools=[validate_tool],
+                    )
+                    self._record_trajectory(poc_run, hypothesis_id=item.hypothesis_id)
 
-                poc_recipe = parse_poc_recipe(poc_run.result)
-                self._artifacts["poc"] = poc_recipe
-                self.store.write_handoff("poc_recipe", poc_recipe, hypothesis_id=item.hypothesis_id)
-                if poc_recipe.input_path:
-                    poc_files.append(poc_recipe.input_path)
-                if poc_recipe.script_path:
-                    script_files.append(poc_recipe.script_path)
+                    if self._check_run_status(poc_run, "poc_builder"):
+                        self._log(f"  PoCBuilder failed for target {fuzz_target or 'default'}")
+                        continue
 
-                poc_data = _load_structured(poc_run.result)
-                payload = poc_data.get("payload", {})
-                if isinstance(payload, str):
-                    payload = _load_structured(payload)
-                poc_section = payload.get("poc", payload)
-                if not isinstance(poc_section, dict):
-                    poc_section = {}
-                crash_detected = bool(poc_section.get("crash_detected", False))
+                    poc_recipe = parse_poc_recipe(poc_run.result)
+                    self._artifacts["poc"] = poc_recipe
+                    self.store.write_handoff("poc_recipe", poc_recipe, hypothesis_id=item.hypothesis_id)
+                    if poc_recipe.input_path:
+                        poc_files.append(poc_recipe.input_path)
+                    if poc_recipe.script_path:
+                        script_files.append(poc_recipe.script_path)
 
-                if crash_detected:
-                    break  # found a crash, no need to try more targets
+                    poc_data = _load_structured(poc_run.result)
+                    payload = poc_data.get("payload", {})
+                    if isinstance(payload, str):
+                        payload = _load_structured(payload)
+                    poc_section = payload.get("poc", payload)
+                    if not isinstance(poc_section, dict):
+                        poc_section = {}
+                    crash_detected = bool(poc_section.get("crash_detected", False))
+
+                    if crash_detected:
+                        break  # found a crash, no need to try more targets
+            finally:
+                if isinstance(env_vars, dict):
+                    if previous_default_fuzzer is default_fuzzer_sentinel:
+                        env_vars.pop("DEFAULT_FUZZER", None)
+                    else:
+                        env_vars["DEFAULT_FUZZER"] = previous_default_fuzzer
 
             if not crash_detected:
                 self.store.append_event(

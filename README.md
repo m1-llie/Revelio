@@ -302,6 +302,23 @@ python -m vulagent.run.detect \
 | `--api-key` | `MODEL_API_KEY` | API key for LLM calls |
 | `--hypotheses-file` | — | Load pre-generated hypotheses, skip scan stage |
 
+### Cost Reports
+
+```bash
+# Summarize direct API cost plus cache/uncached token-cost estimates
+SILENT_STARTUP=1 python -m vulagent.run.cost_report output/<run_id>
+
+# Also write output/<run_id>/cost_report.json and cost_report.md
+SILENT_STARTUP=1 python -m vulagent.run.cost_report output/<run_id> --write
+```
+
+The report reads saved `trajectory.json` and `traces/*.json`. For agent
+trajectories it can split cost into cached input, uncached input, and output
+when Anthropic/LiteLLM usage fields are present. Some scan_filter Stage 1/2
+traces currently only save aggregate `cost`/`calls`, so those stages are
+included in direct API cost but cannot always be split into cached/uncached
+tokens retroactively.
+
 ### Validating PoCs
 
 Validate PoCs against ARVO `-fix` images (patched versions):

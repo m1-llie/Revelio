@@ -29,6 +29,7 @@ from urllib.parse import urlparse, parse_qs
 WEBSITE_DIR = Path(__file__).resolve().parent
 
 SCRIPT_DIR = Path("/srv/share/vulagent/")
+SCRIPTS_DIR = SCRIPT_DIR  # backwards-compat alias used elsewhere
 DEFAULT_OUTPUT_DIRS = [
     WEBSITE_DIR.parent / "output"
 ]
@@ -70,12 +71,67 @@ def _read_jsonl(path):
 
 
 def _is_run_dir(path):
-    """A run directory has manifest.json, trajectory.json, or trajectory.jsonl."""
-    return path.is_dir() and (
-        (path / "manifest.json").exists()
-        or (path / "trajectory.json").exists()
-        or (path / "trajectory.jsonl").exists()
-    )
+    """A run directory has manifest.json, trajectory.json, trajectory.jsonl,
+    messages.jsonl (ClaudeCode/Codex), or a trajectories/*.yaml file (KISSSorcar)."""
+    if not path.is_dir():
+        return False
+    if (path / "manifest.json").exists():
+        return True
+    if (path / "trajectory.json").exists():
+        return True
+    if (path / "trajectory.jsonl").exists():
+        return True
+    if (path / "messages.jsonl").exists():
+        return True
+    traj_dir = path / "trajectories"
+    if traj_dir.is_dir():
+        for ext in ("*.yaml", "*.yml"):
+            if any(traj_dir.glob(ext)):
+                return True
+    return False
+
+
+def _detect_traj_format(run_dir):
+    """Return one of: 'manifest', 'revelio_traj', 'cc_traj_jsonl',
+    'cc_messages', 'codex_messages', 'kiss_yaml', or None."""
+    if (run_dir / "manifest.json").exists():
+        return "manifest"
+    if (run_dir / "trajectory.json").exists():
+        return "revelio_traj"
+    if (run_dir / "trajectory.jsonl").exists():
+        return "cc_traj_jsonl"
+    msg_path = run_dir / "messages.jsonl"
+    if msg_path.exists():
+        try:
+            with open(msg_path) as f:
+                first = f.readline().strip()
+            if first:
+                obj = json.loads(first)
+                if obj.get("type") == "thread.started":
+                    return "codex_messages"
+        except Exception:
+            pass
+        return "cc_messages"
+    traj_dir = run_dir / "trajectories"
+    if traj_dir.is_dir():
+        if any(traj_dir.glob("*.yaml")) or any(traj_dir.glob("*.yml")):
+            return "kiss_yaml"
+    return None
+
+
+def _extract_arvo_id(name):
+    m = re.match(r"(arvo-\d+)", name)
+    return m.group(1) if m else None
+
+
+def _ts_to_iso(ts):
+    if ts is None:
+        return None
+    try:
+        import datetime as dt
+        return dt.datetime.fromtimestamp(int(ts), dt.timezone.utc).isoformat().replace("+00:00", "Z")
+    except Exception:
+        return None
 
 
 def _run_dir_to_id(run_dir, output_dir):
@@ -85,13 +141,14 @@ def _run_dir_to_id(run_dir, output_dir):
 
 
 def _find_all_run_dirs(output_dirs):
-    """Recursively find all directories containing trajectory.json, trajectory.jsonl, or manifest.json."""
+    """Recursively find all run directories (any supported trajectory format)."""
     results = []  # list of (run_dir, output_dir)
     for d in output_dirs:
         if not d.exists():
             continue
         seen = set()
-        for pattern in ("trajectory.json", "manifest.json", "trajectory.jsonl"):
+        # Files that mark a run dir as their direct parent.
+        for pattern in ("trajectory.json", "manifest.json", "trajectory.jsonl", "messages.jsonl"):
             for match in d.rglob(pattern):
                 run_dir = match.parent
                 if run_dir in seen:
@@ -99,6 +156,18 @@ def _find_all_run_dirs(output_dirs):
                 seen.add(run_dir)
                 if _is_run_dir(run_dir):
                     results.append((run_dir, d))
+        # KISSSorcar puts yaml under a `trajectories/` subdir.
+        for traj_dir in d.rglob("trajectories"):
+            if not traj_dir.is_dir():
+                continue
+            if not (any(traj_dir.glob("*.yaml")) or any(traj_dir.glob("*.yml"))):
+                continue
+            run_dir = traj_dir.parent
+            if run_dir in seen:
+                continue
+            seen.add(run_dir)
+            if _is_run_dir(run_dir):
+                results.append((run_dir, d))
     return results
 
 
@@ -639,6 +708,701 @@ def _cc_traj_to_detail(run_dir, run_id=None):
     }
 
 
+def _revelio_to_detail(run_dir, run_id=None):
+    """Detail builder for Revelio's `scan_filter_detect` pipeline.
+
+    Bundles each hypothesis (from hypotheses.json) with its handoff artifacts
+    (poc_recipe_*.json, validation_*.json, report_*.json) and parses the
+    per-hypothesis PoCBuilderAgent trajectory into inline messages.
+    """
+    manifest = _read_json(run_dir / "manifest.json") if (run_dir / "manifest.json").exists() else {}
+    events = _read_jsonl(run_dir / "events.jsonl") if (run_dir / "events.jsonl").exists() else []
+    log_text = (run_dir / "log.txt").read_text(errors="replace") if (run_dir / "log.txt").exists() else ""
+
+    # Hypotheses (top-level) → list of dicts
+    hyps_path = run_dir / "hypotheses.json"
+    hypotheses = []
+    if hyps_path.exists():
+        try:
+            hyps = _read_json(hyps_path)
+            if isinstance(hyps, dict):
+                hypotheses = hyps.get("hypotheses", []) or []
+            elif isinstance(hyps, list):
+                hypotheses = hyps
+        except Exception:
+            pass
+
+    # Per-hypothesis handoffs
+    handoff_dir = run_dir / "artifacts" / "handoffs"
+    def _maybe_json(p):
+        try:
+            return _read_json(p) if p.exists() else None
+        except Exception:
+            return None
+
+    poc_by_hid = {}
+    val_by_hid = {}
+    rep_by_hid = {}
+    if handoff_dir.is_dir():
+        for f in handoff_dir.glob("poc_recipe_*.json"):
+            hid = f.stem.replace("poc_recipe_", "")
+            poc_by_hid[hid] = _maybe_json(f)
+        for f in handoff_dir.glob("validation_*.json"):
+            hid = f.stem.replace("validation_", "")
+            val_by_hid[hid] = _maybe_json(f)
+        for f in handoff_dir.glob("report_*.json"):
+            hid = f.stem.replace("report_", "")
+            rep_by_hid[hid] = _maybe_json(f)
+
+    # PoC-stage trajectories live in trajectory.json under `agents`
+    # (PoCBuilderAgent_SFNN, ReporterAgent_SFNN_attempt*, …)
+    poc_stages = []  # ordered list of {label, hid, agent, info, messages, raw_count}
+    traj_path = run_dir / "trajectory.json"
+    if traj_path.exists():
+        try:
+            traj_raw = _read_json(traj_path)
+            agents = traj_raw.get("agents", {}) if isinstance(traj_raw, dict) else {}
+            for agent_name, agent_data in agents.items():
+                if not isinstance(agent_data, dict):
+                    continue
+                msgs = agent_data.get("messages", []) or []
+                parsed = _parse_tool_calls_messages(msgs)
+                # Match …_SFNN suffix for hypothesis pairing
+                hm = re.search(r"_(SF\d+)(?:_|$)", agent_name)
+                hid = hm.group(1) if hm else None
+                poc_stages.append({
+                    "label": agent_name,
+                    "hid": hid,
+                    "agent": agent_name,
+                    "info": agent_data.get("info", {}),
+                    "messages": parsed,
+                    "raw_count": len(msgs),
+                })
+        except Exception:
+            pass
+
+    # Hypothesis-stage trajectories live under traces/{stage1,stage2,stage3_filter}.
+    # stage1 has whole-file, focused, and per-function analyses (plain user/assistant strings).
+    # stage3_filter/*.json has a `trajectory` field using the tool_calls + role:tool format.
+    hypothesis_stages = []
+    traces_dir = run_dir / "traces"
+    if traces_dir.is_dir():
+        for f in sorted(traces_dir.glob("stage1_*.json")):
+            try:
+                data = _read_json(f)
+            except Exception:
+                continue
+            fname = data.get("file", f.stem)
+
+            wf = data.get("wholefile") or {}
+            wf_msgs = wf.get("messages") or []
+            if wf_msgs:
+                hypothesis_stages.append({
+                    "label": f"stage1 · whole-file ({fname})",
+                    "stage": "stage1.wholefile",
+                    "info": {
+                        "hypothesis_count": len((wf.get("hypotheses") or [])),
+                    },
+                    "messages": _parse_tool_calls_messages(wf_msgs),
+                    "raw_count": len(wf_msgs),
+                })
+
+            for idx, foc in enumerate(data.get("focused") or []):
+                if not isinstance(foc, dict):
+                    continue
+                fmsgs = foc.get("messages") or []
+                if not fmsgs:
+                    continue
+                hypothesis_stages.append({
+                    "label": f"stage1 · focused #{idx} ({fname})",
+                    "stage": "stage1.focused",
+                    "info": {
+                        "focus_prompt": (foc.get("focus_prompt") or "")[:200],
+                        "hypothesis_count": len((foc.get("hypotheses") or [])),
+                    },
+                    "messages": _parse_tool_calls_messages(fmsgs),
+                    "raw_count": len(fmsgs),
+                })
+
+            for fn in data.get("functions") or []:
+                if not isinstance(fn, dict):
+                    continue
+                fmsgs = fn.get("messages") or []
+                if not fmsgs:
+                    continue
+                fn_name = fn.get("function") or "?"
+                hypothesis_stages.append({
+                    "label": f"stage1 · function `{fn_name}` ({fname})",
+                    "stage": "stage1.function",
+                    "info": {
+                        "function": fn_name,
+                        "hypothesis_count": len((fn.get("hypotheses") or [])),
+                    },
+                    "messages": _parse_tool_calls_messages(fmsgs),
+                    "raw_count": len(fmsgs),
+                })
+
+        stage3_dir = traces_dir / "stage3_filter"
+        if stage3_dir.is_dir():
+            stage3_files = sorted(stage3_dir.glob("*.json"))
+
+            def _hyp_idx_key(p):
+                m = re.search(r"hyp_(\d+)_", p.name)
+                return int(m.group(1)) if m else 1_000_000
+
+            stage3_files.sort(key=_hyp_idx_key)
+            for f in stage3_files:
+                try:
+                    data = _read_json(f)
+                except Exception:
+                    continue
+                traj = data.get("trajectory") or []
+                if not traj:
+                    continue
+                hi = data.get("hypothesis_index")
+                verdict = data.get("verdict") or "?"
+                hypothesis_stages.append({
+                    "label": f"stage3 filter · hyp #{hi} — {verdict}",
+                    "stage": "stage3.filter",
+                    "info": {
+                        "hypothesis_index": hi,
+                        "verdict": verdict,
+                        "confidence": data.get("confidence"),
+                        "summary": data.get("summary", ""),
+                        "reason": (data.get("reason") or "")[:1000],
+                        "model_cost": data.get("model_cost"),
+                        "model_calls": data.get("model_calls"),
+                    },
+                    "messages": _parse_tool_calls_messages(traj),
+                    "raw_count": len(traj),
+                })
+
+    # Hypothesis metadata for each PoC stage (so the frontend can show what
+    # hypothesis the PoC builder was working on).
+    hyp_by_hid = {}
+    for h in hypotheses:
+        if isinstance(h, dict):
+            hid = h.get("hypothesis_id") or h.get("id")
+            if hid:
+                hyp_by_hid[hid] = h
+
+    # Attach artifact summaries to each PoC stage for inline context.
+    for ps in poc_stages:
+        hid = ps.get("hid")
+        ps["hypothesis"] = hyp_by_hid.get(hid) if hid else None
+        ps["poc"] = poc_by_hid.get(hid) if hid else None
+        ps["validation"] = val_by_hid.get(hid) if hid else None
+        ps["report"] = rep_by_hid.get(hid) if hid else None
+
+    # Confirmed count derived from validation/report artifacts.
+    confirmed = 0
+    for hid in hyp_by_hid:
+        v = val_by_hid.get(hid) or {}
+        r = rep_by_hid.get(hid) or {}
+        if v.get("crash_detected") or r.get("crash_detected"):
+            confirmed += 1
+
+    cost_total = 0.0
+    if log_text:
+        for line in log_text.splitlines():
+            if "cost=$" in line:
+                try:
+                    cost_total += float(line.split("cost=$")[1].split(")")[0])
+                except (ValueError, IndexError):
+                    pass
+
+    hyp_msg_total = sum(s.get("raw_count", 0) for s in hypothesis_stages)
+    poc_msg_total = sum(s.get("raw_count", 0) for s in poc_stages)
+
+    return {
+        "manifest": manifest,
+        "events": events,
+        "log": log_text,
+        "revelio": True,
+        # Hypothesis-stage and PoC-stage trajectories rendered as two top-level tabs.
+        "revelio_hypothesis_stages": hypothesis_stages,
+        "revelio_poc_stages": poc_stages,
+        "revelio_summary": {
+            "hypothesis_count": len(hyp_by_hid),
+            "confirmed": confirmed,
+            "hypothesis_steps": len(hypothesis_stages),
+            "poc_steps": len(poc_stages),
+            "hypothesis_msgs": hyp_msg_total,
+            "poc_msgs": poc_msg_total,
+            "cost_total": round(cost_total, 4),
+        },
+        # Legacy fields kept empty so the existing frontend doesn't choke
+        "index": {"counters": {}},
+        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "poc", "validation", "reports"]},
+        "hypothesis_outputs": {},
+        "trajectory_summaries": [],
+    }
+
+
+# ── New experiment_traj formats (ClaudeCode / Codex / KISSSorcar) ─────────
+#
+# All three live as one run dir per (agent, arvo-case) with their own native
+# trajectory file. We translate each into the existing "inline_messages"
+# contract the frontend already understands.
+
+def _read_metrics(run_dir):
+    p = run_dir / "metrics.json"
+    if not p.exists():
+        return {}
+    try:
+        return _read_json(p)
+    except Exception:
+        return {}
+
+
+def _read_report_md(run_dir):
+    p = run_dir / "report.md"
+    if not p.exists():
+        return ""
+    try:
+        return p.read_text(errors="replace")
+    except Exception:
+        return ""
+
+
+def _parse_cc_messages(lines):
+    """Parse the ClaudeCode messages.jsonl stream (`{content: [...], ...}` per line)."""
+    messages = []
+    tool_use_to_idx = {}
+    for line in lines:
+        # Skip init/system lines (top-level "subtype": "init" or wrapped under "data")
+        if line.get("subtype") == "init":
+            continue
+        if isinstance(line.get("data"), dict) and line["data"].get("type") == "system":
+            continue
+
+        content = line.get("content")
+        if not isinstance(content, list):
+            continue
+
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+
+            # Thinking block
+            if "thinking" in part and "id" not in part and "tool_use_id" not in part:
+                txt = part.get("thinking", "")
+                if txt and txt.strip():
+                    messages.append({"role": "assistant", "content": txt})
+                continue
+
+            ptype = part.get("type")
+
+            # Plain assistant text
+            if ptype == "text" or ("text" in part and "id" not in part and "tool_use_id" not in part):
+                txt = part.get("text", "")
+                if txt and txt.strip():
+                    messages.append({"role": "assistant", "content": txt})
+                continue
+
+            # Assistant tool_use (has id + name + input)
+            if "id" in part and "name" in part and "input" in part:
+                tool_name = part.get("name", "")
+                tool_input = part.get("input", {}) or {}
+                cmd = tool_input.get("command", "") if tool_name in ("Bash", "bash") else ""
+                disp = cmd if cmd else f"[{tool_name}] {json.dumps(tool_input)[:500]}"
+                idx = len(messages)
+                messages.append({
+                    "role": "tool", "content": "",
+                    "command": disp,
+                    "command_returncode": None,
+                    "command_output": "",
+                })
+                tool_use_to_idx[part["id"]] = idx
+                continue
+
+            # User tool_result (has tool_use_id)
+            if "tool_use_id" in part:
+                tu_id = part["tool_use_id"]
+                idx = tool_use_to_idx.get(tu_id)
+                if idx is None:
+                    continue
+                output = part.get("content", "")
+                if isinstance(output, list):
+                    output = "\n".join(
+                        p.get("text", "") for p in output if isinstance(p, dict)
+                    )
+                is_error = part.get("is_error", False)
+                # Prefer tool_use_result if present on the line (has stdout/stderr)
+                tur = line.get("tool_use_result")
+                if isinstance(tur, dict):
+                    stdout = tur.get("stdout", "") or ""
+                    stderr = tur.get("stderr", "") or ""
+                    if stdout or stderr:
+                        out = stdout
+                        if stderr:
+                            out = (out + "\n[stderr] " + stderr) if out else stderr
+                        output = out
+                messages[idx]["command_output"] = str(output)[:10000]
+                messages[idx]["command_returncode"] = 1 if is_error else 0
+                continue
+    return messages
+
+
+def _cc_msg_to_run_summary(run_id, run_dir, source_dir_name):
+    metrics = _read_metrics(run_dir)
+    # Try to read init line for model
+    model_name = ""
+    try:
+        with open(run_dir / "messages.jsonl") as f:
+            first = f.readline().strip()
+        if first:
+            obj = json.loads(first)
+            data = obj.get("data", obj)
+            model_name = data.get("model", "") or ""
+    except Exception:
+        pass
+    if not model_name:
+        usage = metrics.get("model_usage", {}) or {}
+        if usage:
+            model_name = max(usage, key=lambda k: usage[k].get("costUSD", 0))
+
+    duration = None
+    if metrics.get("duration_ms"):
+        duration = round(metrics["duration_ms"] / 1000, 1)
+
+    status = "error" if metrics.get("is_error") else "completed"
+    arvo_id = _extract_arvo_id(run_dir.name) or run_dir.name
+
+    return {
+        "run_id": run_id,
+        "target_ref": arvo_id,
+        "target_type": "claude-code",
+        "model_name": model_name,
+        "pipeline": "claude-code",
+        "created_at": None,
+        "counters": {},
+        "total_cost": round(metrics.get("total_cost_usd", 0) or 0, 4),
+        "status": status,
+        "hypotheses_confirmed": 0,
+        "source_dir": source_dir_name,
+        "duration_seconds": duration,
+        "num_turns": metrics.get("num_turns"),
+        "score": _load_score(run_dir),
+    }
+
+
+def _cc_msg_to_detail(run_dir, run_id=None):
+    lines = _read_jsonl(run_dir / "messages.jsonl")
+    metrics = _read_metrics(run_dir)
+    model_name = ""
+    if lines:
+        first = lines[0]
+        data = first.get("data", first)
+        model_name = data.get("model", "") or ""
+    if not model_name:
+        usage = metrics.get("model_usage", {}) or {}
+        if usage:
+            model_name = max(usage, key=lambda k: usage[k].get("costUSD", 0))
+
+    duration = None
+    if metrics.get("duration_ms"):
+        duration = round(metrics["duration_ms"] / 1000, 1)
+
+    arvo_id = _extract_arvo_id(run_dir.name) or run_dir.name
+    manifest = {
+        "run_id": run_id or run_dir.name,
+        "target_ref": arvo_id,
+        "target_type": "claude-code",
+        "model_name": model_name,
+        "pipeline": "claude-code",
+        "exit_status": "error" if metrics.get("is_error") else "completed",
+        "duration_seconds": duration,
+        "num_turns": metrics.get("num_turns"),
+        "model_usage": metrics.get("model_usage", {}),
+    }
+
+    messages = _parse_cc_messages(lines)
+    traj_summaries = [{
+        "agent_name": "claude-code",
+        "exit_status": manifest["exit_status"],
+        "cost": round(metrics.get("total_cost_usd", 0) or 0, 4),
+        "api_calls": metrics.get("llm_call_number"),
+        "path": "messages.jsonl",
+        "message_count": len(lines),
+    }]
+
+    return {
+        "manifest": manifest,
+        "index": {"counters": {}},
+        "events": [],
+        "log": "",
+        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "poc", "validation", "reports"]},
+        "hypothesis_outputs": {},
+        "trajectory_summaries": traj_summaries,
+        "trajectory_only": True,
+        "inline_messages": messages,
+        "result_text": _read_report_md(run_dir),
+    }
+
+
+def _parse_codex_messages(lines):
+    """Parse Codex messages.jsonl (item.started/item.completed events)."""
+    messages = []
+    pending = {}  # item id -> messages-index
+    for line in lines:
+        t = line.get("type")
+        item = line.get("item") or {}
+        it_type = item.get("type")
+
+        if t == "item.completed" and it_type == "agent_message":
+            txt = item.get("text", "")
+            if txt and txt.strip():
+                messages.append({"role": "assistant", "content": txt})
+
+        elif t == "item.started" and it_type == "command_execution":
+            cmd = item.get("command", "")
+            idx = len(messages)
+            messages.append({
+                "role": "tool", "content": "",
+                "command": cmd,
+                "command_returncode": None,
+                "command_output": "",
+            })
+            pending[item.get("id")] = idx
+
+        elif t == "item.completed" and it_type == "command_execution":
+            iid = item.get("id")
+            idx = pending.pop(iid, None)
+            if idx is None:
+                idx = len(messages)
+                messages.append({
+                    "role": "tool", "content": "",
+                    "command": item.get("command", ""),
+                    "command_returncode": None,
+                    "command_output": "",
+                })
+            output = (item.get("aggregated_output") or "")[:10000]
+            messages[idx]["command_output"] = output
+            ec = item.get("exit_code")
+            if isinstance(ec, int):
+                messages[idx]["command_returncode"] = ec
+            elif item.get("status") == "failed":
+                messages[idx]["command_returncode"] = 1
+            else:
+                messages[idx]["command_returncode"] = 0
+
+        elif t == "item.completed" and it_type == "file_change":
+            payload = {k: v for k, v in item.items() if k not in ("type",)}
+            messages.append({
+                "role": "tool", "content": "",
+                "command": f"[file_change] {json.dumps(payload)[:500]}",
+                "command_returncode": 0,
+                "command_output": "",
+            })
+    return messages
+
+
+def _codex_msg_to_run_summary(run_id, run_dir, source_dir_name):
+    metrics = _read_metrics(run_dir)
+    arvo_id = _extract_arvo_id(run_dir.name) or run_dir.name
+    status = "error" if metrics.get("is_error") else (metrics.get("stop_reason", "completed") or "completed")
+    return {
+        "run_id": run_id,
+        "target_ref": arvo_id,
+        "target_type": "codex",
+        "model_name": metrics.get("model", ""),
+        "pipeline": "codex",
+        "created_at": None,
+        "counters": {},
+        "total_cost": round(metrics.get("estimated_cost_usd", 0) or 0, 4),
+        "status": status,
+        "hypotheses_confirmed": 0,
+        "source_dir": source_dir_name,
+        "duration_seconds": None,
+        "num_turns": metrics.get("items_completed"),
+        "score": _load_score(run_dir),
+    }
+
+
+def _codex_msg_to_detail(run_dir, run_id=None):
+    lines = _read_jsonl(run_dir / "messages.jsonl")
+    metrics = _read_metrics(run_dir)
+    arvo_id = _extract_arvo_id(run_dir.name) or run_dir.name
+    status = "error" if metrics.get("is_error") else (metrics.get("stop_reason", "completed") or "completed")
+
+    manifest = {
+        "run_id": run_id or run_dir.name,
+        "target_ref": arvo_id,
+        "target_type": "codex",
+        "model_name": metrics.get("model", ""),
+        "pipeline": "codex",
+        "exit_status": status,
+        "num_turns": metrics.get("items_completed"),
+    }
+
+    messages = _parse_codex_messages(lines)
+    traj_summaries = [{
+        "agent_name": "codex",
+        "exit_status": status,
+        "cost": round(metrics.get("estimated_cost_usd", 0) or 0, 4),
+        "api_calls": metrics.get("llm_call_number"),
+        "path": "messages.jsonl",
+        "message_count": len(lines),
+    }]
+    return {
+        "manifest": manifest,
+        "index": {"counters": {}},
+        "events": [],
+        "log": "",
+        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "poc", "validation", "reports"]},
+        "hypothesis_outputs": {},
+        "trajectory_summaries": traj_summaries,
+        "trajectory_only": True,
+        "inline_messages": messages,
+        "result_text": _read_report_md(run_dir),
+    }
+
+
+def _kiss_yaml_files(run_dir):
+    """Return KISSSorcar trajectory yaml files sorted (the last is usually the final session)."""
+    traj_dir = run_dir / "trajectories"
+    if not traj_dir.is_dir():
+        return []
+    files = list(traj_dir.glob("*.yaml")) + list(traj_dir.glob("*.yml"))
+    return sorted(files)
+
+
+def _kiss_load_traj(run_dir):
+    files = _kiss_yaml_files(run_dir)
+    if not files:
+        return None
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        with open(files[-1]) as f:
+            return yaml.safe_load(f)
+    except Exception:
+        return None
+
+
+def _parse_kiss_messages(traj_data):
+    messages = []
+    if not isinstance(traj_data, dict):
+        return messages
+    for m in traj_data.get("messages", []) or []:
+        if not isinstance(m, dict):
+            continue
+        role = (m.get("role") or "").strip()
+        if role == "model":
+            role = "assistant"
+        content = m.get("content", "")
+        if isinstance(content, str) and content.strip():
+            messages.append({
+                "role": role or "user",
+                "content": content,
+                "timestamp": _ts_to_iso(m.get("timestamp")),
+            })
+    return messages
+
+
+def _kiss_to_run_summary(run_id, run_dir, source_dir_name):
+    metrics = _read_metrics(run_dir)
+    traj = _kiss_load_traj(run_dir) or {}
+    model_name = traj.get("model", "") or metrics.get("model", "")
+    arvo_id = _extract_arvo_id(run_dir.name) or run_dir.name
+    cost = metrics.get("estimated_cost_usd")
+    if cost is None:
+        cost = traj.get("global_budget_used") or traj.get("budget_used") or 0
+    status = "completed" if metrics.get("is_success") else "unknown"
+
+    duration = None
+    start = traj.get("run_start_timestamp")
+    end = traj.get("run_end_timestamp")
+    if start and end:
+        try:
+            duration = float(end) - float(start)
+        except Exception:
+            pass
+
+    created = _ts_to_iso(start)
+    return {
+        "run_id": run_id,
+        "target_ref": arvo_id,
+        "target_type": "kiss-sorcar",
+        "model_name": model_name,
+        "pipeline": "kiss-sorcar",
+        "created_at": created,
+        "counters": {},
+        "total_cost": round(float(cost or 0), 4),
+        "status": status,
+        "hypotheses_confirmed": 0,
+        "source_dir": source_dir_name,
+        "duration_seconds": duration,
+        "num_turns": traj.get("step_count") or metrics.get("llm_call_number"),
+        "score": _load_score(run_dir),
+    }
+
+
+def _kiss_to_detail(run_dir, run_id=None):
+    traj = _kiss_load_traj(run_dir) or {}
+    metrics = _read_metrics(run_dir)
+    arvo_id = _extract_arvo_id(run_dir.name) or run_dir.name
+    model_name = traj.get("model", "") or metrics.get("model", "")
+
+    start = traj.get("run_start_timestamp")
+    end = traj.get("run_end_timestamp")
+    duration = None
+    if start and end:
+        try:
+            duration = float(end) - float(start)
+        except Exception:
+            pass
+
+    status = "completed" if metrics.get("is_success") else "unknown"
+    manifest = {
+        "run_id": run_id or run_dir.name,
+        "target_ref": arvo_id,
+        "target_type": "kiss-sorcar",
+        "model_name": model_name,
+        "pipeline": "kiss-sorcar",
+        "exit_status": status,
+        "duration_seconds": duration,
+        "num_turns": traj.get("step_count"),
+        "created_at_utc": _ts_to_iso(start),
+        "finished_at_utc": _ts_to_iso(end),
+    }
+
+    messages = _parse_kiss_messages(traj)
+    cost = metrics.get("estimated_cost_usd")
+    if cost is None:
+        cost = traj.get("global_budget_used") or traj.get("budget_used") or 0
+    traj_summaries = [{
+        "agent_name": traj.get("name", "kiss-sorcar"),
+        "exit_status": status,
+        "cost": round(float(cost or 0), 4),
+        "api_calls": metrics.get("llm_call_number"),
+        "path": str((_kiss_yaml_files(run_dir) or [run_dir])[-1].name) if _kiss_yaml_files(run_dir) else "",
+        "message_count": len(traj.get("messages", []) or []),
+    }]
+
+    if not messages and not traj:
+        # PyYAML unavailable — leave a hint instead of crashing
+        result_text = "PyYAML is not installed on the server; install it to view KISSSorcar trajectories."
+    else:
+        result_text = _read_report_md(run_dir)
+
+    return {
+        "manifest": manifest,
+        "index": {"counters": {}},
+        "events": [],
+        "log": "",
+        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "poc", "validation", "reports"]},
+        "hypothesis_outputs": {},
+        "trajectory_summaries": traj_summaries,
+        "trajectory_only": True,
+        "inline_messages": messages,
+        "result_text": result_text,
+    }
+
+
 def _load_cve_dataset():
     """Load CVE dataset from scripts/cve_dataset.jsonl into a dict keyed by CVE ID."""
     dataset_path = SCRIPTS_DIR / "cve_dataset.jsonl"
@@ -920,6 +1684,13 @@ def make_handler(output_dirs):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(WEBSITE_DIR), **kwargs)
 
+        def end_headers(self):
+            # Disable browser caching so users always see the latest UI without hard-refresh.
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+            super().end_headers()
+
         def log_message(self, fmt, *args):
             pass  # quiet
 
@@ -964,29 +1735,53 @@ def make_handler(output_dirs):
             runs = []
             for run_dir, out_dir in _find_all_run_dirs(output_dirs):
                 run_id = _run_dir_to_id(run_dir, out_dir)
+                fmt = _detect_traj_format(run_dir)
                 manifest_path = run_dir / "manifest.json"
-                traj_path = run_dir / "trajectory.json"
-                cc_traj_path = run_dir / "trajectory.jsonl"
 
-                # Claude Code trajectory.jsonl run
-                if not manifest_path.exists() and not traj_path.exists() and cc_traj_path.exists():
+                if fmt == "cc_messages":
                     try:
-                        summary = _cc_traj_to_run_summary(run_id, run_dir, str(out_dir.name))
-                        if summary:
-                            runs.append(summary)
+                        s = _cc_msg_to_run_summary(run_id, run_dir, str(out_dir.name))
+                        if s: runs.append(s)
                     except Exception:
                         pass
                     continue
 
-                # Trajectory-only run (no manifest)
-                if not manifest_path.exists() and traj_path.exists():
+                if fmt == "codex_messages":
                     try:
-                        traj = _read_json(traj_path)
-                        traj_info = traj.get("info", {})
-                        runs.append(_traj_to_run_summary(run_id, traj_info, str(out_dir.name), run_dir=run_dir))
+                        s = _codex_msg_to_run_summary(run_id, run_dir, str(out_dir.name))
+                        if s: runs.append(s)
                     except Exception:
                         pass
                     continue
+
+                if fmt == "kiss_yaml":
+                    try:
+                        s = _kiss_to_run_summary(run_id, run_dir, str(out_dir.name))
+                        if s: runs.append(s)
+                    except Exception:
+                        pass
+                    continue
+
+                if fmt == "cc_traj_jsonl":
+                    try:
+                        s = _cc_traj_to_run_summary(run_id, run_dir, str(out_dir.name))
+                        if s: runs.append(s)
+                    except Exception:
+                        pass
+                    continue
+
+                if fmt == "revelio_traj":
+                    try:
+                        traj = _read_json(run_dir / "trajectory.json")
+                        runs.append(_traj_to_run_summary(run_id, traj.get("info", {}), str(out_dir.name), run_dir=run_dir))
+                    except Exception:
+                        pass
+                    continue
+
+                # Revelio scan_filter_detect: manifest + trajectory.json + hypotheses.json
+                if fmt == "manifest" and (run_dir / "trajectory.json").exists() and (run_dir / "hypotheses.json").exists():
+                    fmt = "revelio_detect"
+                    # fall through to the manifest branch below — it computes summary fine
 
                 if manifest_path.exists():
                     manifest = _read_json(manifest_path)
@@ -1036,16 +1831,40 @@ def make_handler(output_dirs):
                         "source_dir": str(out_dir.name),
                         "score": _load_score(run_dir),
                     })
+            # Group runs that share an arvo/CVE case across agents.
+            def _case_key(r):
+                tref = r.get("target_ref") or ""
+                rid = r.get("run_id") or ""
+                m = re.search(r"arvo[-:](\d+)", tref) or re.search(r"arvo[-:](\d+)", rid)
+                if m:
+                    return f"arvo-{int(m.group(1)):08d}"
+                m = re.search(r"(CVE-\d{4}-\d+)", tref) or re.search(r"(CVE-\d{4}-\d+)", rid)
+                if m:
+                    return m.group(1)
+                return tref
             runs.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+            runs.sort(key=lambda r: (_case_key(r), r.get("source_dir") or ""))
             _json_resp(self, runs)
 
         def _handle_run_detail(self, run_dir, run_id=None):
-            # Claude Code trajectory.jsonl run
-            if not (run_dir / "manifest.json").exists() and not (run_dir / "trajectory.json").exists() and (run_dir / "trajectory.jsonl").exists():
+            fmt = _detect_traj_format(run_dir)
+            # Revelio scan_filter_detect runs: manifest + trajectory.json + hypotheses.json
+            if fmt == "manifest" and (run_dir / "trajectory.json").exists() and (run_dir / "hypotheses.json").exists():
+                _json_resp(self, _revelio_to_detail(run_dir, run_id=run_id))
+                return
+            if fmt == "cc_messages":
+                _json_resp(self, _cc_msg_to_detail(run_dir, run_id=run_id))
+                return
+            if fmt == "codex_messages":
+                _json_resp(self, _codex_msg_to_detail(run_dir, run_id=run_id))
+                return
+            if fmt == "kiss_yaml":
+                _json_resp(self, _kiss_to_detail(run_dir, run_id=run_id))
+                return
+            if fmt == "cc_traj_jsonl":
                 _json_resp(self, _cc_traj_to_detail(run_dir, run_id=run_id))
                 return
-            # Trajectory-only run (no manifest)
-            if not (run_dir / "manifest.json").exists() and (run_dir / "trajectory.json").exists():
+            if fmt == "revelio_traj":
                 _json_resp(self, _traj_to_detail(run_dir, run_id=run_id))
                 return
 

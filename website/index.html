@@ -185,6 +185,9 @@ nav .breadcrumb .sep{color:#333}
 .run-card .run-title .batch-type{font-size:.7rem;padding:2px 8px;border-radius:4px;font-weight:600;letter-spacing:.02em}
 .batch-type.batch-file-scan{background:rgba(34,211,238,.1);color:var(--cyan);border:1px solid rgba(34,211,238,.25)}
 .batch-type.batch-claude-code{background:rgba(244,114,182,.1);color:var(--pink);border:1px solid rgba(244,114,182,.25)}
+.batch-type.batch-codex{background:rgba(132,225,160,.12);color:#84e1a0;border:1px solid rgba(132,225,160,.3)}
+.batch-type.batch-kiss-sorcar{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+.batch-type.batch-revelio{background:rgba(167,139,250,.12);color:#a78bfa;border:1px solid rgba(167,139,250,.3)}
 .batch-type.batch-other{background:rgba(99,102,241,.1);color:var(--accent2);border:1px solid rgba(99,102,241,.25)}
 
 /* ── Score indicators ────────────────────────────────────────── */
@@ -340,16 +343,30 @@ async function loadRunsList() {
 // Parse run_id into {batchType, cveId}
 function parseRunId(runId) {
   const parts = (runId || '').split('--');
+  let batchType = '', tail = runId || '';
   if (parts.length >= 2) {
-    return { batchType: parts[0], cveId: parts.slice(1).join('--') };
+    batchType = parts[0];
+    tail = parts.slice(1).join('--');
   }
-  return { batchType: '', cveId: runId || '' };
+  // Prefer arvo-NNNN id for display when present, fall back to CVE-YYYY-NNNN, else the raw tail
+  let cveId = tail;
+  const arvoM = tail.match(/(arvo-\d+)/i);
+  if (arvoM) cveId = arvoM[1];
+  else {
+    const cveM = tail.match(/(CVE-\d{4}-\d+)/i);
+    if (cveM) cveId = cveM[1];
+  }
+  return { batchType, cveId };
 }
 
 // Friendly label for batch type
 function batchLabel(bt) {
   if (bt === 'batch_file_scan') return 'file-scan';
   if (bt === 'batch_claude_code') return 'claude-code';
+  if (bt === 'ClaudeCode') return 'ClaudeCode';
+  if (bt === 'Codex') return 'Codex';
+  if (bt === 'KISSSorcar') return 'KISSSorcar';
+  if (bt === 'Revelio') return 'Revelio';
   return bt.replace(/^batch_/, '').replace(/_/g, '-') || '—';
 }
 
@@ -357,6 +374,10 @@ function batchLabel(bt) {
 function batchCls(bt) {
   if (bt === 'batch_file_scan') return 'batch-file-scan';
   if (bt === 'batch_claude_code') return 'batch-claude-code';
+  if (bt === 'ClaudeCode') return 'batch-claude-code';
+  if (bt === 'Codex') return 'batch-codex';
+  if (bt === 'KISSSorcar') return 'batch-kiss-sorcar';
+  if (bt === 'Revelio') return 'batch-revelio';
   return 'batch-other';
 }
 
@@ -529,27 +550,22 @@ function renderRunDetail() {
   // ── Trajectory-only view (file-scan pipeline or claude-code) ──
   if (d.trajectory_only) {
     const hasReport = !!(d.result_text);
+    // Vuln Context only meaningful for legacy file-scan runs with a CVE ID.
+    const showVulnContext = m.pipeline === 'file-scan';
     const tabs = ['Overview'];
     if (hasReport) tabs.push('Report');
-    tabs.push('Trajectory', 'Vuln Context');
+    tabs.push('Trajectory');
+    if (showVulnContext) tabs.push('Vuln Context');
     let html = `<div class="tabs" id="detail-tabs">`;
     tabs.forEach((t,i) => {
       html += `<div class="tab ${i===0?'active':''}" onclick="switchTab(${i},'detail');${t==='Vuln Context'?'loadVulnContext()':''}">${t}</div>`;
     });
     html += `</div>`;
 
-    // Tab 0: Overview
+    // Tab 0: Overview — just the raw manifest for reference. Counters live in
+    // the run list; this page is for trajectory reading.
     let tabIdx = 0;
     html += `<div class="tab-panel active" id="detail-tab-${tabIdx}">`;
-    html += `<div class="overview-grid">`;
-    html += statCard(m.target_ref || '—', 'Target');
-    html += statCard((m.model_name||'').split('/').pop(), 'Model');
-    html += statCard(m.exit_status || '—', 'Exit Status');
-    html += statCard('$' + totalCost.toFixed(2), 'Total Cost');
-    html += statCard(totalCalls, 'API Calls');
-    if (m.duration_seconds) html += statCard(fmtDuration(m.duration_seconds), 'Duration');
-    if (m.num_turns) html += statCard(m.num_turns, 'Turns');
-    html += `</div>`;
     html += `<div class="section-title">Run Info</div>`;
     html += `<pre>${esc(JSON.stringify(m, null, 2))}</pre>`;
     html += `</div>`;
@@ -569,12 +585,20 @@ function renderRunDetail() {
     html += `</div>`;
     tabIdx++;
 
-    // Vuln Context tab (lazy loaded)
-    html += `<div class="tab-panel" id="detail-tab-${tabIdx}">`;
-    html += `<div id="vuln-context-container"><div class="loading"><div class="spinner"></div><br>Click to load vulnerability context...</div></div>`;
-    html += `</div>`;
+    // Vuln Context tab (lazy loaded) — file-scan only
+    if (showVulnContext) {
+      html += `<div class="tab-panel" id="detail-tab-${tabIdx}">`;
+      html += `<div id="vuln-context-container"><div class="loading"><div class="spinner"></div><br>Click to load vulnerability context...</div></div>`;
+      html += `</div>`;
+    }
 
     document.getElementById('app').innerHTML = html;
+    return;
+  }
+
+  // ── Revelio scan_filter_detect view ──
+  if (d.revelio) {
+    renderRevelioDetail(d, m);
     return;
   }
 
@@ -689,6 +713,191 @@ function renderRunDetail() {
   html += `</div>`;
 
   document.getElementById('app').innerHTML = html;
+}
+
+// ── Revelio detail renderer ────────────────────────────────────
+// Tabs: Overview, Hypothesis, PoC, Log.
+//   • Hypothesis → stage1 (whole-file / focused / per-function) + stage3 filter trajectories
+//   • PoC        → PoCBuilderAgent + ReporterAgent trajectories from trajectory.json
+function renderRevelioDetail(d, m) {
+  const hStages = d.revelio_hypothesis_stages || [];
+  const pStages = d.revelio_poc_stages || [];
+
+  const tabs = ['Overview', 'Hypothesis', 'PoC', 'Log'];
+  let html = `<div class="tabs" id="detail-tabs">`;
+  tabs.forEach((t, i) => {
+    html += `<div class="tab ${i === 0 ? 'active' : ''}" onclick="switchTab(${i},'detail')">${esc(t)}</div>`;
+  });
+  html += `</div>`;
+
+  // ── Tab 0: Overview — manifest only; the page is for trajectory reading.
+  html += `<div class="tab-panel active" id="detail-tab-0">`;
+  html += `<div class="section-title">Manifest</div><pre>${esc(JSON.stringify(m, null, 2))}</pre>`;
+  html += `</div>`;
+
+  // ── Tab 1: Hypothesis stage trajectories
+  html += `<div class="tab-panel" id="detail-tab-1">`;
+  html += renderRevelioStageList(hStages, 'hyp', {
+    emptyMsg: 'No hypothesis-stage trajectories found (traces/stage1, traces/stage3_filter).',
+    title: 'Hypothesis Stage Trajectories',
+    countLabel: 'steps',
+  });
+  html += `</div>`;
+
+  // ── Tab 2: PoC stage trajectories
+  html += `<div class="tab-panel" id="detail-tab-2">`;
+  html += renderRevelioStageList(pStages, 'poc', {
+    emptyMsg: 'No PoC-stage trajectories found (trajectory.json agents).',
+    title: 'PoC Stage Trajectories',
+    countLabel: 'agents',
+    showArtifacts: true,
+  });
+  html += `</div>`;
+
+  // ── Tab 3: Log
+  html += `<div class="tab-panel" id="detail-tab-3">`;
+  html += renderLog(d.log);
+  html += `</div>`;
+
+  document.getElementById('app').innerHTML = html;
+}
+
+function renderRevelioStageList(stages, idPrefix, opts) {
+  opts = opts || {};
+  if (!stages.length) {
+    return `<div class="empty"><p>${esc(opts.emptyMsg || 'No trajectories.')}</p></div>`;
+  }
+  let html = `<div class="section-title">${esc(opts.title || 'Trajectories')} <span class="count">${stages.length} ${esc(opts.countLabel || 'steps')}</span></div>`;
+  stages.forEach((s, si) => {
+    html += renderRevelioStage(s, `${idPrefix}-${si}`, opts);
+  });
+  return html;
+}
+
+function renderRevelioStage(s, idKey, opts) {
+  opts = opts || {};
+  const info = s.info || {};
+  const msgs = s.messages || [];
+  let html = `<div class="card" style="margin-bottom:1.5rem">`;
+
+  // Header
+  html += `<h3 style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;font-size:.95rem">`;
+  if (s.stage) html += `<span class="badge badge-purple">${esc(s.stage)}</span>`;
+  if (s.hid) html += `<span class="badge badge-cyan">${esc(s.hid)}</span>`;
+  html += `<span>${esc(s.label || s.agent || '—')}</span>`;
+  if (info.exit_status) html += `<span class="badge badge-orange">${esc(info.exit_status)}</span>`;
+  if (info.verdict) {
+    const cls = info.verdict === 'VALID' ? 'badge-green' : info.verdict === 'INVALID' ? 'badge-red' : 'badge-orange';
+    html += `<span class="badge ${cls}">${esc(info.verdict)}</span>`;
+  }
+  html += `<span style="font-size:.74rem;color:var(--text-dim);font-weight:400;margin-left:auto">${msgs.length} steps · ${s.raw_count || msgs.length} raw msgs</span>`;
+  html += `</h3>`;
+
+  // Stage metadata (compact)
+  const meta = [];
+  if (info.confidence != null) meta.push(`confidence: <strong>${(info.confidence * 100).toFixed(0)}%</strong>`);
+  if (info.model_cost != null) meta.push(`cost: $${(+info.model_cost).toFixed(4)}`);
+  if (info.model_calls != null) meta.push(`calls: ${info.model_calls}`);
+  if (info.hypothesis_count != null) meta.push(`hypotheses: ${info.hypothesis_count}`);
+  if (info.hypothesis_index != null) meta.push(`index: ${info.hypothesis_index}`);
+  if (info.function) meta.push(`function: <code>${esc(info.function)}</code>`);
+  if (meta.length) {
+    html += `<div style="font-size:.78rem;color:var(--text-dim);margin:.4rem 0">${meta.join(' · ')}</div>`;
+  }
+  if (info.summary) html += `<p style="margin:.4rem 0;font-size:.82rem">${esc(info.summary)}</p>`;
+  if (info.reason) html += `<p style="margin:.4rem 0;font-size:.78rem;color:var(--text-dim)"><em>${esc(info.reason)}</em></p>`;
+
+  // PoC-stage extras: inline hypothesis card + PoC/validation/report tabs
+  if (opts.showArtifacts && (s.hypothesis || s.poc || s.validation || s.report)) {
+    html += renderRevelioPocArtifacts(s, idKey);
+  }
+
+  // Inline trajectory (every step)
+  html += renderInlineTrajectory(msgs, `${idKey}-traj`, { noHeader: true, silent: true });
+
+  if (info.submission) {
+    html += `<div class="section-title" style="margin-top:1rem">Submission</div><pre>${esc(info.submission)}</pre>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function renderRevelioPocArtifacts(s, idKey) {
+  const h = s.hypothesis || null;
+  const poc = s.poc || null;
+  const val = s.validation || null;
+  const rep = s.report || null;
+
+  let html = `<div style="margin:.6rem 0;padding:.6rem .8rem;background:#0a0a12;border:1px solid var(--border);border-radius:6px">`;
+
+  if (h) {
+    html += `<div style="font-size:.82rem;margin-bottom:.4rem"><strong style="color:var(--text-bright)">Hypothesis:</strong> ${esc(h.title || h.description || '')}</div>`;
+    const bits = [];
+    if (h.file_path) bits.push(`<code>${esc(h.file_path)}</code>`);
+    if (h.function) bits.push(`fn <code>${esc(h.function)}</code>`);
+    if (typeof h.confidence === 'number') bits.push(`conf ${(h.confidence * 100).toFixed(0)}%`);
+    if (h.expected_crash) bits.push(`<span class="badge badge-red">${esc(h.expected_crash)}</span>`);
+    if (bits.length) html += `<div style="font-size:.76rem;color:var(--text-dim)">${bits.join(' · ')}</div>`;
+  }
+
+  const sub = [];
+  if (poc) sub.push('PoC Recipe');
+  if (val) sub.push('Validation');
+  if (rep) sub.push('Report');
+  if (sub.length) {
+    const stId = `${idKey}-art`;
+    html += `<div class="tabs" style="margin-top:.6rem">`;
+    sub.forEach((t, i) => {
+      html += `<div class="tab ${i === 0 ? 'active' : ''}" onclick="switchTab(${i},'${stId}')">${esc(t)}</div>`;
+    });
+    html += `</div>`;
+
+    let si = 0;
+    if (poc) {
+      const data = poc.data || poc;
+      html += `<div class="tab-panel ${si === 0 ? 'active' : ''}" id="${stId}-tab-${si}">`;
+      const steps = data.generation_steps || data.steps;
+      if (Array.isArray(steps) && steps.length) {
+        html += `<ol style="padding-left:1.3rem;margin:.4rem 0;font-size:.82rem">`;
+        for (const x of steps) html += `<li style="margin:.3rem 0">${esc(typeof x === 'string' ? x : JSON.stringify(x))}</li>`;
+        html += `</ol>`;
+      }
+      if (data.expected_signal) html += `<div style="font-size:.8rem;margin-top:.3rem"><span style="color:var(--text-dim)">Expected signal:</span> <span class="badge badge-red">${esc(data.expected_signal)}</span></div>`;
+      if (data.reproduction_command) html += `<div style="font-size:.8rem;margin-top:.3rem"><span style="color:var(--text-dim)">Repro:</span> <code>${esc(data.reproduction_command)}</code></div>`;
+      html += `<details style="margin-top:.6rem"><summary style="cursor:pointer;color:var(--text-dim);font-size:.76rem">Full PoC recipe JSON</summary><pre style="margin-top:.3rem">${esc(JSON.stringify(data, null, 2))}</pre></details>`;
+      html += `</div>`;
+      si++;
+    }
+    if (val) {
+      const data = val.data || val;
+      html += `<div class="tab-panel ${si === 0 ? 'active' : ''}" id="${stId}-tab-${si}">`;
+      html += `<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.4rem">`;
+      html += `<span class="badge ${data.crash_detected ? 'badge-green' : 'badge-red'}">${data.crash_detected ? 'CRASH' : 'NO CRASH'}</span>`;
+      if (data.returncode != null) html += `<span class="badge badge-cyan">exit ${data.returncode}</span>`;
+      for (const ind of (data.indicators || [])) html += `<span class="badge badge-orange">${esc(ind)}</span>`;
+      html += `</div>`;
+      if (data.reproduction_command) html += `<div style="font-size:.8rem;margin-bottom:.3rem"><span style="color:var(--text-dim)">Repro:</span> <code>${esc(data.reproduction_command)}</code></div>`;
+      if (data.output_excerpt) html += `<div class="asan-output">${formatAsan(data.output_excerpt)}</div>`;
+      html += `</div>`;
+      si++;
+    }
+    if (rep) {
+      const data = rep.data || rep;
+      html += `<div class="tab-panel ${si === 0 ? 'active' : ''}" id="${stId}-tab-${si}">`;
+      if (typeof data === 'string') {
+        html += `<div class="md-render">${renderMarkdown(data)}</div>`;
+      } else if (data.markdown || data.report_md) {
+        html += `<div class="md-render">${renderMarkdown(data.markdown || data.report_md)}</div>`;
+      } else {
+        html += `<pre>${esc(JSON.stringify(data, null, 2))}</pre>`;
+      }
+      html += `</div>`;
+      si++;
+    }
+  }
+
+  html += `</div>`;
+  return html;
 }
 
 function renderHypotheses(d) {
@@ -985,16 +1194,22 @@ function copyText(btn) {
 }
 
 // ── Inline trajectory renderer (for trajectory-only runs) ──────
-function renderInlineTrajectory(messages) {
-  if (!messages.length) return '<div class="empty"><p>No messages in trajectory.</p></div>';
-  let html = `<div class="section-title">Trajectory <span class="count">${messages.length}</span></div>`;
+function renderInlineTrajectory(messages, idPrefix, opts) {
+  opts = opts || {};
+  if (!messages.length) return opts.silent ? '' : '<div class="empty"><p>No messages in trajectory.</p></div>';
+  const prefix = idPrefix || 'inline';
+  let html = '';
+  if (!opts.noHeader) {
+    const title = opts.title || 'Trajectory';
+    html += `<div class="section-title">${esc(title)} <span class="count">${messages.length}</span></div>`;
+  }
 
   let stepNum = 0;
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     const role = msg.role || 'unknown';
     const hasCmd = msg.command != null;
-    const msgId = `inline-msg-${i}`;
+    const msgId = `${prefix}-msg-${i}`;
 
     // Count assistant steps (text messages only, not tool calls)
     const isStep = role === 'assistant' && !hasCmd;
@@ -1007,7 +1222,7 @@ function renderInlineTrajectory(messages) {
       const rc = msg.command_returncode;
       const rcCls = rc === 0 ? 'rc-ok' : 'rc-fail';
       const cmdOut = msg.command_output || '';
-      const cmdOutId = `inline-cmdout-${i}`;
+      const cmdOutId = `${prefix}-cmdout-${i}`;
       const cmdOutLong = cmdOut.length > 800;
       html += `<div class="cmd-block">`;
       html += `<div class="cmd-header"><span>Command</span><span class="cmd-rc ${rcCls}">exit ${rc != null ? rc : '?'}</span></div>`;

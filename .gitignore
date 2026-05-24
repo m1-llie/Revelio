@@ -1,5 +1,7 @@
 examples/
 output/
+experiment_traj/
+experiment_analysis/
 *_traj.json
 
 cybergym_data
