@@ -34,3 +34,4 @@ vuln-10: curl Issue #21372, Responded.
 Confirmed and fixed. Commit ebed4aa, ws: fix a blocking curl_ws_send() to report written length correctly.
 Fix: https://github.com/curl/curl/commit/ebed4aaf0136392d8f040de16a29d89777323fb3.
 Issue: https://github.com/curl/curl/issues/21372
+Not stong related to memory safety.

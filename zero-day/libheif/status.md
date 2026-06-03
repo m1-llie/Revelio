@@ -2,20 +2,24 @@ security issues:
 
 01-track-oob-chunk-access: reported via GitHub Security and Quality portal on Apr 20, GHSA-wqjg-4x9g-6cvg.
 Type: CWE-125 OUt-of-bounds read.
-No response yet.
+https://github.com/strukturag/libheif/security/advisories/GHSA-wqjg-4x9g-6cvg
+CVE-2026-47254
 
 04-saiz-sampleauxinfo-oob: reported via GitHub Security and Quality portal on Apr 20, GHSA-9hxj-whrv-m7cc.
 Type: CWE-125 OUt-of-bounds read; CWE-617 Reachable Assertion.
-No response yet.
+Duplicate of GHSA-xj92-xjff-h8w3 reported earlier. I'll close this one and add you as an independent reporter on the other one:
+https://github.com/strukturag/libheif/security/advisories/GHSA-xj92-xjff-h8w3.
+CVE-2026-41071.
+
 
 05-tild-ntiles-overflow:reported via GitHub Security and Quality portal on Apr 20, GHSA-x6gq-f8qg-rm7w.
 Type: CWE-125 OUt-of-bounds read; CWE-190 Integer Overflow or Wraparound.
-No response yet.
+fixed in https://github.com/strukturag/libheif/commit/0b73cfdf739f4f697cbc166cb1ce871144772d2b.
 
 
 03-gimi-component-id-overflow:reported via GitHub Security and Quality portal on Apr 20, GHSA-jfgf-gc66-f3xw.
 Type: CWE-122 Heap-based Buffer Overflow; CWE-190 Integer Overflow or Wraparound.
-No response yet.
+fixed.
 
 
 07-track-api-oob-no-size: reported via GitHub Private Security Advisory portal on Apr 20, GHSA-ggxm-xvfh-454m.
@@ -32,4 +36,4 @@ Thanks again; the API comment was added in 4652161(https://github.com/strukturag
 
 08-track-release-double-free:reported via GitHub Security and Quality portal on Apr 20, GHSA-pfwf-3248-7j44.
 Type: CWE-415 Double Free; CWE-416 Use After Free.
-No response yet.
+rejected.

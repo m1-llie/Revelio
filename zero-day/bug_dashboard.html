@@ -105,9 +105,9 @@
   }
 
   /* Status badge colors */
-  .badge.st-no-response { background: rgba(24,144,255,.13);  color: #1890ff; border: 1px solid rgba(24,144,255,.4); }
-  .badge.st-confirmed   { background: rgba(82,196,26,.13);   color: #52c41a; border: 1px solid rgba(82,196,26,.4); }
-  .badge.st-cves        { background: rgba(19,194,194,.13);  color: #13c2c2; border: 1px solid rgba(19,194,194,.4); }
+  .badge.st-pending { background: rgba(24,144,255,.13);  color: #1890ff; border: 1px solid rgba(24,144,255,.4); }
+  .badge.st-fixed   { background: rgba(82,196,26,.13);   color: #52c41a; border: 1px solid rgba(82,196,26,.4); }
+  .badge.st-CVE     { background: rgba(19,194,194,.13);  color: #13c2c2; border: 1px solid rgba(19,194,194,.4); }
 
   .vuln-link { margin-left: auto; color: var(--accent); font-size: 11.5px; text-decoration: none; white-space: nowrap; }
   .vuln-link:hover { text-decoration: underline; }
@@ -115,9 +115,9 @@
   .hidden { display: none !important; }
   footer { padding: 20px 36px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
 
-  .stat-confirmed   { color: var(--low);    font-weight: 600; }
-  .stat-cves        { color: #13c2c2;      font-weight: 600; }
-  .stat-no-response { color: var(--accent); font-weight: 600; }
+  .stat-fixed   { color: var(--low);    font-weight: 600; }
+  .stat-CVE     { color: #13c2c2;      font-weight: 600; }
+  .stat-pending { color: var(--accent); font-weight: 600; }
 
   @media (max-width: 720px) {
     header, .controls, main, footer { padding-left: 16px; padding-right: 16px; }
@@ -142,9 +142,9 @@
     <span class="label" style="margin-left:10px">Status:</span>
     <select class="status-select" id="statusFilter">
       <option value="all">All Statuses</option>
-      <option value="no-response">No Response</option>
-      <option value="confirmed">Confirmed</option>
-      <option value="cves">CVE</option>
+      <option value="pending">Pending</option>
+      <option value="fixed">Fixed</option>
+      <option value="CVE">CVE</option>
     </select>
     <input class="search" id="search" placeholder="Search title, CWE, type…" />
     <span class="counter" id="counter"></span>
@@ -162,9 +162,9 @@
 
 <script>
 const STATUS_LABELS = {
-  "no-response": "No Response",
-  "confirmed":   "Confirmed",
-  "cves":        "CVE"
+  "pending": "Pending",
+  "fixed":   "Fixed",
+  "CVE":     "CVE"
 };
 
 const data = [
@@ -175,10 +175,10 @@ const data = [
     vulns: [
       { id: "04-assimp-collada-empty-attrs-abrt",
         title: "Empty id/url COLLADA attributes → assertion abort (SIGABRT)",
-        sev: "medium", type: "Reachable Assertion", cwe: ["CWE-617","CWE-20"], apiOnly: false,
+        sev: "medium", type: "Reachable Assertion", cwe: ["CWE-191"], apiOnly: false,
         loc: "code/AssetLib/Collada/ColladaLoader.cpp (attribute parsing)",
         desc: "Empty id=\"\" and url=\"\" trigger url[0] access and id.size()-1 unsigned underflow, causing SIGABRT (assertion failure) in both debug and release builds.",
-        channel: "GitHub Advisory", status: "no-response",
+        channel: "GitHub Advisory", status: "pending",
         url: "https://github.com/assimp/assimp/security/advisories/GHSA-2jwp-w933-3qjh" }
     ]
   },
@@ -193,51 +193,36 @@ const data = [
         sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
         loc: "cairo/src/cairo-fixed-private.h:233",
         desc: "Negating f == INT_MIN is undefined behavior. Triggered when a PDF ImageMask is scaled so that a fixed-point coordinate hits CAIRO_FIXED_MIN. UBSan confirmed. CVSS 5.5.",
-        channel: "GitLab Issue", status: "no-response",
+        channel: "GitLab Issue", status: "pending",
         url: "https://gitlab.freedesktop.org/cairo/cairo/-/work_items/942" },
       { id: "07-cairo-slope-path-overflow",
         title: "Coordinate subtraction overflow in _cairo_slope_init()",
         sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
         loc: "cairo/src/cairo-slope-private.h:49",
         desc: "b->x - a->x overflows int32 when path endpoints span the full fixed-point range (near INT_MAX to near INT_MIN). Triggered via cairo stroke paths. UBSan confirmed. CVSS 5.5.",
-        channel: "GitLab Issue", status: "no-response",
+        channel: "GitLab Issue", status: "pending",
         url: "https://gitlab.freedesktop.org/cairo/cairo/-/work_items/943" },
       { id: "08-cairo-pathbounds-overflow",
         title: "Stroke-extent addition overflow in _cairo_path_fixed_approximate_stroke_extents()",
         sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
         loc: "cairo/src/cairo-path-bounds.c:180",
         desc: "box_extents.p2.x += fixed_from_double(dx) overflows int32 when Bezier control points place the bbox near INT_MAX and any stroke width is applied. UBSan confirmed. CVSS 5.5.",
-        channel: "GitLab Issue", status: "no-response",
+        channel: "GitLab Issue", status: "pending",
         url: "https://gitlab.freedesktop.org/cairo/cairo/-/work_items/944" },
       { id: "09-cairo-truetype-heapboflow",
         title: "Heap OOB read in find_name() — TrueType name table (CWE-122)",
-        sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-122"], apiOnly: false,
+        sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-122"], apiOnly: false,
         loc: "cairo/src/cairo-truetype-subset.c:1462",
         desc: "find_name() reads 2 bytes at data+record->offset without bounding against the name-table buffer. Reachable via an embedded TrueType font in a PDF. ASan heap-buffer-overflow confirmed. CVSS 7.8.",
-        channel: "GitLab Issue", status: "no-response",
+        channel: "GitLab Issue", status: "pending",
         url: "https://gitlab.freedesktop.org/cairo/cairo/-/work_items/945" },
       { id: "10-cairo-type1-intovf",
         title: "Type1 font metric multiplication overflow",
         sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
         loc: "cairo/src/cairo-type1-subset.c:667",
         desc: "55882 × 52845 overflows int32 (~2.95 × 10⁹ > INT_MAX). Triggered by LaTeX-style Type1 fonts (CMBX12, CMR10) via PDF annotation rendering. UBSan confirmed. CVSS 5.5.",
-        channel: "GitLab Issue", status: "no-response",
+        channel: "GitLab Issue", status: "pending",
         url: "https://gitlab.freedesktop.org/cairo/cairo/-/work_items/946" }
-    ]
-  },
-
-  // ── CURL ───────────────────────────────────────────────────────────────────
-  {
-    project: "curl", slug: "curl",
-    summary: "1 confirmed bug: WebSocket write-length fix",
-    vulns: [
-      { id: "vuln-10-ws-send-missing-nwritten",
-        title: "*pnwritten never set in ws_send_raw_blocking() success path",
-        sev: "low", type: "Missing Return Value Write", cwe: ["CWE-252"], apiOnly: false,
-        loc: "lib/ws.c",
-        desc: "*pnwritten remains 0 on the blocking success path; callers observe sent=0 despite successful send. Developer confirmed and fixed in commit ebed4aa.",
-        channel: "GitHub Issue", status: "confirmed",
-        url: "https://github.com/curl/curl/issues/21372" }
     ]
   },
 
@@ -248,33 +233,11 @@ const data = [
     vulns: [
       { id: "01-log_query-ds-heap-overflow",
         title: "Heap buffer overflow in log_query() via DS record with unassigned algorithms",
-        sev: "high", type: "Heap Buffer Overflow", cwe: ["CWE-122","CWE-787","CWE-120"], apiOnly: false,
+        sev: "high", type: "Heap Buffer Overflow", cwe: ["CWE-122"], apiOnly: false,
         loc: "src/cache.c:2358 (log_query)",
         desc: "sprintf() writes 58 bytes into the 46-byte daemon->addrbuff when a DS record carries algorithm=255 + digest_type=255, triggering the \"(not supported)\" branch. Network-reachable with DNSSEC + query logging enabled. CVSS ~7.5. Maintainer confirmed; CVE requested.",
-        channel: "Email", status: "cves",
+        channel: "Email", status: "CVE",
         url: null }
-    ]
-  },
-
-  // ── GPAC ───────────────────────────────────────────────────────────────────
-  {
-    project: "gpac", slug: "gpac",
-    summary: "2 confirmed bugs in IPMP and ELST MP4 box parsers",
-    vulns: [
-      { id: "01-gpac-ipmp-heap-overflow",
-        title: "Heap buffer overflow in IPMP descriptor parsing",
-        sev: "high", type: "Heap Buffer Overflow", cwe: ["CWE-122"], apiOnly: false,
-        loc: "gpac IPMP OD parser (GPAC_MINIMAL_ODF path)",
-        desc: "Heap-based OOB write in IPMP descriptor parsing. Developer confirmed bug and fixed it (dead code path under GPAC_MINIMAL_ODF); not classified as a security issue. Fix: commit c84397070cd0.",
-        channel: "GitHub Issue", status: "confirmed",
-        url: "https://github.com/gpac/gpac/issues/3514" },
-      { id: "02-gpac-elst-infinite-loop",
-        title: "Infinite loop via malformed elst MP4 box",
-        sev: "medium", type: "Infinite Loop", cwe: ["CWE-835","CWE-400"], apiOnly: false,
-        loc: "gpac MP4 box parser (elst handler)",
-        desc: "A malformed edit-list (elst) box causes an infinite loop — 100% CPU until the process is killed. Developer confirmed and fixed (commit cf6ac48c972e).",
-        channel: "GitHub Issue", status: "confirmed",
-        url: "https://github.com/gpac/gpac/issues/3515" }
     ]
   },
 
@@ -285,39 +248,39 @@ const data = [
     vulns: [
       { id: "01-track-oob-chunk-access",
         title: "OOB chunk vector access in Track::get_next_sample_raw_data()",
-        sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-193"], apiOnly: false,
+        sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-122"], apiOnly: false,
         loc: "sequences/track.cc:1087",
         desc: "stco chunk count < stsz sample count → off-by-one (> vs >=) stores chunkIdx = m_chunks.size(); subsequent read is OOB. Triggered by malicious HEIF file. CVSS 6.5.",
-        channel: "GitHub Advisory", status: "no-response",
+        channel: "GitHub Advisory", status: "CVE",
         url: "https://github.com/strukturag/libheif/security/advisories/GHSA-wqjg-4x9g-6cvg" },
       { id: "03-gimi-component-id-overflow",
         title: "uint32 overflow → heap OOB write in heif_image_set_gimi_component_content_id()",
-        sev: "medium", type: "Integer Overflow → Heap OOB Write", cwe: ["CWE-190","CWE-122"], apiOnly: false,
+        sev: "medium", type: "Integer Overflow → Heap OOB Write", cwe: ["CWE-787"], apiOnly: false,
         loc: "api/libheif/heif_uncompressed.cc:784",
         desc: "component_idx+1 wraps to 0 when component_idx = UINT32_MAX; ids.resize(0) followed by ids[UINT32_MAX] writes ~136 GiB past base. CVSS 6.1.",
-        channel: "GitHub Advisory", status: "no-response",
+        channel: "GitHub Advisory", status: "fixed",
         url: "https://github.com/strukturag/libheif/security/advisories/GHSA-jfgf-gc66-f3xw" },
       { id: "04-saiz-sampleauxinfo-oob",
         title: "SampleAuxInfoReader OOB via saiz/stco size mismatch",
-        sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-617"], apiOnly: false,
+        sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false,
         loc: "sequences/track.cc:141",
         desc: "assert() is debug-only; release builds advance current_chunk past chunks.size() and OOB-read. Triggered by malicious HEIF. CVSS 6.5.",
-        channel: "GitHub Advisory", status: "no-response",
+        channel: "GitHub Advisory", status: "CVE",
         url: "https://github.com/strukturag/libheif/security/advisories/GHSA-9hxj-whrv-m7cc" },
       { id: "05-tild-ntiles-overflow",
         title: "Integer overflow in nTiles_h/v() → SIGSEGV (tild box)",
-        sev: "high", type: "Integer Overflow → SEGV", cwe: ["CWE-190","CWE-125"], apiOnly: false,
+        sev: "high", type: "Integer Overflow → SEGV", cwe: ["CWE-122"], apiOnly: false,
         loc: "image-items/tiled.cc:87-96",
         desc: "(image_width + tile_width - 1) wraps to 0 → nTiles=0 → m_offsets.resize(0) → m_offsets[0] SEGV. File-parsing DoS requiring no user interaction beyond opening file. CVSS 6.5.",
-        channel: "GitHub Advisory", status: "no-response",
+        channel: "GitHub Advisory", status: "fixed",
         url: "https://github.com/strukturag/libheif/security/advisories/GHSA-x6gq-f8qg-rm7w" },
-      { id: "08-track-release-double-free",
-        title: "Double-free / UAF in heif_track_release()",
-        sev: "medium", type: "Double Free / Use-After-Free", cwe: ["CWE-415","CWE-416"], apiOnly: false,
-        loc: "api/libheif/heif_sequences.cc:57",
-        desc: "Bare delete track with no null guard; second release destructs already-freed object and corrupts shared_ptr<HeifContext>. CVSS 6.1.",
-        channel: "GitHub Advisory", status: "no-response",
-        url: "https://github.com/strukturag/libheif/security/advisories/GHSA-pfwf-3248-7j44" }
+      { id: "07-track-api-oob-no-size",
+        title: "Track array write with no buffer capacity check",
+        sev: "medium", type: "Heap Buffer Overflow", cwe: ["CWE-122"], apiOnly: false,
+        loc: "api/libheif/heif_sequences.cc:73,760",
+        desc: "heif_context_get_track_ids() and heif_track_get_track_reference_types() write unbounded arrays into caller buffers with no capacity parameter; crafted HEIF with more tracks/reference-types than the caller-allocated slots causes OOB write. ASAN heap-buffer-overflow (WRITE) confirmed. CVSS 6.1.",
+        channel: "GitHub Advisory", status: "fixed",
+        url: "https://github.com/strukturag/libheif/security/advisories/GHSA-ggxm-xvfh-454m" }
     ]
   },
 
@@ -328,17 +291,17 @@ const data = [
     vulns: [
       { id: "01-idmanifest-ubsan-shift-overflow",
         title: "Shift exponent overflow in readVariableLengthInteger()",
-        sev: "high", type: "Undefined Behavior (Shift Overflow)", cwe: ["CWE-190","CWE-1335"], apiOnly: false,
+        sev: "high", type: "Undefined Behavior (Shift Overflow)", cwe: ["CWE-190"], apiOnly: false,
         loc: "src/lib/OpenEXR/ImfIDManifest.cpp:122",
         desc: "No upper bound on shift counter; after 10 continuation bytes (uint64_t) << 70 is UB per C++14 §5.8/2. Triggered by crafted EXR. Confirmed and fixed; CVE requested. CVSS ~6.5–7.5.",
-        channel: "GitHub Advisory", status: "cves",
+        channel: "GitHub Advisory", status: "CVE",
         url: "https://github.com/AcademySoftwareFoundation/openexr/security/advisories/GHSA-3c67-4wwp-w52m" },
       { id: "02-idmanifest-oob-string-prefix",
         title: "Missing size check before 2-byte string prefix read",
-        sev: "high", type: "Out-of-Bounds Read", cwe: ["CWE-125","CWE-119"], apiOnly: false,
+        sev: "high", type: "Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false,
         loc: "src/lib/OpenEXR/ImfIDManifest.cpp:342-343",
         desc: "IDManifest::init() reads stringList[i][0] and [1] without verifying size ≥ 2. A 0-byte string makes both reads OOB (ASan + _GLIBCXX_DEBUG confirmed). Confirmed and fixed; CVE requested.",
-        channel: "GitHub Advisory", status: "cves",
+        channel: "GitHub Advisory", status: "CVE",
         url: "https://github.com/AcademySoftwareFoundation/openexr/security/advisories/GHSA-65j8-95g9-jgj4" }
     ]
   },
@@ -353,14 +316,14 @@ const data = [
         sev: "medium", type: "Integer Overflow", cwe: ["CWE-190"], apiOnly: false,
         loc: "poppler/Stream.cc:596",
         desc: "nVals = width × nComps computed BEFORE the INT_MAX/nComps guard — overflow corrupts nVals. Affects CMYK (nComps=4, /Width ≥ 536,870,912) and RGB (nComps=3, /Width ≥ 715,827,883). Downstream heap allocation uses corrupted value. One-line fix resolves both. Developer confirmed; merge request requested. UBSan. CVSS 5.5.",
-        channel: "GitLab Issue", status: "cves",
+        channel: "GitLab Issue", status: "CVE",
         url: "https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1702" },
       { id: "03-04-stream-tiff-shift-ub",
         title: "Shift exponent UB in TIFF predictor bit accumulation and final flush",
-        sev: "medium", type: "Shift Overflow (UB)", cwe: ["CWE-682"], apiOnly: false,
+        sev: "medium", type: "Shift Overflow (UB)", cwe: ["CWE-190"], apiOnly: false,
         loc: "poppler/Stream.cc:900,906",
         desc: "if (outBits >= 8) should be while — with /BitsPerComponent ≥ 9, outBits grows past 64 (UB exponent observed at 64, 66). Same root cause makes the final-flush compute (8 - outBits) with outBits > 8, producing a negative shift (observed −22). One-line fix resolves both. Developer confirmed; merge request requested. UBSan. CVSS 5.5.",
-        channel: "GitLab Issue", status: "cves",
+        channel: "GitLab Issue", status: "CVE",
         url: "https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1704" }
     ]
   },
@@ -372,24 +335,24 @@ const data = [
     vulns: [
       { id: "10-ffs-cgiusedoff-oob",
         title: "FFS cg_iusedoff signed comparison bypass → heap OOB read",
-        sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-122","CWE-125","CWE-681"], apiOnly: false,
+        sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-122"], apiOnly: false,
         loc: "fs/ffs.c (cylinder group parser)",
         desc: "Signed vs unsigned comparison allows attacker-controlled cg_iusedoff to bypass bounds check.",
-        channel: "GitHub Advisory", status: "no-response",
+        channel: "GitHub Advisory", status: "pending",
         url: "https://github.com/sleuthkit/sleuthkit/security/advisories/GHSA-37pc-73q7-q3xp" },
       { id: "11-ffs-itoo-oob",
         title: "FFS itoo_lcl OOB via anomalous fs_inopb — 128-byte OOB read",
-        sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-122","CWE-119","CWE-20"], apiOnly: false,
+        sev: "high", type: "Heap Out-of-Bounds Read", cwe: ["CWE-122"], apiOnly: false,
         loc: "fs/ffs.c (inode table)",
         desc: "Unchecked fs_inopb value produces an out-of-bounds inode table index, reading 128 bytes past the allocation.",
-        channel: "GitHub Advisory", status: "no-response",
+        channel: "GitHub Advisory", status: "pending",
         url: "https://github.com/sleuthkit/sleuthkit/security/advisories/GHSA-c38p-mv63-gw85" },
       { id: "13-ntfs-idxrec-oob",
         title: "ntfs_fix_idxrec upd_seq array OOB — 1-byte read + potential OOB write",
-        sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125","CWE-787"], apiOnly: false,
+        sev: "medium", type: "Heap Out-of-Bounds Read", cwe: ["CWE-125"], apiOnly: false,
         loc: "fs/ntfs.c (ntfs_fix_idxrec)",
         desc: "upd_seq array read past end by 1 byte; write path (cur_seq == orig_seq) has OOB-write variant deriving pointers from OOB address.",
-        channel: "GitHub Advisory", status: "no-response",
+        channel: "GitHub Advisory", status: "pending",
         url: "https://github.com/sleuthkit/sleuthkit/security/advisories/GHSA-9qww-mgj6-72rf" }
     ]
   }
@@ -471,7 +434,7 @@ let searchFilter = "";
 
 function applyFilters() {
   let shown = 0, total = 0;
-  let confirmedShown = 0, cvesShown = 0, noResponseShown = 0;
+  let fixedShown = 0, cveShown = 0, pendingShown = 0;
   document.querySelectorAll(".vuln").forEach(el => {
     total++;
     const sevOk    = sevFilter    === "all" || sevFilter    === el.dataset.sev;
@@ -481,9 +444,9 @@ function applyFilters() {
     el.classList.toggle("hidden", !show);
     if (show) {
       shown++;
-      if      (el.dataset.status === "confirmed")   confirmedShown++;
-      else if (el.dataset.status === "cves")        cvesShown++;
-      else if (el.dataset.status === "no-response") noResponseShown++;
+      if      (el.dataset.status === "fixed")   fixedShown++;
+      else if (el.dataset.status === "CVE")     cveShown++;
+      else if (el.dataset.status === "pending") pendingShown++;
     }
   });
   document.querySelectorAll(".project").forEach(sec => {
@@ -491,9 +454,9 @@ function applyFilters() {
     sec.classList.toggle("hidden", visible === 0);
   });
   document.getElementById("counter").innerHTML =
-    `<span class="stat-confirmed">${confirmedShown} confirmed</span> &middot; ` +
-    `<span class="stat-cves">${cvesShown} CVEs</span> &middot; ` +
-    `<span class="stat-no-response">${noResponseShown} no response</span> &middot; ${shown}/${total}`;
+    `<span class="stat-fixed">${fixedShown} fixed</span> &middot; ` +
+    `<span class="stat-CVE">${cveShown} CVE</span> &middot; ` +
+    `<span class="stat-pending">${pendingShown} pending</span> &middot; ${shown}/${total}`;
 }
 
 function wire() {

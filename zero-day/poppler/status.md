@@ -6,13 +6,12 @@ Example link: https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1701.
 
 1701: CWE-190 Integer Overflow or Wraparound.
 link: https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1701
-No response yet.
 Same root cause as 1702.
 
 1702: CWE-190 Integer Overflow or Wraparound.
 link: https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1702
 Same root cause as 1701.
-Confirmed. Asks for a direct Merge Request.
+confirmed and fixed.
 
 1703: CWE-682 (Incorrect Calculation)
 Same root cause as 1704.
