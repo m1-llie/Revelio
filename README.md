@@ -1,4 +1,7 @@
-# vul-agent
+# Revelio
+
+<img width="354" height="349" alt="D39BDFFF-F4F6-45B1-B69A-AE60A9F6C919_1_201_a" src="https://github.com/user-attachments/assets/80249d46-3f0a-4e17-94a6-8bab5f2b426b" />
+
 
 A trustworthy and precise vulnerability detection AI agent that discovers memory safety related software vulnerabilities and validates them through automated PoC testing.
 
