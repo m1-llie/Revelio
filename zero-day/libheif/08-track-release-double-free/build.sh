@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # build.sh — Build libheif from source with ASAN, compile the POC, run it.
 #
-# Runs entirely inside Docker (docker run --rm vulagent/libheif:latest bash build.sh)
+# Runs entirely inside Docker (docker run --rm revelio/libheif:latest bash build.sh)
 # or can be sourced manually inside the container.
 #
 # Usage (from host, POC files mounted at /poc):
 #   docker run --rm \
-#     -v /scr2/yiwei/vul-agent/zero-day/libheif_validated/08-track-release-double-free:/poc \
-#     vulagent/libheif:latest bash /poc/build.sh
+#     -v /scr2/yiwei/revelio/zero-day/libheif_validated/08-track-release-double-free:/poc \
+#     revelio/libheif:latest bash /poc/build.sh
 
 set -euo pipefail
 

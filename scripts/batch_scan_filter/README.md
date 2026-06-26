@@ -1,10 +1,10 @@
 # `scripts/batch_scan_filter/`
 
-Batch runner for the `scan_filter` vul-agent pipeline across many
+Batch runner for the `scan_filter` revelio pipeline across many
 `(project, file)` pairs. Each row in `jobs.tsv` selects a Docker image,
 a model, an API-key env var, and a list of target files; the driver
 script `scripts/batch_scan_filter.sh` invokes
-`python -m vulagent.run.detect --pipeline scan_filter --target-file <f>`
+`python -m revelio.run.detect --pipeline scan_filter --target-file <f>`
 once per pair, with retries, per-key failure tracking, and a resume
 mode so long batches survive transient failures and key quota caps.
 
@@ -48,7 +48,7 @@ scripts/
    find image locally"); the runner will not pull them automatically.
 
    ```bash
-   docker images --format '{{.Repository}}:{{.Tag}}' | grep ^vulagent/
+   docker images --format '{{.Repository}}:{{.Tag}}' | grep ^revelio/
    ```
 
 ## jobs.tsv schema
@@ -59,7 +59,7 @@ by position.
 | col | field          | meaning                                                         |
 |----:|----------------|-----------------------------------------------------------------|
 | 1   | `name`         | short tag used in log filenames (e.g. `openssl`)                |
-| 2   | `image`        | Docker image, e.g. `vulagent/openssl:latest`                    |
+| 2   | `image`        | Docker image, e.g. `revelio/openssl:latest`                    |
 | 3   | `model`        | LiteLLM model slug passed to `--model`                          |
 | 4   | `api_key_env`  | NAME of an env var holding the key (not the key itself)         |
 | 5   | `files_file`   | text file with one target path per line (`#` comments OK)       |
@@ -224,7 +224,7 @@ points to the runner's log which itself records the run directory.
 
 **All poppler rows fail in 3–4 s with `FAIL:rc_1`.**
 The Docker image is missing locally. Check with
-`docker images | grep vulagent/<project>`. Build or pull, then rerun
+`docker images | grep revelio/<project>`. Build or pull, then rerun
 with `RESUME=1` + the same `BATCH_DIR`.
 
 **A key hits a workspace spend cap mid-batch.**

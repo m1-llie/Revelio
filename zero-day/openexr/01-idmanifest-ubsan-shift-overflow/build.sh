@@ -3,12 +3,12 @@
 # Validated against OpenEXR main commit c13e0e1 (2026-04-16)
 #
 # Usage: bash build.sh
-# Requirements: Docker image vulagent/openexr:main-20260417
+# Requirements: Docker image revelio/openexr:main-20260417
 #   (built from zero-day/openexr/docker/Dockerfile — clang 22 + latest OpenEXR source)
 set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-IMAGE=vulagent/openexr:main-20260417
+IMAGE=revelio/openexr:main-20260417
 
 echo "[*] Building harness against latest OpenEXR source (UBSan)..."
 docker run --rm \

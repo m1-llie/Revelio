@@ -65,14 +65,14 @@ The `scan_filter` pipeline uses three separate model tiers:
 
 ```bash
 git clone <repo-url>
-cd vul-agent
+cd revelio
 ```
 
 **conda env**
 
 ```bash
-conda create -n vul-agent python=3.12 -y
-conda activate vul-agent
+conda create -n revelio python=3.12 -y
+conda activate revelio
 pip install -e .
 ```
 
@@ -100,7 +100,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 Alternatively, run the interactive setup:
 
 ```bash
-vul-agent config setup
+revelio config setup
 ```
 
 ### Hello World
@@ -108,12 +108,12 @@ vul-agent config setup
 Test the installation with a simple task (no Docker required):
 
 ```bash
-vul-agent -t "List all files in the current directory and describe what they do"
+revelio -t "List all files in the current directory and describe what they do"
 ```
 
 ## Building OSS-Fuzz Docker Images
 
-`scripts/prepare_ossfuzz_project.sh` builds any [OSS-Fuzz](https://github.com/google/oss-fuzz) project into a vulagent-ready Docker image with the same interface as [ARVO](https://github.com/n132/ARVO) images.
+`scripts/prepare_ossfuzz_project.sh` builds any [OSS-Fuzz](https://github.com/google/oss-fuzz) project into a revelio-ready Docker image with the same interface as [ARVO](https://github.com/n132/ARVO) images.
 
 ```bash
 scripts/prepare_ossfuzz_project.sh openssl                           # single project
@@ -124,7 +124,7 @@ scripts/prepare_ossfuzz_project.sh --oss-fuzz-dir /data/oss-fuzz openssl
 
 The script clones/updates oss-fuzz, builds fuzzers with each sanitizer via `infra/helper.py build_fuzzers`, packages them into a single Docker image, and cleans it for zero-day detection. Sanitizers that fail to build are skipped automatically.
 
-The resulting `vulagent/<project>:latest` image contains:
+The resulting `revelio/<project>:latest` image contains:
 
 ```
 /src/<project>/              source code (from the gcr.io/oss-fuzz/<project> base image)
@@ -157,9 +157,9 @@ The orchestrator uses `arvo targets <function>` to match hypotheses to reachable
 ### Verifying the image
 
 ```bash
-docker run --rm vulagent/openssl:latest arvo list --all
-docker run --rm -v /path/to/poc:/tmp/poc:ro vulagent/openssl:latest arvo run openssl_fuzzer
-docker run --rm -v /path/to/poc:/tmp/poc:ro -e SANITIZER=ubsan vulagent/openssl:latest arvo run openssl_fuzzer
+docker run --rm revelio/openssl:latest arvo list --all
+docker run --rm -v /path/to/poc:/tmp/poc:ro revelio/openssl:latest arvo run openssl_fuzzer
+docker run --rm -v /path/to/poc:/tmp/poc:ro -e SANITIZER=ubsan revelio/openssl:latest arvo run openssl_fuzzer
 ```
 
 ## Vul-agent for Vulnerability Detection
@@ -170,26 +170,26 @@ docker run --rm -v /path/to/poc:/tmp/poc:ro -e SANITIZER=ubsan vulagent/openssl:
 
 ```bash
 # Full pipeline (default): hypotheses → PoC validation → report
-python -m vulagent.run.detect \
+python -m revelio.run.detect \
     --arvo n132/arvo:42470801-vul-clean \
     --model anthropic/claude-opus-4-6
 
 # Parallel hypothesis generation only (no PoC/validation/report)
-python -m vulagent.run.detect \
+python -m revelio.run.detect \
     --arvo n132/arvo:42470801-vul-clean \
     --model anthropic/claude-opus-4-6 \
     --pipeline project \
     --max-workers 8
 
 # Single file hypothesis only
-python -m vulagent.run.detect \
+python -m revelio.run.detect \
     --arvo n132/arvo:42470801-vul-clean \
     --model anthropic/claude-opus-4-6 \
     --pipeline file \
     --target-file coders/svg.c
 ```
 
-> **Note:** `arvo:xxx-vul-clean` images are produced using `python -m vulagent.run.clean_arvo`
+> **Note:** `arvo:xxx-vul-clean` images are produced using `python -m revelio.run.clean_arvo`
 > to remove pre-existing PoCs, crashers, and seed corpus from ARVO-vul images.
 
 ### OSS-Fuzz Targets
@@ -198,13 +198,13 @@ For OSS-Fuzz Docker images built with the steps above:
 
 ```bash
 # Full pipeline: scan → hypotheses → PoC → validate → report
-python -m vulagent.run.detect \
-    --arvo vulagent/assimp:latest \
+python -m revelio.run.detect \
+    --arvo revelio/assimp:latest \
     --model anthropic/claude-opus-4-6
 
 # Scan a specific file
-python -m vulagent.run.detect \
-    --arvo vulagent/assimp:latest \
+python -m revelio.run.detect \
+    --arvo revelio/assimp:latest \
     --model anthropic/claude-opus-4-6 \
     --pipeline file \
     --target-file code/AssetLib/FBX/FBXBinaryTokenizer.cpp
@@ -215,14 +215,14 @@ python -m vulagent.run.detect \
 Example: Single file hypothesis on a custom project
 
 ```bash
-python -m vulagent.run.detect \
+python -m revelio.run.detect \
     --project ./my-project \
     --model anthropic/claude-opus-4-6 \
     --pipeline file \
     --target-file src/parser.c
 ```
 
-Use `--docker-image` to specify a custom Docker base image (default: `vulagent/memcheck:latest`).
+Use `--docker-image` to specify a custom Docker base image (default: `revelio/memcheck:latest`).
 
 ### Scan-and-Filter Pipeline
 
@@ -232,8 +232,8 @@ The `scan_filter` pipeline uses a more thorough multi-pass analysis: tree-sitter
 
 ```bash
 # Scan + classify + dedup + filter, stop after hypotheses
-python -m vulagent.run.detect \
-    --arvo vulagent/assimp:latest \
+python -m revelio.run.detect \
+    --arvo revelio/assimp:latest \
     --pipeline scan_filter \
     --model claude-haiku-4-5-20251001 \
     --filter-model anthropic/claude-sonnet-4-6 \
@@ -241,8 +241,8 @@ python -m vulagent.run.detect \
     --max-workers 8
 
 # Full pipeline: scan_filter → PoC generation → validation → report
-python -m vulagent.run.detect \
-    --arvo vulagent/assimp:latest \
+python -m revelio.run.detect \
+    --arvo revelio/assimp:latest \
     --pipeline scan_filter_detect \
     --model claude-haiku-4-5-20251001 \
     --filter-model anthropic/claude-sonnet-4-6 \
@@ -254,7 +254,7 @@ python -m vulagent.run.detect \
 
 ```bash
 # Analyze a local source file
-python -m vulagent.run.scan_and_filter \
+python -m revelio.run.scan_and_filter \
     -f /path/to/repo/src/parser.c \
     --repo /path/to/repo \
     -m claude-haiku-4-5-20251001 \
@@ -263,7 +263,7 @@ python -m vulagent.run.scan_and_filter \
     --workers 8
 
 # With a LiteLLM proxy
-python -m vulagent.run.scan_and_filter \
+python -m revelio.run.scan_and_filter \
     -f /path/to/repo/src/parser.c \
     --repo /path/to/repo \
     -m litellm_proxy/claude-haiku-4-5-20251001 \
@@ -278,8 +278,8 @@ python -m vulagent.run.scan_and_filter \
 The `scan_filter` pipeline saves hypotheses to `output/<run_id>/hypotheses.json`. You can skip the scan stage and go straight to PoC generation:
 
 ```bash
-python -m vulagent.run.detect \
-    --arvo vulagent/assimp:latest \
+python -m revelio.run.detect \
+    --arvo revelio/assimp:latest \
     --hypotheses-file output/<run_id>/hypotheses.json \
     --model anthropic/claude-opus-4-6
 ```
@@ -309,10 +309,10 @@ python -m vulagent.run.detect \
 
 ```bash
 # Summarize direct API cost plus cache/uncached token-cost estimates
-SILENT_STARTUP=1 python -m vulagent.run.cost_report output/<run_id>
+SILENT_STARTUP=1 python -m revelio.run.cost_report output/<run_id>
 
 # Also write output/<run_id>/cost_report.json and cost_report.md
-SILENT_STARTUP=1 python -m vulagent.run.cost_report output/<run_id> --write
+SILENT_STARTUP=1 python -m revelio.run.cost_report output/<run_id> --write
 ```
 
 The report reads saved `trajectory.json` and `traces/*.json`. For agent
@@ -327,14 +327,14 @@ tokens retroactively.
 Validate PoCs against ARVO `-fix` images (patched versions):
 
 ```bash
-python -m vulagent.run.validate_if_target_multiAgent \
+python -m revelio.run.validate_if_target_multiAgent \
     --run-dir output/<run_id> \
     --poc output/<run_id>/artifacts/deliverables/poc_H01
 ```
 
 CLI shortcuts:
-- `vul-agent-validate-single` — single-agent run validator
-- `vul-agent-validate-multi` — multi-agent run validator
+- `revelio-validate-single` — single-agent run validator
+- `revelio-validate-multi` — multi-agent run validator
 
 ## Environment Variables
 
@@ -359,7 +359,7 @@ CLI shortcuts:
 
 ### Model Behavior
 
-Temperature and other model parameters are configured **per-agent in YAML configs** (`src/vulagent/config/agents/`), not via environment variables:
+Temperature and other model parameters are configured **per-agent in YAML configs** (`src/revelio/config/agents/`), not via environment variables:
 
 | Agent | Temperature | Purpose |
 |-------|-------------|---------|
@@ -418,7 +418,7 @@ output/<run_id>/
 ## Project Structure
 
 ```
-vulagent/
+revelio/
 ├── agents/          # Agent implementations (DefaultAgent)
 ├── archived/        # Archived files from prior iterations during developing
 ├── artifacts/       # Artifact store (typed, append-only, thread-safe)
@@ -438,10 +438,10 @@ vulagent/
 
 ```bash
 # TUI trajectory inspector (vim-style keybindings)
-python -m vulagent.run.inspector output/<run_id>/trajectory.json
+python -m revelio.run.inspector output/<run_id>/trajectory.json
 
 # Or browse an entire output directory
-python -m vulagent.run.inspector output/
+python -m revelio.run.inspector output/
 ```
 
 ### Web Trace Viewer

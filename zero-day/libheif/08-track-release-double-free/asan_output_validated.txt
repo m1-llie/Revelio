@@ -58,7 +58,7 @@ Shadow byte legend (one shadow byte represents 8 application bytes):
 === End of POC output ===
 
 --- Environment ---
-Docker image:  vulagent/libheif:latest
+Docker image:  revelio/libheif:latest
 libheif:       1.21.2 (HEAD of git tree in /src/libheif)
 Compiler:      clang 22.0.0git
 ASAN flags:    -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1

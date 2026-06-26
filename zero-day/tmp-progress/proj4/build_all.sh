@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Build and run ALL 11 PROJ vulnerability PoCs against the latest PROJ build.
 # Run inside or via: docker run --rm \
-#   -v /scr2/yiwei/vul-agent/zero-day/1_reported/4-proj-260417:/bugs \
+#   -v /scr2/yiwei/revelio/zero-day/1_reported/4-proj-260417:/bugs \
 #   -v /tmp/PROJ-latest:/src/PROJ-latest:ro \
 #   -v /tmp/proj4-latest-build:/proj4-latest-build:ro \
-#   vulagent/proj4-asan:latest bash /bugs/build_all.sh
+#   revelio/proj4-asan:latest bash /bugs/build_all.sh
 set -e
 
 BUGS="${BUGS:-/bugs}"

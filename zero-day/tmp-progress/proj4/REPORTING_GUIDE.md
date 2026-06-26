@@ -147,7 +147,7 @@ Bundle #05 and #07 in one issue to avoid noise.  Each has its own **Summary**,
 ## Reproduction Environment
 
 ```
-Docker image:  vulagent/proj4-asan:latest (Ubuntu 20.04, clang 10)
+Docker image:  revelio/proj4-asan:latest (Ubuntu 20.04, clang 10)
 PROJ source:   https://github.com/OSGeo/PROJ (commit 324ed211..., 2026-04-17)
 Build flags:   -fsanitize=address -g -O1
 PROJ_DATA:     /out/asan
@@ -158,8 +158,8 @@ Run all valid PoCs at once:
 
 ```bash
 docker run --rm \
-  -v /scr2/yiwei/vul-agent/zero-day/proj4_validated:/bugs \
+  -v /scr2/yiwei/revelio/zero-day/proj4_validated:/bugs \
   -v /tmp/PROJ-latest:/src/PROJ-latest:ro \
   -v /tmp/proj4-latest-build:/proj4-latest-build:ro \
-  vulagent/proj4-asan:latest bash /bugs/build_all.sh
+  revelio/proj4-asan:latest bash /bugs/build_all.sh
 ```

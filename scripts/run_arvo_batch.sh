@@ -36,7 +36,7 @@ ensure_clean() {
     return
   fi
   echo "[prepare] Creating $clean_img from $vul_img ..."
-  python -m vulagent.run.clean_arvo --image "$vul_img"
+  python -m revelio.run.clean_arvo --image "$vul_img"
 }
 
 total=${#TARGETS[@]}
@@ -71,7 +71,7 @@ for i in "${!TARGETS[@]}"; do
   echo " Started at: $(date '+%Y-%m-%d %H:%M:%S')"
   echo "============================================"
 
-  python -m vulagent.run.detect --arvo "$clean_img" || {
+  python -m revelio.run.detect --arvo "$clean_img" || {
     echo "[WARN] Run failed for $clean_img (exit $?), continuing..."
   }
 

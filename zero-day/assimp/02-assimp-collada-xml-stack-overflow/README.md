@@ -17,7 +17,7 @@ This is distinct from the `BuildHierarchy` recursion (vuln #3) — this crash ha
 
 ## Affected Versions
 
-Tested on the Assimp version in the `vulagent/assimp:latest` ARVO image. Affects any Assimp build using the bundled pugixml.
+Tested on the Assimp version in the `revelio/assimp:latest` ARVO image. Affects any Assimp build using the bundled pugixml.
 
 ## Reproduction
 

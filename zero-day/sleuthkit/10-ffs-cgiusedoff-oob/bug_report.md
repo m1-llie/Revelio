@@ -59,8 +59,8 @@ fs_meta->flags = (isset(inosused, dino_inum - ibase) ?   // <-- OOB READ!
 
 ```bash
 docker run --rm --memory=2g \
-  -v /scr2/yiwei/vul-agent/zero-day/sleuthkit/10-ffs-SF03-cgiusedoff-signed-comparison-bypass:/h \
-  vulagent/sleuthkit:20260417 \
+  -v /scr2/yiwei/revelio/zero-day/sleuthkit/10-ffs-SF03-cgiusedoff-signed-comparison-bypass:/h \
+  revelio/sleuthkit:20260417 \
   bash -c "ASAN_OPTIONS='halt_on_error=1:print_stacktrace=1:detect_leaks=0' \
   /out/asan/fls_ffs_fuzzer /h/ffs_cgiusedoff_oob_read.img"
 ```

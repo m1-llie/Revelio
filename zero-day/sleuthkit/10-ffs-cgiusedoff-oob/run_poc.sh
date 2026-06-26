@@ -3,8 +3,8 @@
 # Originally confirmed on: sleuthkit commit 01de034 (2026-04-15)
 # Re-confirmed on: sleuthkit develop branch d784e64db6 (2026-04-13)
 
-POC_IMG="/scr2/yiwei/vul-agent/zero-day/sleuthkit_validated/10-ffs-cgiusedoff-oob/ffs_cgiusedoff_oob_read.img"
-DOCKER_IMG="vulagent/sleuthkit:develop-20260418"
+POC_IMG="/scr2/yiwei/revelio/zero-day/sleuthkit_validated/10-ffs-cgiusedoff-oob/ffs_cgiusedoff_oob_read.img"
+DOCKER_IMG="revelio/sleuthkit:develop-20260418"
 
 echo "[*] Running PoC: 10-ffs-cgiusedoff-oob"
 echo "[*] Image: $POC_IMG"

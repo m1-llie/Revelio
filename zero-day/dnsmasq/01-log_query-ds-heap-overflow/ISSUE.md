@@ -64,7 +64,7 @@ ASAN_OPTIONS="halt_on_error=1:print_stacktrace=1:detect_leaks=0" \
 
 ## ASan output
 
-Validated in Docker image `vulagent/dnsmasq:latest` (dnsmasq v2.93test9, clang 22.0.0git) on 2026-04-17.
+Validated in Docker image `revelio/dnsmasq:latest` (dnsmasq v2.93test9, clang 22.0.0git) on 2026-04-17.
 
 ```text
 =================================================================

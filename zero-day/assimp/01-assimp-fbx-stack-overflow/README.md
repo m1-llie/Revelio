@@ -17,7 +17,7 @@ The vulnerability is trivially exploitable: the file format allows arbitrary nes
 
 ## Affected Versions
 
-Tested on the Assimp version in the `vulagent/assimp:latest` ARVO image. The vulnerable code path has been present since early FBX binary support was added and remains in the current Assimp `master` branch.
+Tested on the Assimp version in the `revelio/assimp:latest` ARVO image. The vulnerable code path has been present since early FBX binary support was added and remains in the current Assimp `master` branch.
 
 ## Reproduction
 

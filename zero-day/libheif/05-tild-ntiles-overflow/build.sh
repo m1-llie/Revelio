@@ -2,7 +2,7 @@
 # Reproduction script for libheif integer overflow in nTiles_h()/nTiles_v()
 # CVE candidate: SIGSEGV via empty tile offset table
 # Affected version: libheif 1.21.2
-# Docker image: vulagent/libheif:latest
+# Docker image: revelio/libheif:latest
 
 set -e
 
@@ -34,7 +34,7 @@ echo "[*] Running file_fuzzer on poc_input (documents the file is valid HEIF)...
 docker run --rm \
     -v "${SCRIPT_DIR}:/tmp/poc" \
     -e ASAN_OPTIONS="detect_leaks=0:abort_on_error=0:symbolize=1" \
-    vulagent/libheif:latest \
+    revelio/libheif:latest \
     /out/asan/file_fuzzer /tmp/poc/poc_input 2>&1 || true
 
 echo ""
@@ -45,7 +45,7 @@ docker run --rm \
     -v "${SCRIPT_DIR}:/tmp/poc" \
     -v "/tmp/libheif-build:/tmp/libheif-build" \
     -e ASAN_OPTIONS="detect_leaks=0:abort_on_error=0:symbolize=1" \
-    vulagent/libheif:latest \
+    revelio/libheif:latest \
     bash -c "
 set -e
 cat > /tmp/crash_harness.cc << 'HARNESS_EOF'

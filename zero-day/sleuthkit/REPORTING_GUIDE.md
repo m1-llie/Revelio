@@ -4,7 +4,7 @@ This guide covers reporting confirmed vulnerabilities in The Sleuth Kit (SleuthK
 
 **Validation summary:**
 - Target release: **SleuthKit 4.15.0** (tag `sleuthkit-4.15.0`, commit `01de034`, released 2026-04-15)
-- Docker image: `vulagent/sleuthkit:4.15.0` (built from the 4.15.0 release tarball with ASAN fuzzers in `/out/asan415/`)
+- Docker image: `revelio/sleuthkit:4.15.0` (built from the 4.15.0 release tarball with ASAN fuzzers in `/out/asan415/`)
 
 ---
 
@@ -92,7 +92,7 @@ The 4.15.0 release tarball does not include `btrfs.cpp` or `xfs.cpp`. These issu
 ## 5. Docker Image Reference
 
 ```
-vulagent/sleuthkit:4.15.0   # 4.15.0 release (commit 01de034) — used for final validation
+revelio/sleuthkit:4.15.0   # 4.15.0 release (commit 01de034) — used for final validation
                              # ASAN fuzzers at /out/asan415/
 ```
 

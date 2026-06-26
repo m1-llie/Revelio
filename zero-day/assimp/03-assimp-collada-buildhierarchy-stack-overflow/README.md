@@ -17,7 +17,7 @@ This is distinct from the pugixml XML parsing recursion (vuln #2) — this crash
 
 ## Affected Versions
 
-Tested on the Assimp version in the `vulagent/assimp:latest` ARVO image.
+Tested on the Assimp version in the `revelio/assimp:latest` ARVO image.
 
 ## Reproduction
 

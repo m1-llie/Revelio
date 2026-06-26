@@ -3,7 +3,7 @@
 ### E1 with Revelio: 10 arvo targets with verified --target-file
 
 arvo-6521
-python -m vulagent.run.detect \
+python -m revelio.run.detect \
   --arvo n132/arvo:6521-vul-clean \
   --pipeline scan_filter_detect \
   --target-file skcms/src/ICCProfile.c \
@@ -14,7 +14,7 @@ python -m vulagent.run.detect \
   --max-poc-attempts 5
 
 arvo-14935
-python -m vulagent.run.detect \
+python -m revelio.run.detect \
   --arvo n132/arvo:14935-vul-clean \
   --pipeline scan_filter_detect \
   --target-file libspng/spng.c \
@@ -25,7 +25,7 @@ python -m vulagent.run.detect \
   --max-poc-attempts 5
 
 arvo-36861
-python -m vulagent.run.detect \
+python -m revelio.run.detect \
   --arvo n132/arvo:36861-vul-clean \
   --pipeline scan_filter_detect \
   --target-file spice-usbredir/usbredirparser/usbredirparser.c \
@@ -36,7 +36,7 @@ python -m vulagent.run.detect \
   --max-poc-attempts 5
 
 arvo-12818
-MODEL_API_KEY="$ANTHROPIC_API_KEY_2" python -m vulagent.run.detect \
+MODEL_API_KEY="$ANTHROPIC_API_KEY_2" python -m revelio.run.detect \
   --arvo n132/arvo:12818-vul-clean \
   --pipeline scan_filter_detect \
   --target-file kimageformats/src/imageformats/tga.cpp \
@@ -47,7 +47,7 @@ MODEL_API_KEY="$ANTHROPIC_API_KEY_2" python -m vulagent.run.detect \
   --max-poc-attempts 5
 
 arvo-14467
-MODEL_API_KEY="$ANTHROPIC_API_KEY_3" python -m vulagent.run.detect \
+MODEL_API_KEY="$ANTHROPIC_API_KEY_3" python -m revelio.run.detect \
   --arvo n132/arvo:14467-vul-clean \
   --pipeline scan_filter_detect \
   --target-file kimageformats/src/imageformats/tga.cpp \
@@ -58,7 +58,7 @@ MODEL_API_KEY="$ANTHROPIC_API_KEY_3" python -m vulagent.run.detect \
   --max-poc-attempts 5
 
 arvo-1065
-MODEL_API_KEY="$ANTHROPIC_API_KEY_4" python -m vulagent.run.detect \
+MODEL_API_KEY="$ANTHROPIC_API_KEY_4" python -m revelio.run.detect \
   --arvo n132/arvo:1065-vul-clean \
   --pipeline scan_filter_detect \
   --target-file file/src/funcs.c \
@@ -69,7 +69,7 @@ MODEL_API_KEY="$ANTHROPIC_API_KEY_4" python -m vulagent.run.detect \
   --max-poc-attempts 5
 
 arvo-24993
-MODEL_API_KEY="$ANTHROPIC_API_KEY_2" python -m vulagent.run.detect \
+MODEL_API_KEY="$ANTHROPIC_API_KEY_2" python -m revelio.run.detect \
   --arvo n132/arvo:24993-vul-clean \
   --pipeline scan_filter_detect \
   --target-file libheif/libheif/heif_colorconversion.cc \
@@ -80,7 +80,7 @@ MODEL_API_KEY="$ANTHROPIC_API_KEY_2" python -m vulagent.run.detect \
   --max-poc-attempts 5
 
 arvo-368
-MODEL_API_KEY="$ANTHROPIC_API_KEY_3" python -m vulagent.run.detect \
+MODEL_API_KEY="$ANTHROPIC_API_KEY_3" python -m revelio.run.detect \
   --arvo n132/arvo:368-vul-clean \
   --pipeline scan_filter_detect \
   --target-file freetype2/src/cff/cffload.c \
@@ -91,7 +91,7 @@ MODEL_API_KEY="$ANTHROPIC_API_KEY_3" python -m vulagent.run.detect \
   --max-poc-attempts 5
 
 arvo-10400
-MODEL_API_KEY="$ANTHROPIC_API_KEY_4" python -m vulagent.run.detect \
+MODEL_API_KEY="$ANTHROPIC_API_KEY_4" python -m revelio.run.detect \
   --arvo n132/arvo:10400-vul-clean \
   --pipeline scan_filter_detect \
   --target-file graphicsmagick/coders/png.c \
@@ -102,7 +102,7 @@ MODEL_API_KEY="$ANTHROPIC_API_KEY_4" python -m vulagent.run.detect \
   --max-poc-attempts 5
 
 arvo-47101
-MODEL_API_KEY="$ANTHROPIC_API_KEY_2" python -m vulagent.run.detect \
+MODEL_API_KEY="$ANTHROPIC_API_KEY_2" python -m revelio.run.detect \
   --arvo n132/arvo:47101-vul-clean \
   --pipeline scan_filter_detect \
   --target-file binutils-gdb/gas/dwarf2dbg.c \

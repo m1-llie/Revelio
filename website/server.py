@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VulAgent Trace Viewer — lightweight server.
+RevelioAgent Trace Viewer — lightweight server.
 
 Usage:
     python server.py [--host HOST] [--port PORT] [--output-dir DIR ...]
@@ -28,7 +28,7 @@ from urllib.parse import urlparse, parse_qs
 
 WEBSITE_DIR = Path(__file__).resolve().parent
 
-SCRIPT_DIR = Path("/srv/share/vulagent/")
+SCRIPT_DIR = Path("/srv/share/revelio/")
 SCRIPTS_DIR = SCRIPT_DIR  # backwards-compat alias used elsewhere
 DEFAULT_OUTPUT_DIRS = [
     WEBSITE_DIR.parent / "output"
@@ -1999,7 +1999,7 @@ def make_handler(output_dirs):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="VulAgent Trace Viewer")
+    parser = argparse.ArgumentParser(description="RevelioAgent Trace Viewer")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1 for security)")
     parser.add_argument("--port", type=int, default=8877, help="Port number (default: 8877)")
     parser.add_argument("--output-dir", nargs="*", help="Output directories to scan")
@@ -2011,7 +2011,7 @@ def main():
         output_dirs = [d for d in DEFAULT_OUTPUT_DIRS if d.exists()]
 
     host = args.host
-    print(f"VulAgent Trace Viewer")
+    print(f"RevelioAgent Trace Viewer")
     print(f"  Scanning: {[str(d) for d in output_dirs]}")
     print(f"  Serving:  http://{host}:{args.port}")
     if host == "127.0.0.1":

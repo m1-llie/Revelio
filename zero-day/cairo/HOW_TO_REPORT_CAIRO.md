@@ -147,8 +147,8 @@ Add the following to each issue body:
 The attached `poc.pdf` can be fed directly to any cairo-based PDF renderer.
 The quickest way to reproduce without building cairo from source:
 
-    docker pull vulagent/poppler:latest
-    docker run --rm -v /path/to/dir:/data vulagent/poppler:latest \
+    docker pull revelio/poppler:latest
+    docker run --rm -v /path/to/dir:/data revelio/poppler:latest \
       /out/<sanitizer>/<fuzzer> /data/poc.pdf
 
   UBSan bugs (cairo-1,2,3,5): sanitizer = ubsan, fuzzer = pdf_draw_fuzzer (cairo-1,2,3)

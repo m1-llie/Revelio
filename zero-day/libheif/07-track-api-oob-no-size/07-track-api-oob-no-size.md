@@ -201,7 +201,7 @@ bash build.sh
 `build.sh`:
 1. Generates two minimal crafted HEIF files using `gen_heif.py` (pure Python, no dependencies).
 2. Builds libheif 1.21.2 as a static library with `-fsanitize=address,undefined` inside
-   the `vulagent/libheif:latest` Docker image.
+   the `revelio/libheif:latest` Docker image.
 3. Compiles `poc_07_get_track_ids.cc` and `poc_08_get_reference_types.cc` against it.
 4. Runs both POCs; ASAN reports `heap-buffer-overflow` for each.
 

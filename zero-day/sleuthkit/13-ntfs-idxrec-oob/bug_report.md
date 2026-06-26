@@ -56,8 +56,8 @@ for (i = 1; i < tsk_getu16(fs->endian, idxrec->upd_cnt); i++) {
 
 ```bash
 docker run --rm --memory=2g \
-  -v /scr2/yiwei/vul-agent/zero-day/sleuthkit/13-ntfs-idxrec-heap-buffer-overflow:/h \
-  vulagent/sleuthkit:20260417 \
+  -v /scr2/yiwei/revelio/zero-day/sleuthkit/13-ntfs-idxrec-heap-buffer-overflow:/h \
+  revelio/sleuthkit:20260417 \
   bash -c "ASAN_OPTIONS='halt_on_error=1:print_stacktrace=1:detect_leaks=0' \
   /out/asan/fls_ntfs_fuzzer /h/ntfs_idxrec_oob.img"
 ```

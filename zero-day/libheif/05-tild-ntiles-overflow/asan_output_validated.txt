@@ -49,5 +49,5 @@ Exit status: 1
 =================================================================
 
 Libheif version: 1.21.2
-Docker image: vulagent/libheif:latest
+Docker image: revelio/libheif:latest
 Build: ASAN instrumented (clang -fsanitize=address)

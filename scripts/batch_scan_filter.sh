@@ -2,7 +2,7 @@
 # =============================================================================
 # batch_scan_filter.sh
 #
-# Run `python -m vulagent.run.detect --pipeline scan_filter` across many
+# Run `python -m revelio.run.detect --pipeline scan_filter` across many
 # (project, file) pairs. Projects run in parallel; files within a project run
 # sequentially by default (same API key + same Docker image -> avoid rate limits
 # and memory contention). The unit of work is a single (project, file) pair
@@ -21,7 +21,7 @@
 #   name  image  model  api_key_env  files_file  [filter_model]  [extra_args]
 #
 #   name          short tag used in logs (e.g. openssl)
-#   image         Docker image (e.g. vulagent/openssl:latest)
+#   image         Docker image (e.g. revelio/openssl:latest)
 #   model         --model value (e.g. anthropic/claude-haiku-4-5)
 #   api_key_env   name of the env var that holds the API key (NOT the key
 #                 itself). The script reads ${!api_key_env} at runtime.
@@ -152,7 +152,7 @@ fi
 
 command -v docker >/dev/null || die "docker not on PATH"
 command -v python >/dev/null || die "python not on PATH"
-python -c 'import vulagent' 2>/dev/null || die "cannot import vulagent (activate your venv?)"
+python -c 'import revelio' 2>/dev/null || die "cannot import revelio (activate your venv?)"
 
 # -----------------------------------------------------------------------------
 # helpers
@@ -314,7 +314,7 @@ run_one_file() {
     fi
 
     local -a cmd=(
-        python -m vulagent.run.detect
+        python -m revelio.run.detect
         --arvo       "$image"
         --model      "$model"
         --pipeline   scan_filter

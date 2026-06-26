@@ -62,7 +62,7 @@ log = logging.getLogger(__name__)
 # Paths (all relative to script directory)
 # ---------------------------------------------------------------------------
 
-SCRIPT_DIR = Path("/srv/share/vulagent/")
+SCRIPT_DIR = Path("/srv/share/revelio/")
 ALL_CVES_PATH = SCRIPT_DIR / "all_cves.jsonl"
 MEMORY_SAFETY_CWES_PATH = SCRIPT_DIR / "memory_safety_cwes.json"
 MEMORY_SAFETY_JSONL_PATH = SCRIPT_DIR / "all_cves_memory_safety.jsonl"

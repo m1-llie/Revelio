@@ -6,7 +6,7 @@
 # compiling a custom harness that calls gf_isom_open_file().
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-IMAGE="${1:-vulagent/gpac:latest}"
+IMAGE="${1:-revelio/gpac:latest}"
 
 echo "[*] Generating PoC MP4..."
 python3 "$SCRIPT_DIR/gen_poc.py" 30

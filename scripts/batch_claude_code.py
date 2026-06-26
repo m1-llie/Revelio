@@ -34,10 +34,10 @@ from rich.console import Console
 console = Console()
 app = typer.Typer(rich_markup_mode="rich", pretty_exceptions_show_locals=False)
 
-SCRIPTS_DIR = Path("/srv/share/vulagent/")
+SCRIPTS_DIR = Path("/srv/share/revelio/")
 DATASET_PATH = SCRIPTS_DIR / "cve_dataset.jsonl"
 REPOS_DIR = SCRIPTS_DIR / "repos"
-DOCKER_IMAGE = "vulagent/file-scan:latest"
+DOCKER_IMAGE = "revelio/file-scan:latest"
 
 
 def load_candidates(dataset: Path, repos_dir: Path) -> list[dict]:
@@ -264,7 +264,7 @@ def build_trajectory_json(
     return {
         "info": info,
         "messages": messages,
-        "trajectory_format": "vul-agent-1",
+        "trajectory_format": "revelio-1",
     }
 
 

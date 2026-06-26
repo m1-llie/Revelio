@@ -15,7 +15,7 @@ A COLLADA file with empty `id=""` and `url=""` attributes on geometry, material,
 
 ## Affected Versions
 
-Tested on the Assimp version in the `vulagent/assimp:latest` ARVO image.
+Tested on the Assimp version in the `revelio/assimp:latest` ARVO image.
 
 ## Reproduction
 

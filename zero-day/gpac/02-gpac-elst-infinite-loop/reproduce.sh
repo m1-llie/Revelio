@@ -4,7 +4,7 @@
 # and count output packets to demonstrate the DoS.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-IMAGE="${1:-vulagent/gpac:latest}"
+IMAGE="${1:-revelio/gpac:latest}"
 FUZZER="fuzz_probe_analyze"
 POC="$SCRIPT_DIR/poc.mp4"
 

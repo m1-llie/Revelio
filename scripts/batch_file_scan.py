@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Batch-run vul-agent-file-scan on single-file CVEs that have repos downloaded.
+"""Batch-run revelio-file-scan on single-file CVEs that have repos downloaded.
 
 Reads scripts/cve_dataset.jsonl, filters to single-file CVEs whose repo exists
-in scripts/repos/<CVE-ID>/, and launches vul-agent-file-scan concurrently.
+in scripts/repos/<CVE-ID>/, and launches revelio-file-scan concurrently.
 
 Examples:
     # Dry-run: list matching CVEs without running
@@ -30,7 +30,7 @@ from rich.console import Console
 console = Console()
 app = typer.Typer(rich_markup_mode="rich", pretty_exceptions_show_locals=False)
 
-SCRIPTS_DIR = Path("/srv/share/vulagent/")
+SCRIPTS_DIR = Path("/srv/share/revelio/")
 DATASET_PATH = SCRIPTS_DIR / "cve_dataset.jsonl"
 REPOS_DIR = SCRIPTS_DIR / "repos"
 
@@ -65,13 +65,13 @@ def run_one(
     output_dir: Path,
     log_dir: Path,
 ) -> tuple[str, bool, str]:
-    """Run vul-agent-file-scan for a single CVE. Returns (cve_id, success, error)."""
+    """Run revelio-file-scan for a single CVE. Returns (cve_id, success, error)."""
     out_path = output_dir / cve_id / "trajectory.json"
     log_path = log_dir / f"{cve_id}.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     cmd = [
-        sys.executable, "-m", "vulagent.run.file_scan",
+        sys.executable, "-m", "revelio.run.file_scan",
         "--folder-path", repo_path,
         "--target-file", target_file,
         "--model", model,
@@ -112,7 +112,7 @@ def main(
         help="Agent config YAML (relative to config dir).",
     ),
     docker_image: str = typer.Option(
-        "vulagent/file-scan:latest",
+        "revelio/file-scan:latest",
         "--docker-image",
         help="Docker image to use.",
     ),

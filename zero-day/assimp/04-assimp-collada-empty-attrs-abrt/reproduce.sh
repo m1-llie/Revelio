@@ -2,7 +2,7 @@
 # Reproduce: Assimp Collada empty attribute assertion failure
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-IMAGE="${1:-vulagent/assimp:latest}"
+IMAGE="${1:-revelio/assimp:latest}"
 FUZZER="assimp_fuzzer_collada"
 POC="$SCRIPT_DIR/poc.dae"
 

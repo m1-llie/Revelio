@@ -185,7 +185,7 @@ Attach the `poc.pdf` file(s) as attachments in the GitLab issue form.
   GitHub issues.
 - freedesktop.org GitLab does not have a "Security Advisory" feature equivalent
   to GitHub private security advisories. Public issues are the correct channel.
-- The sanitizer reproduction commands use Docker image `vulagent/poppler:latest`
+- The sanitizer reproduction commands use Docker image `revelio/poppler:latest`
   built from commit `e3d56a0`. Include this context in each issue so maintainers
   can reproduce by building the same commit with the relevant sanitizer.
 - For issues D and E (DoS bugs), if the maintainer asks for a severity

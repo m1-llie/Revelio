@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# build.sh — compile and run both POCs inside the vulagent/libheif docker image
+# build.sh — compile and run both POCs inside the revelio/libheif docker image
 #
 # Prerequisites:
-#   - Docker with image vulagent/libheif:latest
+#   - Docker with image revelio/libheif:latest
 #   - python3 (to generate test HEIF files)
 #
 # Usage: bash build.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-IMAGE="vulagent/libheif:latest"
+IMAGE="revelio/libheif:latest"
 ASAN_OPTIONS="detect_leaks=0:abort_on_error=1:print_stacktrace=1"
 OUTPUT_TXT="${SCRIPT_DIR}/asan_output_validated.txt"
 

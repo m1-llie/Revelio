@@ -8,7 +8,7 @@ API_KEY = "753146f0-3fe8-4bcf-95c5-f29253c0bb77"
 
 BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 RESULTS_PER_PAGE = 2000   # maximum allowed
-OUTPUT_FILE = "/srv/share/vulagent/all_cves.json"
+OUTPUT_FILE = "/srv/share/revelio/all_cves.json"
 
 HEADERS = {}
 if API_KEY:

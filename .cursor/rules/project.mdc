@@ -3,11 +3,11 @@ description:
 globs:
 alwaysApply: true
 ---
-# vul-agent overview
+# revelio overview
 
 ## Project Goal
 
-vul-agent is a trustworthy and precise vulnerability detection AI agent that:
+revelio is a trustworthy and precise vulnerability detection AI agent that:
 - Discovers software vulnerabilities through code analysis
 - Validates vulnerabilities by testing exploitation
 - Provides detailed vulnerability reports with proof-of-concept

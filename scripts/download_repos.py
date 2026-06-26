@@ -98,7 +98,7 @@ def load_cves(limit: int | None = None) -> list[CVERepo]:
     """
     # 1. Load cve_dataset.jsonl
     dataset = []
-    with open("/srv/share/vulagent/cve_dataset.jsonl") as f:
+    with open("/srv/share/revelio/cve_dataset.jsonl") as f:
         for line in f:
             dataset.append(json.loads(line))
 

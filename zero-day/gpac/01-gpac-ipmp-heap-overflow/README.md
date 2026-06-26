@@ -19,7 +19,7 @@ Setting `num_alternate=30` causes 10 extra 16-byte entries (160 bytes) to be wri
 
 ## Affected Versions
 
-Tested against the GPAC source in the `vulagent/gpac:latest` ARVO image. The vulnerable code path exists in all GPAC versions that include IPMP support.
+Tested against the GPAC source in the `revelio/gpac:latest` ARVO image. The vulnerable code path exists in all GPAC versions that include IPMP support.
 
 ## Reproduction
 

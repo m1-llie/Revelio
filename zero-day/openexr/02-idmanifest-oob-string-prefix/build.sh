@@ -3,11 +3,11 @@
 # Validated against OpenEXR main commit c13e0e1 (2026-04-16)
 #
 # Usage: bash build.sh
-# Requirements: Docker image vulagent/openexr:main-20260417
+# Requirements: Docker image revelio/openexr:main-20260417
 set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-IMAGE=vulagent/openexr:main-20260417
+IMAGE=revelio/openexr:main-20260417
 
 _build_stubs() {
   # Emits stub headers into /tmp/idmb/include inside the container

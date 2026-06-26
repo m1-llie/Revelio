@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vul-agent"
+name = "revelio"
 version = "0.0.1"
 description = "A trustworthy and precise vulnerability detection AI agent"
 readme = "README.md"
@@ -26,16 +26,14 @@ dependencies = [
 ]
 
 [project.scripts]
-vul-agent = "vulagent.run.hello_world:app"
-vul-agent-validate-single = "vulagent.run.validate_if_target_singleAgent:app"
-vul-agent-validate-multi = "vulagent.run.validate_if_target_multiAgent:app"
+revelio = "revelio.run.detect:app"
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["vulagent*"]
+include = ["revelio*"]
 
 [tool.setuptools.package-data]
-vulagent = ["config/**/*"]
+revelio = ["config/**/*"]

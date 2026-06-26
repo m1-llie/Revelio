@@ -17,7 +17,7 @@ In testing, the PoC produced 619,987 output lines in 10 seconds before being kil
 
 ## Affected Versions
 
-Tested against the GPAC version in the `vulagent/gpac:latest` ARVO image.
+Tested against the GPAC version in the `revelio/gpac:latest` ARVO image.
 
 ## Reproduction
 

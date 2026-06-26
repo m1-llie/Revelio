@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# prepare_ossfuzz_project.sh — Build & package OSS-Fuzz projects for vulagent.
+# prepare_ossfuzz_project.sh — Build & package OSS-Fuzz projects for revelio.
 #
-# Turns any OSS-Fuzz project into a vulagent-ready Docker image (same interface
+# Turns any OSS-Fuzz project into a revelio-ready Docker image (same interface
 # as ARVO images). Clones/updates oss-fuzz, builds fuzzers per sanitizer,
-# packages into vulagent/<project>:latest, and cleans for zero-day detection.
+# packages into revelio/<project>:latest, and cleans for zero-day detection.
 #
 # Usage:
 #   scripts/prepare_ossfuzz_project.sh <project> [project2 ...]
@@ -24,7 +24,7 @@ usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS] <project> [project2 ...]
 
-Build and package OSS-Fuzz projects into vulagent-ready Docker images.
+Build and package OSS-Fuzz projects into revelio-ready Docker images.
 
 Options:
   --oss-fuzz-dir DIR    Path to oss-fuzz checkout (default: ~/oss-fuzz)
@@ -134,7 +134,7 @@ for PROJECT in "${PROJECTS[@]}"; do
 
     # ── Step 2: Package into a Docker image ──────────────────────────────
 
-    CONTAINER="vulagent-setup-${PROJECT}"
+    CONTAINER="revelio-setup-${PROJECT}"
     echo ""
     echo "--- Packaging ${PROJECT} (sanitizers: ${built_sanitizers[*]}) ---"
 
@@ -172,7 +172,7 @@ for PROJECT in "${PROJECTS[@]}"; do
     echo "Available fuzzers:"
     docker exec "$CONTAINER" arvo list --all
 
-    IMAGE_TAG="vulagent/${PROJECT}:latest"
+    IMAGE_TAG="revelio/${PROJECT}:latest"
     docker commit "$CONTAINER" "$IMAGE_TAG"
     docker rm -f "$CONTAINER"
 
@@ -187,6 +187,6 @@ for PROJECT in "${PROJECTS[@]}"; do
     echo "  Sanitizers: ${built_sanitizers[*]}"
     echo ""
     echo "  Usage:"
-    echo "    python -m vulagent.run.detect --arvo ${IMAGE_TAG} --model <model>"
+    echo "    python -m revelio.run.detect --arvo ${IMAGE_TAG} --model <model>"
     echo "================================================================"
 done

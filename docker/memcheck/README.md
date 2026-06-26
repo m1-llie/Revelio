@@ -1,11 +1,11 @@
 # Software Vulnerability Analysis Docker Image
 
-Base image for running software analysis (e.g., inspect memory safety issues) inside vul-agent.
+Base image for running software analysis (e.g., inspect memory safety issues) inside revelio.
 
 ## Build
 
 ```
-docker build -t vulagent/memcheck:latest docker/memcheck
+docker build -t revelio/memcheck:latest docker/memcheck
 ```
 
 ## Contents
