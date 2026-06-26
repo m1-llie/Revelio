@@ -310,12 +310,6 @@ revelio/
 ├── run/             # CLI entry point (detect.py)
 ├── tools/           # Agent tools (finish, validate)
 └── utils/           # Utility functions
-
-tools/               # Standalone post-run utilities
-├── inspector.py     # Browse agent trajectory JSON files
-├── cost_report.py   # Summarize LLM costs for a run
-├── validate_poc.py  # Validate a PoC against ARVO -fix image
-└── config.py        # Manage global .env config
 ```
 
 ## Check Agent Running Trajectories
