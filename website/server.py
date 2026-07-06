@@ -772,6 +772,68 @@ def _norm_summary(s):
     return (s or "").strip().lower()
 
 
+def _hotspot_loc_key(hotspot):
+    if not isinstance(hotspot, dict):
+        return None
+    fn = hotspot.get("function")
+    line = hotspot.get("line_start")
+    if not fn or line is None:
+        return None
+    try:
+        return (fn, int(line))
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_stage1_hypothesis_locations(traces_dir):
+    """Map each file's raw classify index -> (function, line_start) hotspot
+    location, read from stage1's aggregated_hypotheses (index-aligned with
+    stage2_classify's classification index). Hypotheses that are otherwise
+    textually identical (e.g. the same generic "missing NULL check" summary
+    generated for several call sites in one file) can only be told apart by
+    their actual code location, which classify-stage data alone doesn't carry.
+    """
+    locations = {}
+    if not traces_dir or not traces_dir.is_dir():
+        return locations
+    for f in sorted(traces_dir.glob("stage1_*.json")):
+        try:
+            data = _read_json(f)
+        except Exception:
+            continue
+        fname = data.get("file", f.stem)
+        by_idx = {}
+        for i, item in enumerate(data.get("aggregated_hypotheses") or []):
+            hyp = item.get("hypothesis") if isinstance(item, dict) and "hypothesis" in item else item
+            if not isinstance(hyp, dict):
+                continue
+            hotspots = hyp.get("hotspots") or []
+            key = _hotspot_loc_key(hotspots[0]) if hotspots else None
+            if key:
+                by_idx[i] = key
+        if by_idx:
+            locations[fname] = by_idx
+    return locations
+
+
+def _stage1_hypothesis_summaries(hyp_list):
+    out = []
+    for item in hyp_list or []:
+        if not isinstance(item, dict):
+            continue
+        hyp = item.get("hypothesis")
+        if isinstance(hyp, dict):
+            s = hyp.get("summary") or hyp.get("title") or hyp.get("description") or ""
+        elif isinstance(hyp, str):
+            s = hyp
+        else:
+            s = item.get("summary") or item.get("title") or item.get("description") or ""
+        s = (s or "").strip()
+        if s:
+            out.append(s[:500])
+    return out
+
+
 def _classify_kept(c):
     return bool(c.get("is_vulnerability")) and bool(c.get("sanitizers") or c.get("is_asan"))
 
@@ -785,15 +847,23 @@ def _build_revelio_hypothesis_pipeline(
     poc_stages,
     val_by_hid,
     rep_by_hid,
+    stage1_locations=None,
 ):
     """One row per raw hypothesis with KEPT/DROPPED status at each pipeline gate."""
+    stage1_locations = stage1_locations or {}
     dedup_by_file = {df.get("file"): df for df in stage2_dedup}
+    # Keyed by (file, ...): stage3_filter's hypothesis_index is a per-file
+    # position (every file's first surviving hypothesis is "hyp_00"), not a
+    # global one. A dict keyed on the bare index or bare summary text would
+    # collide across every file that happens to share an index or wording,
+    # silently overwriting one file's verdict with an unrelated file's.
     stage3_by_summary = {}
     stage3_by_kept_idx = {}
     for s in hypothesis_stages:
         if s.get("stage") != "stage3.filter":
             continue
         info = s.get("info") or {}
+        file_ = info.get("file")
         summary = _norm_summary(info.get("summary"))
         hi = info.get("hypothesis_index")
         entry = {
@@ -801,21 +871,45 @@ def _build_revelio_hypothesis_pipeline(
             "confidence": info.get("confidence"),
             "reason": info.get("reason") or "",
         }
-        if summary:
-            stage3_by_summary[summary] = entry
-        if hi is not None:
-            stage3_by_kept_idx[int(hi)] = entry
+        if file_ and summary:
+            stage3_by_summary[(file_, summary)] = entry
+        if file_ and hi is not None:
+            stage3_by_kept_idx[(file_, int(hi))] = entry
 
-    final_summaries = {
-        _norm_summary(h.get("summary") or h.get("title") or h.get("description"))
-        for h in hypotheses
-        if isinstance(h, dict)
-    }
-    final_hids = {
-        h.get("hypothesis_id") or h.get("id")
-        for h in hypotheses
-        if isinstance(h, dict) and (h.get("hypothesis_id") or h.get("id"))
-    }
+    # Group final hypotheses by (file, summary) rather than collapsing into a
+    # single dict entry: several distinct hypotheses can share identical
+    # generic wording (e.g. the same "missing NULL check" summary generated
+    # for multiple call sites in one file). When a (file, summary) group has
+    # more than one candidate, disambiguate by (function, line) location;
+    # otherwise every row with that text would be wrongly attributed to
+    # whichever candidate happened to be inserted last.
+    final_candidates = {}
+    all_ghids = set()
+    for h in hypotheses:
+        if not isinstance(h, dict):
+            continue
+        fp = h.get("file_path") or ""
+        norm = _norm_summary(h.get("summary") or h.get("title") or h.get("description"))
+        ghid = h.get("hypothesis_id") or h.get("id")
+        if not (fp and norm and ghid):
+            continue
+        all_ghids.add(ghid)
+        refs = h.get("references") or []
+        loc = _hotspot_loc_key(refs[0]) if refs else None
+        final_candidates.setdefault((fp, norm), []).append((ghid, loc))
+
+    def _resolve_global_hid(file_, norm_, idx_):
+        candidates = final_candidates.get((file_, norm_))
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0][0]
+        loc = stage1_locations.get(file_, {}).get(idx_)
+        if loc:
+            for ghid, cand_loc in candidates:
+                if cand_loc == loc:
+                    return ghid
+        return None
 
     poc_hids = {
         ps.get("hid")
@@ -823,13 +917,13 @@ def _build_revelio_hypothesis_pipeline(
         if ps.get("hid") and "PoCBuilder" in (ps.get("agent") or "")
     }
     confirmed_hids = set()
-    for hid in final_hids | poc_hids:
-        if not hid:
+    for ghid in all_ghids | poc_hids:
+        if not ghid:
             continue
-        v = val_by_hid.get(hid) or {}
-        r = rep_by_hid.get(hid) or {}
+        v = val_by_hid.get(ghid) or {}
+        r = rep_by_hid.get(ghid) or {}
         if v.get("crash_detected") or r.get("crash_detected"):
-            confirmed_hids.add(hid)
+            confirmed_hids.add(ghid)
 
     pipeline = []
     for cf in stage2_classify:
@@ -847,7 +941,14 @@ def _build_revelio_hypothesis_pipeline(
             c for c in classify_kept_rows
             if _norm_summary(c.get("summary")) not in removed_map
         ]
-        post_dedup_idx = {_norm_summary(c.get("summary")): i for i, c in enumerate(post_dedup)}
+        # Keyed by raw classify index (unique), not summary text: several
+        # rows can share identical generic wording (see _resolve_global_hid),
+        # and a text-keyed dict would collapse them onto the same position.
+        post_dedup_idx = {
+            c.get("index"): i
+            for i, c in enumerate(post_dedup)
+            if c.get("index") is not None
+        }
 
         for c in cf.get("classifications") or []:
             idx = c.get("index")
@@ -872,50 +973,55 @@ def _build_revelio_hypothesis_pipeline(
                 dropped_at = "dedup"
             else:
                 dedup = {"status": "kept", "reason": ""}
-                kept_idx = post_dedup_idx.get(norm)
-                s3 = stage3_by_summary.get(norm) or (
-                    stage3_by_kept_idx.get(kept_idx) if kept_idx is not None else None
+                kept_idx = post_dedup_idx.get(idx)
+                # Prefer the positional match (unambiguous) over summary-text
+                # matching, which collapses hypotheses that share identical
+                # generic wording onto whichever one a dict happened to keep.
+                file_ = cf.get("file")
+                s3 = (
+                    (stage3_by_kept_idx.get((file_, kept_idx)) if kept_idx is not None else None)
+                    or stage3_by_summary.get((file_, norm))
                 )
                 if s3:
                     verdict = s3.get("verdict")
                     conf = s3.get("confidence") or 0
-                    if verdict == "INVALID" and conf >= 0.7:
-                        filt = {"status": "dropped", "verdict": verdict, "reason": s3.get("reason") or ""}
+                    reason = s3.get("reason") or ""
+                    if conf <= 0:
+                        # A confidence of exactly 0 means the filter agent
+                        # couldn't actually evaluate the hypothesis (e.g. "unable
+                        # to access container") rather than a genuine judgment —
+                        # treat it as unresolved, not as having passed review.
+                        filt = {"status": "skipped", "verdict": verdict, "reason": reason}
+                        dropped_at = None
+                    elif verdict == "INVALID" and conf >= 0.7:
+                        filt = {"status": "dropped", "verdict": verdict, "reason": reason}
                         dropped_at = "filter"
                     else:
-                        filt = {"status": "kept", "verdict": verdict, "reason": s3.get("reason") or ""}
+                        filt = {"status": "kept", "verdict": verdict, "reason": reason}
                         dropped_at = None
                 else:
                     filt = {"status": "skipped", "verdict": None, "reason": ""}
                     dropped_at = None
 
-            survived = norm in final_summaries or hid in final_hids
-            if dropped_at and not survived:
-                pass
-            elif filt.get("status") == "dropped":
-                pass
-            elif not dropped_at:
-                dropped_at = None
-
-            if survived:
-                dropped_at = None
+            global_hid = _resolve_global_hid(cf.get("file"), norm, idx)
+            survived = global_hid is not None and not dropped_at
+            confirmed = bool(global_hid and global_hid in confirmed_hids)
 
             poc_status = "skipped"
-            if hid in poc_hids:
-                poc_status = "confirmed" if hid in confirmed_hids else "attempted"
-            elif survived and not dropped_at:
-                poc_status = "skipped"
+            if global_hid and global_hid in poc_hids:
+                poc_status = "confirmed" if confirmed else "attempted"
 
             pipeline.append({
                 "index": idx,
                 "hid": hid,
+                "global_hid": global_hid,
                 "file": cf.get("file"),
                 "summary": summary,
                 "classify": classify,
                 "dedup": dedup,
                 "filter": filt,
                 "poc": {"status": poc_status},
-                "final": {"survived": survived, "confirmed": hid in confirmed_hids},
+                "final": {"survived": survived, "confirmed": confirmed},
                 "dropped_at": dropped_at,
             })
 
@@ -923,60 +1029,30 @@ def _build_revelio_hypothesis_pipeline(
     return pipeline
 
 
-def _compute_revelio_funnel(
-    *,
-    stage2_classify,
-    stage2_dedup,
-    hypotheses,
-    hypothesis_stages,
-    poc_stages,
-    events,
-    confirmed,
-):
-    raw_count = 0
-    for cf in stage2_classify:
-        if cf.get("input_count"):
-            raw_count = max(raw_count, cf["input_count"])
-    if not raw_count:
-        for s in hypothesis_stages:
-            if s.get("stage", "").startswith("stage1"):
-                raw_count = max(raw_count, (s.get("info") or {}).get("hypothesis_count") or 0)
-
-    after_classify = 0
-    for cf in stage2_classify:
-        for c in cf.get("classifications") or []:
-            if c.get("is_vulnerability") and (c.get("sanitizers") or c.get("is_asan")):
-                after_classify += 1
-    if not after_classify and stage2_classify:
-        for cf in stage2_classify:
-            for c in cf.get("classifications") or []:
-                if c.get("is_vulnerability"):
-                    after_classify += 1
-
-    after_dedup = 0
-    for df in stage2_dedup:
-        after_dedup = max(after_dedup, df.get("kept_count") or 0)
-    if not after_dedup and after_classify:
-        after_dedup = after_classify
-
-    stage3_total = sum(1 for s in hypothesis_stages if s.get("stage") == "stage3.filter")
-    stage3_valid = sum(
-        1 for s in hypothesis_stages
-        if s.get("stage") == "stage3.filter" and (s.get("info") or {}).get("verdict") == "VALID"
-    )
-    after_filter = len(hypotheses) if hypotheses else stage3_valid
-
-    poc_attempted = sum(1 for ps in poc_stages if "PoCBuilder" in (ps.get("agent") or ""))
-    if not poc_attempted:
-        poc_attempted = sum(1 for ps in poc_stages)
+def _compute_revelio_funnel(*, pipeline, confirmed):
+    """Derive funnel counts directly from the per-hypothesis pipeline rows
+    (the same data behind the Hypothesis pipeline table) instead of separate
+    event/trace heuristics, so every stage count is guaranteed consistent
+    and monotonically non-increasing."""
+    raw_count = len(pipeline)
+    after_classify = sum(1 for r in pipeline if r["classify"]["status"] == "kept")
+    after_dedup = sum(1 for r in pipeline if r["dedup"]["status"] == "kept")
+    # "Eligible for PoC", not strictly "filter verdict was kept": PoC
+    # attempts are keyed off whether a hypothesis made it into the final
+    # aggregated output (final.survived), which also includes hypotheses the
+    # filter stage couldn't reach a real verdict on but let through anyway
+    # (e.g. a sandbox/container access error). Using the stricter
+    # filter-verdict-only count here produced "Filtered" values lower than
+    # "PoC tried", which is a contradiction — PoC can't attempt more than
+    # what was actually eligible.
+    after_filter = sum(1 for r in pipeline if r["final"]["survived"])
+    poc_attempted = sum(1 for r in pipeline if r["poc"]["status"] in ("attempted", "confirmed"))
 
     return {
         "raw": raw_count,
         "after_classify": after_classify,
         "after_dedup": after_dedup,
-        "stage3_reviewed": stage3_total,
         "after_filter": after_filter,
-        "stage3_valid": stage3_valid,
         "poc_attempted": poc_attempted,
         "confirmed": confirmed,
     }
@@ -1086,6 +1162,8 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
     hypothesis_stages = []
     stage2_classify = []
     stage2_dedup = []
+    stage3_error_count = 0
+    stage3_total_files = 0
     traces_dir = run_dir / "traces"
     if traces_dir.is_dir():
         stage2_classify, stage2_dedup = _load_revelio_stage2(traces_dir)
@@ -1107,6 +1185,7 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
                     "stage": "stage1.wholefile",
                     "info": {
                         "hypothesis_count": len((wf.get("hypotheses") or [])),
+                        "generated": _stage1_hypothesis_summaries(wf.get("hypotheses") or []),
                     },
                     "messages": parsed,
                     "raw_count": len(wf_msgs),
@@ -1126,8 +1205,10 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
                     "label": f"stage1 · focused #{idx} ({fname})",
                     "stage": "stage1.focused",
                     "info": {
+                        "focus_index": idx,
                         "focus_prompt": (foc.get("focus_prompt") or "")[:200],
                         "hypothesis_count": len((foc.get("hypotheses") or [])),
+                        "generated": _stage1_hypothesis_summaries(foc.get("hypotheses") or []),
                     },
                     "messages": parsed,
                     "raw_count": len(fmsgs),
@@ -1150,6 +1231,7 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
                     "info": {
                         "function": fn_name,
                         "hypothesis_count": len((fn.get("hypotheses") or [])),
+                        "generated": _stage1_hypothesis_summaries(fn.get("hypotheses") or []),
                     },
                     "messages": parsed,
                     "raw_count": len(fmsgs),
@@ -1172,8 +1254,17 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
                     data = _read_json(f)
                 except Exception:
                     continue
+                stage3_total_files += 1
                 traj = data.get("trajectory") or []
                 if not traj:
+                    # An empty trajectory with an error field means the filter
+                    # call itself failed (e.g. an upstream API auth error) —
+                    # the verdict/confidence fields are meaningless defaults,
+                    # not a real "reviewed and rejected" outcome. Track this
+                    # so the funnel can tell a genuine 0 apart from a stage
+                    # that never actually ran.
+                    if data.get("error"):
+                        stage3_error_count += 1
                     continue
                 hi = data.get("hypothesis_index")
                 verdict = data.get("verdict") or "?"
@@ -1185,6 +1276,7 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
                     "stage": "stage3.filter",
                     "hid": hid,
                     "info": {
+                        "file": data.get("file"),
                         "hypothesis_index": hi,
                         "verdict": verdict,
                         "confidence": data.get("confidence"),
@@ -1224,15 +1316,22 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
         if v.get("crash_detected") or r.get("crash_detected"):
             confirmed += 1
 
-    funnel = _compute_revelio_funnel(
+    hypothesis_pipeline = _build_revelio_hypothesis_pipeline(
         stage2_classify=stage2_classify,
         stage2_dedup=stage2_dedup,
-        hypotheses=hypotheses,
         hypothesis_stages=hypothesis_stages,
+        hypotheses=hypotheses,
         poc_stages=poc_stages,
-        events=events,
-        confirmed=confirmed,
+        val_by_hid=val_by_hid,
+        rep_by_hid=rep_by_hid,
+        stage1_locations=_load_stage1_hypothesis_locations(traces_dir),
     )
+
+    funnel = _compute_revelio_funnel(pipeline=hypothesis_pipeline, confirmed=confirmed)
+    # A "Filtered: 0" that comes from every filter call erroring out (e.g. an
+    # upstream API auth failure) looks identical to a legitimate "everything
+    # was reviewed and rejected" outcome unless we flag it explicitly.
+    funnel["filter_stage_failed"] = stage3_total_files > 0 and stage3_error_count == stage3_total_files
     cost_total = _compute_revelio_cost(
         stage2_classify=stage2_classify,
         hypothesis_stages=hypothesis_stages,
@@ -1263,16 +1362,6 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
         poc_status = "skipped_no_hypotheses"
     elif not traj_path.exists():
         poc_status = "skipped_or_incomplete"
-
-    hypothesis_pipeline = _build_revelio_hypothesis_pipeline(
-        stage2_classify=stage2_classify,
-        stage2_dedup=stage2_dedup,
-        hypothesis_stages=hypothesis_stages,
-        hypotheses=hypotheses,
-        poc_stages=poc_stages,
-        val_by_hid=val_by_hid,
-        rep_by_hid=rep_by_hid,
-    )
 
     return {
         "manifest": manifest,

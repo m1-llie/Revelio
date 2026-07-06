@@ -67,11 +67,12 @@ nav .breadcrumb .sep{color:#333}
 .badge-green{background:rgba(52,211,153,.12);color:var(--green);border:1px solid rgba(52,211,153,.25)}
 .badge-red{background:rgba(248,113,113,.12);color:var(--red);border:1px solid rgba(248,113,113,.25)}
 .badge-orange{background:rgba(251,146,60,.12);color:var(--orange);border:1px solid rgba(251,146,60,.25)}
+.expected-crash-note{background:rgba(248,113,113,.1);color:var(--red);border:1px solid rgba(248,113,113,.25);border-radius:var(--radius);padding:.5rem .7rem;margin-top:.3rem;font-size:.76rem;line-height:1.5}
 .badge-cyan{background:rgba(34,211,238,.12);color:var(--cyan);border:1px solid rgba(34,211,238,.25)}
 .badge-purple{background:rgba(99,102,241,.12);color:var(--accent2);border:1px solid rgba(99,102,241,.25)}
 
 /* ── Tabs ─────────────────────────────────────────────────────── */
-.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:1.5rem;overflow-x:auto}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:1.5rem;overflow-x:auto;scroll-margin-top:4.5rem}
 .tab{padding:.6rem 1.2rem;font-size:.82rem;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s,border-color .15s}
 .tab:hover{color:var(--text)}
 .tab.active{color:var(--accent2);border-bottom-color:var(--accent)}
@@ -90,7 +91,8 @@ nav .breadcrumb .sep{color:#333}
 .overview-panel .funnel-wrap{justify-content:center;margin:0 auto 1rem}
 
 /* ── Timeline ─────────────────────────────────────────────────── */
-.timeline{position:relative;padding-left:1.5rem;border-left:2px solid var(--border);margin:1rem 0 1.5rem}
+.timeline{position:relative;padding-left:1.5rem;margin:1rem 0 1.5rem}
+.timeline::before{content:'';position:absolute;left:1.75px;top:0;bottom:0;width:2px;background:var(--border)}
 .timeline .ev{position:relative;padding:.5rem 0 .5rem .8rem;font-size:.82rem}
 .timeline .ev::before{content:'';position:absolute;left:-1.65rem;top:.75rem;width:10px;height:10px;border-radius:50%;background:var(--border);border:2px solid var(--bg)}
 .timeline .ev.success::before{background:var(--green)}
@@ -139,11 +141,11 @@ nav .breadcrumb .sep{color:#333}
 .agent-row .detail{font-size:.78rem;color:var(--text-dim);text-align:right}
 
 /* ── Log viewer ───────────────────────────────────────────────── */
-.log-tab-panel.active{display:flex;flex-direction:column;height:calc(100vh - 10.25rem);margin-bottom:0}
+.log-tab-panel.active{display:flex;flex-direction:column;height:calc(100vh - 11.5rem);margin-bottom:0;padding-bottom:2rem;box-sizing:border-box}
 .log-tab-header{flex-shrink:0}
 .log-tab-panel .filter-bar{flex-shrink:0;margin-bottom:.35rem}
 .log-panel{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
-.log-viewer{flex:1;min-height:0;height:100%;background:#0a0a12;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;font-family:var(--mono);font-size:.75rem;line-height:1.6;overflow-y:auto;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
+.log-viewer{flex:1;min-height:0;height:100%;background:#0a0a12;border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1rem 1.25rem;font-family:var(--mono);font-size:.75rem;line-height:1.6;overflow-y:auto;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
 .log-line{display:block}
 .log-line.log-match-hidden{display:none!important}
 .log-line .log-ts{color:var(--text-dim)}
@@ -194,13 +196,6 @@ nav .breadcrumb .sep{color:#333}
 /* ── Run card (updated) ──────────────────────────────────────── */
 .run-card .run-title{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 .run-card .run-title .cve-id{font-size:1rem;font-weight:700;color:var(--text-bright)}
-.run-card .run-title .batch-type{font-size:.7rem;padding:2px 8px;border-radius:4px;font-weight:600;letter-spacing:.02em}
-.batch-type.batch-file-scan{background:rgba(34,211,238,.1);color:var(--cyan);border:1px solid rgba(34,211,238,.25)}
-.batch-type.batch-claude-code{background:rgba(244,114,182,.1);color:var(--pink);border:1px solid rgba(244,114,182,.25)}
-.batch-type.batch-codex{background:rgba(132,225,160,.12);color:#84e1a0;border:1px solid rgba(132,225,160,.3)}
-.batch-type.batch-kiss-sorcar{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
-.batch-type.batch-revelio{background:rgba(167,139,250,.12);color:#a78bfa;border:1px solid rgba(167,139,250,.3)}
-.batch-type.batch-other{background:rgba(99,102,241,.1);color:var(--accent2);border:1px solid rgba(99,102,241,.25)}
 
 /* ── Score indicators ────────────────────────────────────────── */
 .score-indicators{display:flex;gap:.5rem;align-items:center;flex-shrink:0}
@@ -216,20 +211,84 @@ nav .breadcrumb .sep{color:#333}
 .funnel-wrap{display:flex;align-items:center;margin:0 0 1rem}
 .funnel-title{margin-bottom:.5rem;text-align:center;width:100%;justify-content:center}
 .funnel-bar{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;justify-content:center;padding:.1rem 0}
-.funnel-step{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;font-size:.72rem;cursor:pointer;transition:border-color .15s;text-align:center}
-.funnel-step:hover{border-color:var(--accent)}
+.funnel-step{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;font-size:.72rem;text-align:center}
 .funnel-step .num{font-weight:800;color:var(--accent2);font-size:.9rem}
 .funnel-step .lbl{color:var(--text-dim);font-size:.66rem;display:block;margin-top:.05rem}
+.funnel-step-failed{border-color:var(--orange);cursor:help}
+.funnel-step-failed .num.funnel-failed{color:var(--orange)}
 .funnel-arrow{color:var(--text-dim);font-size:.8rem}
-#revelio-s1,#revelio-s2,#revelio-s3,#revelio-poc,#confirmed-poc-panel{scroll-margin-top:4.5rem}
+#revelio-hyp-list,#revelio-poc-list,#confirmed-poc-panel{scroll-margin-top:4.5rem}
+.hypothesis-tab-panel,.poc-tab-panel{padding-bottom:2.5rem}
+.hyp-master-detail{display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:1rem;height:calc(100vh - 13rem);min-height:24rem}
+.hyp-list-pane{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card);overflow:hidden;min-height:0}
+.hyp-list-toolbar{padding:.65rem;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;gap:.5rem}
+.hyp-file-select{width:100%;background:#0a0a12;border:1px solid var(--border);color:var(--text);padding:.35rem .5rem;border-radius:4px;font-size:.76rem}
+.hyp-file-group{margin-bottom:.45rem;border:1px solid var(--border);border-radius:8px;background:#0a0a12}
+.hyp-file-group:last-child{margin-bottom:0}
+.hyp-file-group summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:.4rem;padding:.5rem .65rem;font-size:.74rem;color:var(--text-bright);user-select:none}
+.hyp-file-group summary::-webkit-details-marker{display:none}
+.hyp-file-group summary .hyp-file-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:.72rem}
+.hyp-file-group summary .hyp-file-count{font-size:.68rem;color:var(--text-dim);flex-shrink:0}
+.hyp-file-group[open] summary .chevron-right{transform:rotate(90deg)}
+.hyp-file-items{padding:.35rem .5rem .5rem}
+.hyp-file-items .hyp-list-item{margin-bottom:.35rem}
+.hyp-file-items .hyp-list-item:last-child{margin-bottom:0}
+.hyp-list-scroll{flex:1;overflow-y:auto;padding:.5rem;min-height:0;scrollbar-width:thin;scrollbar-color:rgba(106,106,128,.5) transparent}
+.hyp-list-scroll::-webkit-scrollbar{width:6px}
+.hyp-list-scroll::-webkit-scrollbar-track{background:transparent;margin:.35rem 0}
+.hyp-list-scroll::-webkit-scrollbar-thumb{background:rgba(106,106,128,.45);border-radius:999px}
+.hyp-list-scroll::-webkit-scrollbar-thumb:hover{background:rgba(106,106,128,.65)}
+.hyp-list-item{padding:.65rem .75rem;border:1px solid var(--border);border-radius:8px;margin-bottom:.45rem;cursor:pointer;background:#0a0a12;transition:border-color .15s,background .15s}
+.hyp-list-item:hover{border-color:var(--accent)}
+.hyp-list-item.active{border-color:var(--accent2);background:rgba(99,102,241,.08)}
+.hyp-list-item .hyp-list-meta{display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;margin-bottom:.25rem}
+.hyp-list-item .hyp-list-summary{font-size:.78rem;line-height:1.4;color:var(--text)}
+.hyp-detail-pane{overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card);padding:1rem 1.15rem;min-height:0;scrollbar-width:thin;scrollbar-color:rgba(106,106,128,.5) transparent}
+.hyp-detail-pane::-webkit-scrollbar{width:6px}
+.hyp-detail-pane::-webkit-scrollbar-track{background:transparent;margin:.35rem 0}
+.hyp-detail-pane::-webkit-scrollbar-thumb{background:rgba(106,106,128,.45);border-radius:999px}
+.hyp-detail-pane::-webkit-scrollbar-thumb:hover{background:rgba(106,106,128,.65)}
+.hyp-detail-pane .stage-collapse-body.open{scrollbar-width:thin;scrollbar-color:rgba(106,106,128,.5) transparent}
+.hyp-detail-pane .stage-collapse-body.open::-webkit-scrollbar{width:6px}
+.hyp-detail-pane .stage-collapse-body.open::-webkit-scrollbar-track{background:transparent;margin:.25rem 0}
+.hyp-detail-pane .stage-collapse-body.open::-webkit-scrollbar-thumb{background:rgba(106,106,128,.45);border-radius:999px}
+.hyp-detail-pane .stage-collapse-body.open::-webkit-scrollbar-thumb:hover{background:rgba(106,106,128,.65)}
+.hyp-detail-empty{display:flex;align-items:center;justify-content:center;min-height:12rem;color:var(--text-dim);font-size:.85rem;text-align:center;padding:2rem}
+.hyp-detail-header{margin-bottom:1rem}
+.hyp-detail-header .hyp-detail-summary{font-size:.92rem;line-height:1.5;color:var(--text-bright);margin:.5rem 0}
+.hyp-detail-header .hyp-detail-file{font-size:.74rem;color:var(--text-dim);font-family:var(--mono)}
+.chevron{display:inline-block;flex-shrink:0;transition:transform .15s}
+.chevron-right{width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:6px solid var(--text-dim)}
+.stage-collapse-header.expanded .chevron-right{transform:rotate(90deg)}
+.hyp-s1-link[open] > summary .chevron-right,.hyp-s1-pass[open] > summary .chevron-right{transform:rotate(90deg)}
+.hyp-s1-link{margin-top:.4rem}
+.hyp-s1-link summary{cursor:pointer;font-size:.74rem;color:var(--accent2);list-style:none;display:inline-flex;align-items:center;gap:.45rem;user-select:none}
+.hyp-s1-link summary::-webkit-details-marker{display:none}
+.hyp-s1-link summary:hover,.hyp-s1-link[open] summary:hover{color:var(--accent)}
+.hyp-s1-link[open] summary{color:var(--text-dim);margin-bottom:.65rem}
+.hyp-s1-traces{margin-top:.25rem;padding-top:.65rem;border-top:1px solid var(--border)}
+.hyp-s1-pass{margin:.45rem 0;border:1px solid var(--border);border-radius:8px;padding:.5rem .65rem;background:#0a0a12}
+.hyp-s1-pass summary{cursor:pointer;font-size:.76rem;color:var(--text);list-style:none;display:flex;align-items:center;gap:.45rem;user-select:none}
+.hyp-s1-pass summary::-webkit-details-marker{display:none}
+.hyp-s1-pass[open] summary{margin-bottom:.45rem;color:var(--text-bright)}
+.hyp-s1-outcomes{margin:.2rem 0 .45rem 1rem;padding:0;font-size:.76rem;line-height:1.45;color:var(--text-dim)}
+.hyp-s1-outcomes li{margin:.25rem 0}
+.hyp-s1-trace-link{display:inline-block;font-size:.72rem;color:var(--accent2);margin-top:.15rem;user-select:none;cursor:pointer}
+.hyp-s1-trace-link:hover{color:var(--accent)}
+.hyp-s1-trace-body{margin-top:.5rem;padding-top:.5rem;border-top:1px solid var(--border)}
+.hyp-s1-trace-body.open{max-height:30rem;overflow-y:auto;overflow-x:hidden;padding-top:0}
+.hyp-s1-trace-body:has(.step-view){padding-top:0}
+.hyp-stepper{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin:1rem 0;padding:.65rem;background:#0a0a12;border:1px solid var(--border);border-radius:8px}
+.hyp-stepper-step{display:flex;flex-direction:column;align-items:center;gap:.15rem;font-size:.66rem}
+.hyp-stepper-step .lbl{color:var(--text-dim)}
+.hyp-detail-section{margin-top:1.25rem}
+@media(max-width:900px){.hyp-master-detail{grid-template-columns:1fr;height:auto}.hyp-list-pane{max-height:16rem}}
 .callout{padding:.6rem .8rem;border-radius:var(--radius);margin:.75rem 0;font-size:.78rem;line-height:1.45}
 .callout-info{background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25)}
 .callout-warn{background:rgba(251,146,60,.08);border:1px solid rgba(251,146,60,.25);color:var(--orange)}
 .stage2-card{border-left:3px solid var(--yellow);margin-bottom:.8rem;padding:1rem 1.15rem;background:#0a0a12;border:1px solid var(--border);border-radius:var(--radius)}
 .stage2-card.not{border-left-color:var(--text-dim)}
 .stage2-card.asan{border-left-color:var(--green)}
-.stage2-dropped-details{margin:.75rem 0}
-.stage2-dropped-details summary{cursor:pointer;font-size:.74rem;color:var(--text-dim);display:block;margin-bottom:.85rem}
 .confirmed-poc-panel{margin:.5rem 0 1.25rem;width:100%}
 .confirmed-poc-wrap{height:28rem;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius);background:#0a0a12;padding:.85rem 1rem}
 .confirmed-poc-wrap .confirmed-poc-card:last-child{margin-bottom:0}
@@ -263,16 +322,24 @@ nav .breadcrumb .sep{color:#333}
 .pipeline-filter-btns button.active{border-color:var(--accent);color:var(--accent2)}
 .stage-collapse-header{cursor:pointer;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;user-select:none}
 .stage-collapse-header:hover{color:var(--text-bright)}
-.stage-collapse-header .chevron{transition:transform .15s;color:var(--text-dim);font-size:.7rem;flex-shrink:0}
-.stage-collapse-header.expanded .chevron{transform:rotate(90deg)}
+.stage-collapse-header a{color:var(--accent2);text-decoration:none;user-select:none}
+.stage-collapse-header .chevron-right{margin-top:1px}
 .stage-collapse-header .stage-card-title-wrap{flex:1 1 100%;width:100%;line-height:1.45;padding-left:1.1rem;color:var(--text)}
 .stage-collapse-body{display:none;padding-top:.8rem}
-.stage-collapse-body.open{display:block}
-.step-nav{display:flex;align-items:center;gap:.6rem;margin:.8rem 0;padding:.5rem;background:#0a0a12;border:1px solid var(--border);border-radius:8px;font-size:.78rem;flex-wrap:wrap}
+.stage-collapse-body.open{display:block;max-height:30rem;overflow-y:auto;overflow-x:hidden}
+.stage-collapse-body.open:has(.step-view){padding-top:0}
+.step-view{border:1px solid var(--border);border-radius:8px;background:#0a0a12}
+.step-nav{display:flex;align-items:center;gap:.6rem;margin:0;padding:.45rem .65rem;background:#0d0d18;border-bottom:1px solid var(--border);font-size:.78rem;flex-wrap:wrap;position:sticky;top:0;z-index:2}
+.step-content{padding:.65rem .75rem}
 .step-nav button{background:var(--bg-hover);border:1px solid var(--border);color:var(--text);padding:.25rem .6rem;border-radius:4px;cursor:pointer;font-size:.75rem}
 .step-nav button:hover{border-color:var(--accent)}
 .step-nav button:disabled{opacity:.4;cursor:default}
 .search-hit{background:rgba(250,204,21,.25);border-radius:2px}
+.action-link,.hyp-detail-pane a{user-select:none;text-decoration:none}
+.action-link:hover{color:var(--accent2)}
+.view-poc-btn{display:inline-flex;align-items:center;gap:.25rem;margin-top:.35rem;padding:.4rem .85rem;font-size:.76rem;font-weight:600;color:var(--text-bright);background:rgba(99,102,241,.14);border:1px solid var(--accent);border-radius:6px;cursor:pointer;text-decoration:none;transition:background .15s,border-color .15s,color .15s}
+.view-poc-btn:hover{background:rgba(99,102,241,.26);border-color:var(--accent2);color:var(--accent2)}
+.view-poc-btn.push-right{margin-left:auto;margin-top:0}
 
 /* ── Command block (trajectory) ──────────────────────────────── */
 .cmd-block{margin-top:.5rem;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
@@ -367,8 +434,13 @@ let revelioPipeline = [];
 let pipelinePageState = {};
 let revelioConfirmedItems = [];
 let revelioPocStages = [];
+let revelioStage2Classify = [];
+let revelioHypothesisStages = [];
+let selectedHypothesisKey = null;
+let hypothesisListFilter = { mode: 'all', file: '' };
+let selectedPocKey = null;
+let pocListFilter = { mode: 'all' };
 let confirmedPocPageState = { page: 0 };
-const PIPELINE_PAGE_SIZES = { 'pipeline-hypothesis': 6 };
 const CONFIRMED_POC_MAX = 3;
 
 // ── API ────────────────────────────────────────────────────────
@@ -453,17 +525,6 @@ function batchLabel(bt) {
   if (bt === 'KISSSorcar') return 'KISSSorcar';
   if (bt === 'Revelio') return 'Revelio';
   return bt.replace(/^batch_/, '').replace(/_/g, '-') || '—';
-}
-
-// Batch type CSS class
-function batchCls(bt) {
-  if (bt === 'batch_file_scan') return 'batch-file-scan';
-  if (bt === 'batch_claude_code') return 'batch-claude-code';
-  if (bt === 'ClaudeCode') return 'batch-claude-code';
-  if (bt === 'Codex') return 'batch-codex';
-  if (bt === 'KISSSorcar') return 'batch-kiss-sorcar';
-  if (bt === 'Revelio') return 'batch-revelio';
-  return 'batch-other';
 }
 
 // Current filter state
@@ -556,7 +617,7 @@ function renderRunsList() {
   }
 
   for (const r of filtered) {
-    const { batchType, cveId } = parseRunId(r.run_id);
+    const { cveId } = parseRunId(r.run_id);
     const statusCls = r.status === 'success' ? 'success' : r.status === 'partial' ? 'partial' : r.status === 'Submitted' || r.status === 'completed' ? 'success' : 'unknown';
     const statusLabel = r.status === 'success' ? 'All Confirmed' : r.status === 'partial' ? 'Partial' : r.status === 'unknown' ? 'Unknown' : r.status;
     const date = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
@@ -569,7 +630,6 @@ function renderRunsList() {
       <div>
         <div class="run-title">
           <span class="cve-id">${esc(cveId)}</span>
-          <span class="batch-type ${batchCls(batchType)}">${esc(batchLabel(batchType))}</span>
         </div>
         <p style="margin-top:.3rem">${esc(r.target_ref || '—')}</p>
         <div class="run-meta">
@@ -864,18 +924,25 @@ function formatAssistantContent(content, query) {
 function renderRevelioFunnel(funnel) {
   if (!funnel) return '';
   const steps = [
-    { key: 'raw', label: 'Raw', tab: 1, anchor: 'revelio-s1' },
-    { key: 'after_classify', label: 'Classified', tab: 1, anchor: 'revelio-s2' },
-    { key: 'after_dedup', label: 'Deduped', tab: 1, anchor: 'revelio-s2' },
-    { key: 'after_filter', label: 'Filtered', tab: 1, anchor: 'revelio-s3' },
-    { key: 'poc_attempted', label: 'PoC tried', tab: 2, anchor: 'revelio-poc' },
-    { key: 'confirmed', label: 'Confirmed', tab: 0, anchor: 'confirmed-poc-panel' },
+    { key: 'raw', label: 'Raw' },
+    { key: 'after_dedup', label: 'Classify + Dedup' },
+    { key: 'after_filter', label: 'Filtered' },
+    { key: 'poc_attempted', label: 'PoC tried' },
+    { key: 'confirmed', label: 'Confirmed' },
   ];
   let bar = '';
   steps.forEach((st, i) => {
     if (i) bar += '<span class="funnel-arrow">→</span>';
-    bar += `<div class="funnel-step" onclick="revelioGoTo('${st.anchor}',${st.tab})">`;
-    bar += `<span class="num">${funnel[st.key] ?? '—'}</span><span class="lbl">${esc(st.label)}</span></div>`;
+    // A "Filtered: 0" caused by every filter-stage call erroring out (e.g. an
+    // upstream API auth failure) looks identical to a legitimate "everything
+    // was reviewed and rejected" outcome unless flagged explicitly.
+    const failed = st.key === 'after_filter' && funnel.filter_stage_failed;
+    const title = failed ? ' title="Filter stage never completed — every call errored out (e.g. an API auth failure). This is not a real count."' : '';
+    bar += `<div class="funnel-step${failed ? ' funnel-step-failed' : ''}"${title}>`;
+    bar += failed
+      ? `<span class="num funnel-failed">⚠</span>`
+      : `<span class="num">${funnel[st.key] ?? '—'}</span>`;
+    bar += `<span class="lbl">${esc(st.label)}</span></div>`;
   });
   return `<div class="section-title funnel-title">Hypothesis Funnel</div><div class="funnel-wrap"><div class="funnel-bar">${bar}</div></div>`;
 }
@@ -920,17 +987,82 @@ function prettifyRevelioLog(msg) {
     .replace(/Scan-filter pipeline/gi, 'Revelio pipeline');
 }
 
-function renderRevelioTimeline(events) {
-  if (!events || !events.length) return '';
-  let html = '<div class="section-title">Timeline</div><div class="timeline">';
+function buildRevelioTimelineMilestones(events, funnel) {
+  funnel = funnel || {};
+  events = events || [];
+  const byType = {};
   for (const ev of events) {
-    const raw = ev.event || '';
-    const cls = raw === 'run_start' || raw === 'scan_filter_start' ? 'start'
-      : raw.includes('success') || raw === 'scan_filter_end' ? 'success' : 'attempt';
-    const ts = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : '';
-    const payload = ev.payload ? Object.entries(ev.payload).map(([k, v]) => `${k}: ${v}`).join(', ') : '';
-    html += `<div class="ev ${cls}"><span class="ts">${ts}</span><strong>${esc(revelioEventLabel(raw))}</strong>`;
-    if (payload) html += ` <span style="color:var(--text-dim);margin-left:.5rem">${esc(payload)}</span>`;
+    const k = ev.event || '';
+    (byType[k] ||= []).push(ev);
+  }
+  const first = (type) => byType[type]?.[0];
+  const last = (type) => {
+    const a = byType[type];
+    return a?.[a.length - 1];
+  };
+  const count = (type) => (byType[type] || []).length;
+
+  const milestones = [];
+  const add = (label, detail, ev, cls) => {
+    milestones.push({ label, detail: detail || '', timestamp: ev?.timestamp || '', cls: cls || 'attempt' });
+  };
+
+  if (first('run_start')) add('Run started', '', first('run_start'), 'start');
+  if (first('scan_filter_start')) add('Pipeline started', '', first('scan_filter_start'), 'start');
+
+  const fileCount = count('file_hypothesis_completed');
+  if (fileCount) {
+    const lastFile = last('file_hypothesis_completed');
+    const progress = lastFile?.payload?.progress;
+    add(`Files scanned (${fileCount})`, progress ? `progress: ${progress}` : '', lastFile, 'attempt');
+  }
+
+  const filterCount = count('filter_agent_completed');
+  if (filterCount) add(`Stage 3 filtered (${filterCount})`, '', last('filter_agent_completed'), 'attempt');
+
+  const endEv = first('scan_filter_end');
+  if (endEv) {
+    const p = endEv.payload || {};
+    const parts = [];
+    if (p.total_hypotheses != null) parts.push(`total_hypotheses: ${p.total_hypotheses}`);
+    if (p.files_scanned != null) parts.push(`files_scanned: ${p.files_scanned}`);
+    if (p.total_cost != null) parts.push(`total_cost: $${Number(p.total_cost).toFixed(2)}`);
+    add('Pipeline finished', parts.join(', '), endEv, 'success');
+  }
+
+  if (first('no_hypotheses')) add('No hypotheses survived', '', first('no_hypotheses'), 'attempt');
+
+  const pocCount = count('poc_start');
+  if (pocCount) {
+    const confirmed = funnel.confirmed ?? count('run_success');
+    add(`PoC tried (${pocCount})`, `${confirmed} confirmed`, first('poc_start'), 'attempt');
+  }
+
+  if (first('run_success_all')) {
+    const p = first('run_success_all').payload || {};
+    add('All PoC confirmed', p.count != null ? `count: ${p.count}` : '', first('run_success_all'), 'success');
+  } else {
+    const successCount = count('run_success');
+    if (successCount === 1) {
+      const hid = first('run_success')?.payload?.hypothesis_id;
+      add('PoC confirmed', hid ? String(hid) : '', first('run_success'), 'success');
+    } else if (successCount > 1) {
+      add(`PoC confirmed (${successCount})`, '', last('run_success'), 'success');
+    }
+  }
+  if (first('run_failure')) add('Run failed', '', first('run_failure'), 'attempt');
+
+  return milestones;
+}
+
+function renderRevelioTimeline(events, funnel) {
+  const milestones = buildRevelioTimelineMilestones(events, funnel);
+  if (!milestones.length) return '';
+  let html = '<div class="section-title">Timeline</div><div class="timeline">';
+  for (const m of milestones) {
+    const ts = m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : '';
+    html += `<div class="ev ${m.cls}"><span class="ts">${ts}</span><strong>${esc(m.label)}</strong>`;
+    if (m.detail) html += ` <span style="color:var(--text-dim);margin-left:.5rem">${esc(m.detail)}</span>`;
     html += '</div>';
   }
   return html + '</div>';
@@ -953,6 +1085,10 @@ function pipelineFinalBadge(row) {
   return '<span class="pipeline-badge skipped">—</span>';
 }
 
+function pipelineHid(row) {
+  return row.global_hid || row.hid || '';
+}
+
 function pipelineDropReason(row) {
   if (row.dropped_at === 'classify') return row.classify && row.classify.reason;
   if (row.dropped_at === 'dedup') return row.dedup && row.dedup.reason;
@@ -965,7 +1101,7 @@ function pipelineRowMatchesSearch(row, query) {
   const q = query.toLowerCase().trim();
   if (!q) return true;
   const hay = [
-    row.summary, row.hid, row.file, pipelineDropReason(row),
+    row.summary, pipelineHid(row), row.hid, row.file, pipelineDropReason(row),
     row.classify && row.classify.reason,
     row.dedup && row.dedup.reason,
     row.filter && row.filter.reason,
@@ -973,14 +1109,623 @@ function pipelineRowMatchesSearch(row, query) {
   return hay.includes(q);
 }
 
+function isHypothesisConfirmed(row) {
+  return !!(row.final && row.final.confirmed);
+}
+
+// Neither dropped at any gate nor confirmed survived — e.g. the filter stage
+// hit an environment error (couldn't access the container to verify) and
+// never reached a real verdict either way.
+function isHypothesisUnresolved(row) {
+  return !row.dropped_at && !(row.final && row.final.survived);
+}
+
+function hypothesisFiles(pipeline) {
+  const files = [];
+  const seen = new Set();
+  for (const r of pipeline || []) {
+    const f = r.file || 'unknown';
+    if (!seen.has(f)) {
+      seen.add(f);
+      files.push(f);
+    }
+  }
+  return files.sort();
+}
+
+function fileBaseName(file) {
+  const parts = (file || '').split('/');
+  return parts[parts.length - 1] || file || 'unknown';
+}
+
+function fileHypothesisCounts(pipeline) {
+  const counts = new Map();
+  for (const r of pipeline || []) {
+    const f = r.file || 'unknown';
+    counts.set(f, (counts.get(f) || 0) + 1);
+  }
+  return counts;
+}
+
+function defaultHypothesisListFilter(pipeline) {
+  pipeline = pipeline || [];
+  if (pipeline.filter(isHypothesisConfirmed).length) return { mode: 'confirmed', file: '' };
+  if (pipeline.filter(r => r.final && r.final.survived).length) return { mode: 'survived', file: '' };
+  return { mode: 'all', file: '' };
+}
+
+function hypothesisScopeRows() {
+  let rows = revelioPipeline || [];
+  if (hypothesisListFilter.file) {
+    rows = rows.filter(r => (r.file || 'unknown') === hypothesisListFilter.file);
+  }
+  return rows;
+}
+
+function defaultHypothesisModeForRows(rows) {
+  rows = rows || [];
+  if (rows.filter(isHypothesisConfirmed).length) return 'confirmed';
+  if (rows.filter(r => r.final && r.final.survived).length) return 'survived';
+  if (rows.filter(r => r.dropped_at).length) return 'dropped';
+  return 'survived';
+}
+
+function renderHypothesisFilterButtons() {
+  const scope = hypothesisScopeRows();
+  const dropped = scope.filter(r => r.dropped_at).length;
+  const survived = scope.filter(r => r.final && r.final.survived).length;
+  const confirmed = scope.filter(isHypothesisConfirmed).length;
+  const unresolved = scope.filter(isHypothesisUnresolved).length;
+  const mode = hypothesisListFilter.mode;
+  let html = '';
+  if (!hypothesisListFilter.file) {
+    html += `<button type="button" class="${mode === 'all' ? 'active' : ''}" onclick="revelioHypothesisFilter('all',this)">All (${scope.length})</button>`;
+  }
+  html += `<button type="button" class="${mode === 'dropped' ? 'active' : ''}" onclick="revelioHypothesisFilter('dropped',this)">Dropped (${dropped})</button>`;
+  html += `<button type="button" class="${mode === 'survived' ? 'active' : ''}" onclick="revelioHypothesisFilter('survived',this)">Survived (${survived})</button>`;
+  if (unresolved) {
+    html += `<button type="button" class="${mode === 'unresolved' ? 'active' : ''}" onclick="revelioHypothesisFilter('unresolved',this)" title="Filter stage hit an environment error and never reached a real verdict for these">Unresolved (${unresolved})</button>`;
+  }
+  html += `<button type="button" class="${mode === 'confirmed' ? 'active' : ''}" onclick="revelioHypothesisFilter('confirmed',this)">Confirmed (${confirmed})</button>`;
+  return html;
+}
+
+function refreshHypothesisFilterBar() {
+  const el = document.getElementById('hyp-list-filters');
+  if (el) el.innerHTML = renderHypothesisFilterButtons();
+}
+
+function groupRowsByFile(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const f = r.file || 'unknown';
+    if (!map.has(f)) map.set(f, []);
+    map.get(f).push(r);
+  }
+  return map;
+}
+
+function getFilteredHypothesisRows() {
+  let rows = revelioPipeline || [];
+  if (hypothesisListFilter.mode === 'dropped') rows = rows.filter(r => r.dropped_at);
+  else if (hypothesisListFilter.mode === 'survived') rows = rows.filter(r => r.final && r.final.survived);
+  else if (hypothesisListFilter.mode === 'unresolved') rows = rows.filter(isHypothesisUnresolved);
+  else if (hypothesisListFilter.mode === 'confirmed') rows = rows.filter(isHypothesisConfirmed);
+  if (hypothesisListFilter.file) rows = rows.filter(r => (r.file || 'unknown') === hypothesisListFilter.file);
+  if (revelioSearchQuery) rows = rows.filter(r => pipelineRowMatchesSearch(r, revelioSearchQuery));
+  return rows;
+}
+
+function hypothesisKey(row) {
+  return `${row.file || ''}::${row.index}`;
+}
+
+function findPipelineRow(key) {
+  return (revelioPipeline || []).find(r => hypothesisKey(r) === key) || null;
+}
+
+function findClassification(file, index) {
+  for (const cf of revelioStage2Classify || []) {
+    if (cf.file !== file) continue;
+    return (cf.classifications || []).find(c => c.index === index) || null;
+  }
+  return null;
+}
+
+function findStage3Trace(hid) {
+  if (!hid) return null;
+  return (revelioHypothesisStages || []).find(s => s.stage === 'stage3.filter' && s.hid === hid) || null;
+}
+
+function findStage1ForFile(file) {
+  if (!file) return [];
+  return (revelioHypothesisStages || []).filter(s =>
+    (s.stage || '').startsWith('stage1') && (s.label || '').includes(`(${file})`),
+  );
+}
+
+function renderHypothesisTabShell(pipeline) {
+  pipeline = pipeline || [];
+  const files = hypothesisFiles(pipeline);
+  const fileCounts = fileHypothesisCounts(pipeline);
+  let html = '<div class="hyp-master-detail" id="revelio-hyp-tab">';
+  html += '<aside class="hyp-list-pane" id="revelio-hyp-list">';
+  html += '<div class="hyp-list-toolbar">';
+  if (files.length > 1) {
+    html += `<select class="hyp-file-select" id="hyp-file-filter" onchange="revelioHypothesisFileFilter(this.value)">`;
+    html += `<option value=""${hypothesisListFilter.file ? '' : ' selected'}>All files (${files.length})</option>`;
+    for (const f of files) {
+      html += `<option value="${esc(f)}"${hypothesisListFilter.file === f ? ' selected' : ''}>${esc(fileBaseName(f))} (${fileCounts.get(f) || 0})</option>`;
+    }
+    html += '</select>';
+  }
+  html += '<div class="pipeline-filter-btns" id="hyp-list-filters">';
+  html += renderHypothesisFilterButtons();
+  html += '</div></div>';
+  html += '<div class="hyp-list-scroll" id="hyp-list-items"></div>';
+  html += '</aside>';
+  html += '<main class="hyp-detail-pane" id="revelio-hyp-detail"></main>';
+  html += '</div>';
+  return html;
+}
+
+function renderHypothesisListItem(row) {
+  const key = hypothesisKey(row);
+  const active = key === selectedHypothesisKey ? ' active' : '';
+  const { lead } = splitFirstSentence(row.summary || '');
+  let item = `<div class="hyp-list-item${active}" data-hyp-key="${esc(key)}" onclick="selectHypothesis('${jsStr(key)}')">`;
+  item += '<div class="hyp-list-meta">';
+  item += `<span style="font-size:.72rem;color:var(--text-dim)">#${row.index != null ? row.index + 1 : '—'}</span>`;
+  if (pipelineHid(row)) item += `<span class="badge badge-cyan">${esc(pipelineHid(row))}</span>`;
+  item += pipelineFinalBadge(row);
+  item += '</div>';
+  item += `<div class="hyp-list-summary">${esc(lead || row.summary || '—')}</div>`;
+  return item + '</div>';
+}
+
+function renderHypothesisListItems(rows) {
+  if (!rows.length) return '<div class="hyp-detail-empty" style="min-height:8rem"><p>No hypotheses match your filters.</p></div>';
+  if (hypothesisListFilter.file) return rows.map(renderHypothesisListItem).join('');
+  const byFile = groupRowsByFile(rows);
+  const files = [...byFile.keys()].sort();
+  let html = '';
+  files.forEach((file, fi) => {
+    const fileRows = byFile.get(file) || [];
+    const open = files.length === 1 || fileRows.some(r => hypothesisKey(r) === selectedHypothesisKey) || (!selectedHypothesisKey && fi === 0);
+    html += `<details class="hyp-file-group"${open ? ' open' : ''}>`;
+    html += `<summary><span class="chevron chevron-right"></span><span class="hyp-file-name" title="${esc(file)}">${esc(fileBaseName(file))}</span>`;
+    html += `<span class="hyp-file-count">${fileRows.length}</span></summary>`;
+    html += `<div class="hyp-file-items">${fileRows.map(renderHypothesisListItem).join('')}</div></details>`;
+  });
+  return html;
+}
+
+function refreshHypothesisList() {
+  const list = document.getElementById('hyp-list-items');
+  if (!list) return;
+  const rows = getFilteredHypothesisRows();
+  list.innerHTML = renderHypothesisListItems(rows);
+}
+
+function refreshHypothesisTab() {
+  refreshHypothesisFilterBar();
+  refreshHypothesisList();
+  const rows = getFilteredHypothesisRows();
+  if (selectedHypothesisKey && rows.some(r => hypothesisKey(r) === selectedHypothesisKey)) {
+    selectHypothesis(selectedHypothesisKey, false);
+  } else if (rows.length) {
+    selectHypothesis(hypothesisKey(rows[0]), false);
+  } else {
+    selectedHypothesisKey = null;
+    const detail = document.getElementById('revelio-hyp-detail');
+    if (detail) detail.innerHTML = '<div class="hyp-detail-empty"><p>No hypotheses match your filters.</p></div>';
+  }
+}
+
+function revelioHypothesisFilter(mode, btn) {
+  hypothesisListFilter = { ...hypothesisListFilter, mode };
+  refreshHypothesisTab();
+}
+
+function revelioHypothesisFileFilter(file) {
+  const next = { ...hypothesisListFilter, file: file || '' };
+  if (file && next.mode === 'all') {
+    next.mode = defaultHypothesisModeForRows(
+      (revelioPipeline || []).filter(r => (r.file || 'unknown') === file),
+    );
+  }
+  hypothesisListFilter = next;
+  refreshHypothesisTab();
+}
+
+function selectHypothesis(key, scrollList) {
+  if (scrollList == null) scrollList = true;
+  selectedHypothesisKey = key;
+  document.querySelectorAll('.hyp-list-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.hypKey === key);
+  });
+  const row = findPipelineRow(key);
+  const detail = document.getElementById('revelio-hyp-detail');
+  if (!detail) return;
+  if (!row) {
+    detail.innerHTML = '<div class="hyp-detail-empty"><p>Select a hypothesis to view its pipeline.</p></div>';
+    return;
+  }
+  detail.innerHTML = renderHypothesisDetail(row);
+  if (scrollList) {
+    const active = document.querySelector('.hyp-list-item.active');
+    if (active) active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
+function renderHypothesisStepper(row) {
+  const steps = [
+    { label: 'Raw', badge: '<span class="pipeline-badge kept">IN</span>' },
+    { label: 'Classify', badge: pipelineStatusBadge(row.classify) },
+    { label: 'Dedup', badge: pipelineStatusBadge(row.dedup) },
+    { label: 'Filter', badge: pipelineStatusBadge(row.filter) },
+    { label: 'PoC', badge: renderPocStatusBadge(row.poc) },
+    { label: 'Final', badge: pipelineFinalBadge(row) },
+  ];
+  let html = '<div class="hyp-stepper">';
+  steps.forEach((st, i) => {
+    if (i) html += '<span class="hyp-stepper-arrow">→</span>';
+    html += `<div class="hyp-stepper-step">${st.badge}<span class="lbl">${esc(st.label)}</span></div>`;
+  });
+  return html + '</div>';
+}
+
+function renderPocStatusBadge(poc) {
+  if (!poc || poc.status === 'skipped') return '<span class="pipeline-badge skipped">—</span>';
+  if (poc.status === 'confirmed') return '<span class="pipeline-badge survived">CONFIRMED</span>';
+  if (poc.status === 'attempted') return '<span class="pipeline-badge kept">TRIED</span>';
+  return '<span class="pipeline-badge skipped">—</span>';
+}
+
+function stage1FocusNum(s) {
+  const info = s.info || {};
+  if (info.focus_index != null) return info.focus_index + 1;
+  const m = (s.label || '').match(/focused\s+#(\d+)/i);
+  return m ? Number(m[1]) + 1 : null;
+}
+
+function stage1PassLabel(s) {
+  const info = s.info || {};
+  const generated = info.generated || [];
+  const n = generated.length || info.hypothesis_count || 0;
+  const unit = n === 1 ? 'hypothesis' : 'hypotheses';
+  if (s.stage === 'stage1.wholefile') return `Whole-file · ${n} ${unit}`;
+  if (s.stage === 'stage1.focused') {
+    const num = stage1FocusNum(s);
+    return num != null ? `Focused #${num} · ${n} ${unit}` : `Focused · ${n} ${unit}`;
+  }
+  if (s.stage === 'stage1.function') return `Function \`${info.function || '?'}\` · ${n} ${unit}`;
+  return `${cleanStageLabel(s.label || '—')} · ${n} ${unit}`;
+}
+
+function stage1TotalGenerated(stages) {
+  return (stages || []).reduce((n, s) => n + ((s.info || {}).generated || []).length || (s.info || {}).hypothesis_count || 0, 0);
+}
+
+function renderStage1GenerationSummary(stages, idPrefix) {
+  return (stages || []).map((s, si) => {
+    const generated = (s.info || {}).generated || [];
+    const idKey = `${idPrefix}-${si}`;
+    const stageKey = s.stage_key || idKey;
+    let html = '<details class="hyp-s1-pass">';
+    html += `<summary><span class="chevron chevron-right"></span>${esc(stage1PassLabel(s))}</summary>`;
+    if (generated.length) {
+      html += '<ul class="hyp-s1-outcomes">';
+      generated.forEach(g => { html += `<li>${esc(g)}</li>`; });
+      html += '</ul>';
+    } else {
+      html += '<div style="font-size:.74rem;color:var(--text-dim);margin:.2rem 0 .35rem">No hypothesis summaries recorded.</div>';
+    }
+    html += `<a href="#" class="hyp-s1-trace-link" id="${idKey}-link" onclick="toggleStage1FullTrace('${jsStr(stageKey)}','${idKey}-body','${idKey}-link');return false">Full agent trace →</a>`;
+    html += `<div class="stage-collapse-body hyp-s1-trace-body" id="${idKey}-body" data-stage-key="${esc(stageKey)}" style="display:none"></div>`;
+    return html + '</details>';
+  }).join('');
+}
+
+async function toggleStage1FullTrace(stageKey, bodyId, linkId) {
+  const body = document.getElementById(bodyId);
+  const link = document.getElementById(linkId);
+  if (!body) return;
+  const open = body.style.display === 'none' || !body.classList.contains('open');
+  if (!open) {
+    body.style.display = 'none';
+    body.classList.remove('open');
+    if (link) link.textContent = 'Full agent trace →';
+    return;
+  }
+  body.style.display = 'block';
+  body.classList.add('open');
+  if (link) link.textContent = 'Hide agent trace ↑';
+  if (!revelioStageCache[stageKey]) {
+    body.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading trajectory...</div>';
+    try {
+      const data = await api(`/api/runs/${encodeURIComponent(currentRunId)}/stage/${encodeURIComponent(stageKey)}`);
+      revelioStageCache[stageKey] = data.messages || [];
+      revelioStepState[stageKey] = 0;
+    } catch (e) {
+      body.innerHTML = `<div class="empty"><p>Failed to load: ${esc(e.message)}</p></div>`;
+      return;
+    }
+  }
+  renderRevelioStageBody(stageKey, bodyId);
+}
+
+function renderHypothesisDetail(row) {
+  const c = findClassification(row.file, row.index) || {};
+  const s3 = findStage3Trace(row.hid);
+  const s1Stages = findStage1ForFile(row.file);
+  const keySlug = hypothesisKey(row).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const verdict = c.verdict_label || (row.classify && row.classify.verdict_label) || '?';
+  let html = '<div class="hyp-detail-header">';
+  html += '<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.35rem">';
+  html += `<span style="font-size:.74rem;color:var(--text-dim)">#${row.index != null ? row.index + 1 : '—'}</span>`;
+  if (pipelineHid(row)) html += `<span class="badge badge-cyan">${esc(pipelineHid(row))}</span>`;
+  html += pipelineFinalBadge(row);
+  html += '</div>';
+  html += `<div class="hyp-detail-summary">${esc(row.summary || '—')}</div>`;
+  if (row.file) html += `<div class="hyp-detail-file">${esc(row.file)}</div>`;
+  if (s1Stages.length) {
+    const total = stage1TotalGenerated(s1Stages);
+    html += `<details class="hyp-s1-link"><summary><span class="chevron chevron-right"></span>View generation (${total} hypotheses)</summary>`;
+    html += `<div class="hyp-s1-traces">${renderStage1GenerationSummary(s1Stages, `hyp-s1-${keySlug}`)}</div>`;
+    html += '</details>';
+  }
+  html += '</div>';
+
+  html += renderHypothesisStepper(row);
+
+  html += '<div class="hyp-detail-section">';
+  html += '<div class="section-title">Stage 2 · Classify &amp; Dedup</div>';
+  html += '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.5rem">';
+  html += `<span class="badge ${verdict === 'NOT' ? 'badge-orange' : 'badge-green'}">${esc(verdict)}</span>`;
+  if (c.severity) html += `<span class="badge badge-purple">${esc(c.severity)}</span>`;
+  html += pipelineStatusBadge(row.classify);
+  html += pipelineStatusBadge(row.dedup);
+  html += '</div>';
+  const classifyReason = c.reason || (row.classify && row.classify.reason) || '';
+  if (classifyReason) html += `<div style="font-size:.78rem;color:var(--text-dim);line-height:1.45;margin-bottom:.35rem">${esc(classifyReason)}</div>`;
+  if (row.dedup && row.dedup.reason) html += `<div style="font-size:.78rem;color:var(--text-dim);line-height:1.45">${esc(row.dedup.reason)}</div>`;
+  else if (row.dedup && row.dedup.status === 'skipped') html += '<div style="font-size:.76rem;color:var(--text-dim)">Dedup skipped — dropped at classify.</div>';
+  else if (row.dedup && row.dedup.status === 'kept') html += '<div style="font-size:.76rem;color:var(--text-dim)">Kept through dedup.</div>';
+  html += '</div>';
+
+  html += '<div class="hyp-detail-section">';
+  html += '<div class="section-title">Stage 3 · Filter</div>';
+  if (row.filter && row.filter.status !== 'skipped') {
+    html += `<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.35rem">${pipelineStatusBadge(row.filter)}</div>`;
+    if (row.filter.reason) html += `<div style="font-size:.78rem;color:var(--text-dim);line-height:1.45;margin-bottom:.5rem">${esc(row.filter.reason)}</div>`;
+    if (s3) html += renderRevelioCollapsibleStageList([s3], `hyp-s3-${keySlug}`, revelioPocStages, { showPocLink: true });
+  } else {
+    html += '<div class="callout callout-warn" style="margin-top:0">Did not reach filter stage.</div>';
+  }
+  html += '</div>';
+
+  html += '<div class="hyp-detail-section">';
+  html += '<div class="section-title">Outcome</div>';
+  html += `<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.35rem">${pipelineFinalBadge(row)} ${renderPocStatusBadge(row.poc)}</div>`;
+  if (pipelineHid(row)) html += revelioPocLink(pipelineHid(row), revelioPocStages);
+  if (row.dropped_at) html += `<div style="font-size:.76rem;color:var(--text-dim);margin-top:.35rem">Dropped at ${esc(row.dropped_at)}.</div>`;
+  html += '</div>';
+
+  return html;
+}
+
+function getPocBuilderStages() {
+  return (revelioPocStages || []).filter(s => (s.agent || '').includes('PoCBuilder'));
+}
+
+function findPocStage(stageKey) {
+  return getPocBuilderStages().find(s => s.stage_key === stageKey) || null;
+}
+
+function findPocStageByHid(hid) {
+  return getPocBuilderStages().find(s => s.hid === hid) || null;
+}
+
+function isPocConfirmed(stage) {
+  if (!stage) return false;
+  const v = stage.validation || {};
+  const r = stage.report || {};
+  if (v.crash_detected || r.crash_detected) return true;
+  const row = (revelioPipeline || []).find(x => pipelineHid(x) === stage.hid);
+  return !!(row && row.final && row.final.confirmed);
+}
+
+function pocStageSummary(stage) {
+  const h = stage.hypothesis || {};
+  const row = (revelioPipeline || []).find(r => pipelineHid(r) === stage.hid);
+  return row?.summary || h.title || h.description || cleanStageLabel(stage.label || stage.agent || '') || '—';
+}
+
+function pocStageMatchesSearch(stage, query) {
+  if (!query) return true;
+  const h = stage.hypothesis || {};
+  const hay = [
+    stage.hid, stage.label, stage.agent, h.title, h.description, h.file_path, h.function,
+    pocStageSummary(stage),
+  ].join(' ').toLowerCase();
+  return hay.includes(query.toLowerCase());
+}
+
+function defaultPocListFilter(stages) {
+  if ((stages || []).some(isPocConfirmed)) return { mode: 'confirmed' };
+  return { mode: 'all' };
+}
+
+function getFilteredPocStages() {
+  let stages = getPocBuilderStages();
+  if (pocListFilter.mode === 'failed') stages = stages.filter(s => !isPocConfirmed(s));
+  else if (pocListFilter.mode === 'confirmed') stages = stages.filter(isPocConfirmed);
+  if (revelioSearchQuery) stages = stages.filter(s => pocStageMatchesSearch(s, revelioSearchQuery));
+  return stages;
+}
+
+function renderPocOutcomeBadge(stage) {
+  if (isPocConfirmed(stage)) return '<span class="pipeline-badge survived">CONFIRMED</span>';
+  return '<span class="pipeline-badge dropped">FAILED</span>';
+}
+
+function renderPocTabShell(stages) {
+  stages = stages || [];
+  const failed = stages.filter(s => !isPocConfirmed(s)).length;
+  const confirmed = stages.filter(isPocConfirmed).length;
+  let html = '<div class="hyp-master-detail" id="revelio-poc-tab">';
+  html += '<aside class="hyp-list-pane" id="revelio-poc-list">';
+  html += '<div class="hyp-list-toolbar">';
+  html += '<div class="pipeline-filter-btns" id="poc-list-filters">';
+  html += `<button type="button" class="${pocListFilter.mode === 'all' ? 'active' : ''}" onclick="revelioPocFilter('all',this)">All (${stages.length})</button>`;
+  html += `<button type="button" class="${pocListFilter.mode === 'failed' ? 'active' : ''}" onclick="revelioPocFilter('failed',this)">Failed (${failed})</button>`;
+  html += `<button type="button" class="${pocListFilter.mode === 'confirmed' ? 'active' : ''}" onclick="revelioPocFilter('confirmed',this)">Confirmed (${confirmed})</button>`;
+  html += '</div></div>';
+  html += '<div class="hyp-list-scroll" id="poc-list-items"></div>';
+  html += '</aside>';
+  html += '<main class="hyp-detail-pane" id="revelio-poc-detail"></main>';
+  html += '</div>';
+  return html;
+}
+
+function renderPocListItem(stage) {
+  const key = stage.stage_key;
+  const active = key === selectedPocKey ? ' active' : '';
+  const { lead } = splitFirstSentence(pocStageSummary(stage));
+  let item = `<div class="hyp-list-item${active}" data-poc-key="${esc(key)}" onclick="selectPoc('${jsStr(key)}')">`;
+  item += '<div class="hyp-list-meta">';
+  if (stage.hid) item += `<span class="badge badge-cyan">${esc(stage.hid)}</span>`;
+  item += renderPocOutcomeBadge(stage);
+  item += '</div>';
+  item += `<div class="hyp-list-summary">${esc(lead || pocStageSummary(stage))}</div>`;
+  return item + '</div>';
+}
+
+function refreshPocList() {
+  const list = document.getElementById('poc-list-items');
+  if (!list) return;
+  const stages = getFilteredPocStages();
+  list.innerHTML = stages.length
+    ? stages.map(renderPocListItem).join('')
+    : '<div class="hyp-detail-empty" style="min-height:8rem"><p>No PoCs match your filters.</p></div>';
+}
+
+function updatePocFilterButtons() {
+  const btns = document.getElementById('poc-list-filters');
+  if (!btns) return;
+  btns.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  const map = { all: 0, failed: 1, confirmed: 2 };
+  const btn = btns.querySelectorAll('button')[map[pocListFilter.mode] ?? 0];
+  if (btn) btn.classList.add('active');
+}
+
+function refreshPocTab() {
+  updatePocFilterButtons();
+  refreshPocList();
+  const stages = getFilteredPocStages();
+  if (selectedPocKey && stages.some(s => s.stage_key === selectedPocKey)) {
+    selectPoc(selectedPocKey, false);
+  } else if (stages.length) {
+    selectPoc(stages[0].stage_key, false);
+  } else {
+    selectedPocKey = null;
+    const detail = document.getElementById('revelio-poc-detail');
+    if (detail) detail.innerHTML = '<div class="hyp-detail-empty"><p>No PoCs match your filters.</p></div>';
+  }
+}
+
+function revelioPocFilter(mode, btn) {
+  pocListFilter = { mode };
+  const btns = document.getElementById('poc-list-filters');
+  if (btns) btns.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  refreshPocTab();
+}
+
+function renderPocDetail(stage) {
+  const keySlug = stage.stage_key.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const bodyId = `poc-trace-${keySlug}-body`;
+  const h = stage.hypothesis || {};
+  let html = '<div class="hyp-detail-header">';
+  html += '<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.35rem">';
+  if (stage.hid) html += `<span class="badge badge-cyan">${esc(stage.hid)}</span>`;
+  html += renderPocOutcomeBadge(stage);
+  html += '</div>';
+  html += `<div class="hyp-detail-summary">${esc(pocStageSummary(stage))}</div>`;
+  if (h.file_path) html += `<div class="hyp-detail-file">${esc(h.file_path)}</div>`;
+  html += '</div>';
+
+  if (stage.hypothesis || stage.poc || stage.validation || stage.report) {
+    html += '<div class="hyp-detail-section">';
+    html += '<div class="section-title">Artifacts</div>';
+    html += renderRevelioPocArtifacts(stage, `poc-detail-${keySlug}`);
+    html += '</div>';
+  }
+
+  html += '<div class="hyp-detail-section">';
+  html += '<div class="section-title">PoC Builder trace</div>';
+  html += `<div class="stage-collapse-body open" id="${bodyId}" data-stage-key="${esc(stage.stage_key)}" data-body-id="${esc(bodyId)}"></div>`;
+  html += '</div>';
+  return html;
+}
+
+async function initPocTraceBody(stageKey, bodyId) {
+  const body = document.getElementById(bodyId);
+  if (!body) return;
+  if (!revelioStageCache[stageKey]) {
+    body.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading trajectory...</div>';
+    try {
+      const data = await api(`/api/runs/${encodeURIComponent(currentRunId)}/stage/${encodeURIComponent(stageKey)}`);
+      revelioStageCache[stageKey] = data.messages || [];
+      revelioStepState[stageKey] = 0;
+    } catch (e) {
+      body.innerHTML = `<div class="empty"><p>Failed to load: ${esc(e.message)}</p></div>`;
+      return;
+    }
+  }
+  renderRevelioStageBody(stageKey, bodyId);
+}
+
+function selectPoc(stageKey, scrollList) {
+  if (scrollList == null) scrollList = true;
+  selectedPocKey = stageKey;
+  document.querySelectorAll('.hyp-list-item[data-poc-key]').forEach(el => {
+    el.classList.toggle('active', el.dataset.pocKey === stageKey);
+  });
+  const stage = findPocStage(stageKey);
+  const detail = document.getElementById('revelio-poc-detail');
+  if (!detail) return;
+  if (!stage) {
+    detail.innerHTML = '<div class="hyp-detail-empty"><p>Select a PoC to view details.</p></div>';
+    return;
+  }
+  detail.innerHTML = renderPocDetail(stage);
+  const bodyId = `poc-trace-${stageKey.replace(/[^a-zA-Z0-9_-]/g, '_')}-body`;
+  initPocTraceBody(stageKey, bodyId);
+  if (scrollList) {
+    document.querySelectorAll('.hyp-list-item[data-poc-key]').forEach(el => {
+      if (el.dataset.pocKey === stageKey) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  }
+}
+
+function revelioGoToPoc(hid) {
+  const stage = findPocStageByHid(hid);
+  if (!stage) return;
+  switchTab(2, 'detail');
+  setTimeout(() => {
+    pocListFilter = { mode: 'all' };
+    refreshPocTab();
+    selectPoc(stage.stage_key, true);
+  }, 50);
+}
+
 function getFilteredPipelineRows(tableId) {
   const state = pipelinePageState[tableId] || { page: 0, mode: 'all' };
   let rows = revelioPipeline || [];
   if (state.mode === 'dropped') rows = rows.filter(r => r.dropped_at);
   else if (state.mode === 'survived') rows = rows.filter(r => r.final && r.final.survived);
-  if (tableId === 'pipeline-hypothesis' && revelioSearchQuery) {
-    rows = rows.filter(r => pipelineRowMatchesSearch(r, revelioSearchQuery));
-  }
   return rows;
 }
 
@@ -1060,11 +1805,12 @@ function updateRevelioPipelineTableBody(tableId) {
   const state = pipelinePageState[tableId] || { page: 0, mode: 'all' };
   const filtered = getFilteredPipelineRows(tableId);
   const compact = table.classList.contains('compact');
-  const cacheKey = pipelineCacheKey(state.mode, filtered, tableId === 'pipeline-hypothesis' ? revelioSearchQuery : '');
+  const cacheKey = pipelineCacheKey(state.mode, filtered, '');
   const wrap = table.closest('.pipeline-table-wrap');
-  if (!state.packedPages || state.packedKey !== cacheKey) {
+  if (!state.packedPages || state.packedKey !== cacheKey || state.packedHeight !== (wrap ? wrap.clientHeight : 0)) {
     state.packedPages = wrap ? packPipelineTablePages(filtered, wrap, compact, pageSize) : [];
     state.packedKey = cacheKey;
+    state.packedHeight = wrap ? wrap.clientHeight : 0;
   }
   const totalPages = Math.max(1, state.packedPages.length);
   if (state.page >= totalPages) state.page = totalPages - 1;
@@ -1116,115 +1862,14 @@ function revelioPipelineFilter(tableId, mode, btn) {
   updateRevelioPipelineTableBody(tableId);
 }
 
-function renderRevelioStage2Summary(classify, dedup, pipeline) {
-  pipeline = pipeline || [];
-  let html = '<div class="section-title" id="revelio-s2">Stage 2 · Classify &amp; Dedup</div>';
-  const byFile = {};
-  for (const row of pipeline) {
-    const f = row.file || 'unknown';
-    if (!byFile[f]) byFile[f] = { kept: [], dropped: [], dedupDropped: [] };
-    if (row.classify && row.classify.status === 'kept') byFile[f].kept.push(row);
-    else if (row.classify && row.classify.status === 'dropped') byFile[f].dropped.push(row);
-    if (row.dedup && row.dedup.status === 'dropped') byFile[f].dedupDropped.push(row);
-  }
-  for (let fi = 0; fi < (classify || []).length; fi++) {
-    const cf = classify[fi];
-    const f = cf.file || 'unknown';
-    const groups = byFile[f] || { kept: [], dropped: [], dedupDropped: [] };
-    html += `<div style="font-size:.76rem;color:var(--text-dim);margin-bottom:.5rem">${esc(f)} — ${cf.input_count || 0} in → ${groups.kept.length} kept through classify</div>`;
-    if (groups.kept.length) {
-      html += `<div style="font-size:.74rem;font-weight:600;color:var(--green);margin:.5rem 0 .35rem">Kept through classify (${groups.kept.length})</div>`;
-      groups.kept.forEach((row, ki) => {
-        const c = (cf.classifications || []).find(x => x.index === row.index) || {};
-        html += renderStage2KeptCollapsible(c, row, `s2-kept-${fi}-${ki}`);
-      });
-    }
-    if (groups.dropped.length) {
-      html += `<details class="stage2-dropped-details"><summary>Dropped at classify (${groups.dropped.length})</summary>`;
-      for (const row of groups.dropped) {
-        const c = (cf.classifications || []).find(x => x.index === row.index) || {};
-        html += renderStage2Card(c, row);
-      }
-      html += '</details>';
-    }
-  }
-  for (const df of dedup || []) {
-    const f = df.file || 'unknown';
-    const groups = byFile[f] || { dedupDropped: [] };
-    html += `<div class="callout callout-info">${esc(f)}: ${df.kept_count} kept after dedup`;
-    if ((df.removed || []).length) html += ` (${(df.removed || []).length} merged/removed)`;
-    html += '</div>';
-    if (groups.dedupDropped.length) {
-      html += `<div style="font-size:.74rem;font-weight:600;color:var(--orange);margin:.35rem 0">Removed at dedup (${groups.dedupDropped.length})</div>`;
-      for (const row of groups.dedupDropped) {
-        html += `<div class="stage2-card not"><div style="font-size:.82rem;margin-bottom:.25rem">${esc(row.summary || '')}</div>`;
-        html += `<div style="font-size:.76rem;color:var(--text-dim)">${esc(row.dedup.reason || '')}</div></div>`;
-      }
-    }
-  }
-  return html;
-}
-
-function renderStage2Card(c, row) {
-  const cls = (c.verdict_label || row.classify && row.classify.verdict_label) === 'NOT' ? 'not' : 'asan';
-  const verdict = c.verdict_label || (row.classify && row.classify.verdict_label) || '?';
-  let html = `<div class="stage2-card ${cls}">`;
-  html += `<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.3rem">`;
-  html += `<span class="badge ${verdict === 'NOT' ? 'badge-orange' : 'badge-green'}">${esc(verdict)}</span>`;
-  if (c.severity) html += `<span class="badge badge-purple">${esc(c.severity)}</span>`;
-  html += `<span class="pipeline-badge ${row.classify && row.classify.status === 'kept' ? 'kept' : 'dropped'}">${row.classify && row.classify.status === 'kept' ? 'KEPT' : 'DROPPED'}</span>`;
-  html += `</div>`;
-  html += renderStage2CardBody(c, row);
-  html += '</div>';
-  return html;
-}
-
-function renderStage2CardBody(c, row) {
-  let html = `<div class="stage2-summary" style="font-size:.82rem;margin-bottom:.25rem">${esc(c.summary || row.summary || '')}</div>`;
-  html += `<div class="stage2-reason" style="font-size:.76rem;color:var(--text-dim)">${esc(c.reason || (row.classify && row.classify.reason) || '')}</div>`;
-  return html;
-}
-
-function renderStage2ExpandedBody(c, row, lead, rest) {
-  const reason = c.reason || (row.classify && row.classify.reason) || '';
-  let html = '';
-  if (rest) html += `<div class="stage2-detail" style="font-size:.82rem;margin-bottom:.25rem;line-height:1.45">${esc(rest)}</div>`;
-  if (reason) html += `<div class="stage2-reason" style="font-size:.76rem;color:var(--text-dim);line-height:1.45">${esc(reason)}</div>`;
-  if (!rest && !reason) html += `<div style="font-size:.76rem;color:var(--text-dim)">${esc(lead ? 'No additional details.' : '—')}</div>`;
-  return html;
-}
-
-function renderStage2KeptCollapsible(c, row, idKey) {
-  const verdict = c.verdict_label || (row.classify && row.classify.verdict_label) || '?';
-  const summary = c.summary || row.summary || '';
-  const { lead, rest } = splitFirstSentence(summary);
-  const searchText = [row.hid, summary, c.reason, verdict, c.severity].join(' ');
-  let html = `<div class="card revelio-stage-card" data-search="${esc(searchText)}" style="margin-bottom:1rem">`;
-  html += `<div class="stage-collapse-header" id="${idKey}-hdr" onclick="toggleStaticCollapse('${idKey}-body','${idKey}-hdr')">`;
-  html += `<span class="chevron">▶</span>`;
-  html += `<span class="badge ${verdict === 'NOT' ? 'badge-orange' : 'badge-green'}">${esc(verdict)}</span>`;
-  if (c.severity) html += `<span class="badge badge-purple">${esc(c.severity)}</span>`;
-  if (row.hid) html += `<span class="badge badge-cyan">${esc(row.hid)}</span>`;
-  html += `<span class="pipeline-badge kept">KEPT</span>`;
-  html += `<span class="stage-card-title-wrap">${esc(lead || summary)}</span>`;
-  html += '</div>';
-  html += `<div class="stage-collapse-body" id="${idKey}-body">${renderStage2ExpandedBody(c, row, lead, rest)}</div>`;
-  html += '</div>';
-  return html;
-}
-
-function renderRevelioStage2HypothesisTab(classify, dedup, pipeline) {
-  if (!(classify || []).length && !(pipeline || []).length) return '';
-  return `<div style="margin-top:1.5rem">${renderRevelioStage2Summary(classify, dedup, pipeline)}</div>`;
-}
-
 function getConfirmedPocItems(d) {
   const pipeline = d.revelio_hypothesis_pipeline || [];
   const pStages = d.revelio_poc_stages || [];
   const byHid = new Map();
   for (const row of pipeline) {
-    if (row.final && row.final.confirmed && row.hid) {
-      byHid.set(row.hid, { hid: row.hid, row, stage: pStages.find(s => s.hid === row.hid) || null });
+    const ghid = pipelineHid(row);
+    if (row.final && row.final.confirmed && ghid) {
+      byHid.set(ghid, { hid: ghid, row, stage: pStages.find(s => s.hid === ghid) || null });
     }
   }
   for (const ps of pStages) {
@@ -1233,17 +1878,17 @@ function getConfirmedPocItems(d) {
     if (!(v.crash_detected || r.crash_detected)) continue;
     const hid = ps.hid;
     if (!hid) continue;
-    const existing = byHid.get(hid) || { hid, row: pipeline.find(x => x.hid === hid) || null, stage: null };
+    const existing = byHid.get(hid) || { hid, row: pipeline.find(x => pipelineHid(x) === hid) || null, stage: null };
     existing.stage = ps;
-    if (!existing.row) existing.row = pipeline.find(x => x.hid === hid) || null;
+    if (!existing.row) existing.row = pipeline.find(x => pipelineHid(x) === hid) || null;
     byHid.set(hid, existing);
   }
   return [...byHid.values()];
 }
 
 function revelioPocAnchor(hid) {
-  const ps = revelioPocStages.find(s => s.hid === hid);
-  return ps ? `poc-${ps.stage_key}` : 'revelio-poc';
+  const ps = findPocStageByHid(hid);
+  return ps ? ps.stage_key : null;
 }
 
 function renderConfirmedPocCard(item) {
@@ -1254,15 +1899,15 @@ function renderConfirmedPocCard(item) {
   html += `<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.3rem">`;
   html += `<span class="badge badge-green">CONFIRMED</span>`;
   if (hid) html += `<span class="badge badge-cyan">${esc(hid)}</span>`;
-  if (hid) html += `<a href="#" onclick="revelioGoTo('${jsStr(revelioPocAnchor(hid))}',2);return false" style="font-size:.74rem;margin-left:auto">View PoC →</a>`;
+  if (hid) html += viewPocButton(hid, 'push-right');
   html += `</div>`;
   html += `<div style="font-size:.82rem;margin-bottom:.25rem">${esc(summary)}</div>`;
   if (h) {
     const bits = [];
     if (h.file_path) bits.push(`<code>${esc(h.file_path)}</code>`);
     if (h.function) bits.push(`fn <code>${esc(h.function)}</code>`);
-    if (h.expected_crash) bits.push(`<span class="badge badge-red">${esc(h.expected_crash)}</span>`);
     if (bits.length) html += `<div style="font-size:.76rem;color:var(--text-dim)">${bits.join(' · ')}</div>`;
+    if (h.expected_crash) html += `<div class="expected-crash-note">${esc(h.expected_crash)}</div>`;
   }
   html += '</div>';
   return html;
@@ -1287,11 +1932,12 @@ function updateConfirmedPocPanel() {
   const pager = document.getElementById('confirmed-poc-pager');
   if (!body || !wrap || !revelioConfirmedItems.length) return;
   const cacheKey = revelioConfirmedItems.map(i => i.hid).join(',');
-  if (!confirmedPocPageState.packedPages || confirmedPocPageState.packedKey !== cacheKey) {
+  if (!confirmedPocPageState.packedPages || confirmedPocPageState.packedKey !== cacheKey || confirmedPocPageState.packedHeight !== wrap.clientHeight) {
     confirmedPocPageState.packedPages = packContentPages(
       revelioConfirmedItems, body, wrap, renderConfirmedPocCard, CONFIRMED_POC_MAX,
     );
     confirmedPocPageState.packedKey = cacheKey;
+    confirmedPocPageState.packedHeight = wrap.clientHeight;
   }
   const totalPages = Math.max(1, confirmedPocPageState.packedPages.length);
   if (confirmedPocPageState.page >= totalPages) confirmedPocPageState.page = totalPages - 1;
@@ -1331,7 +1977,7 @@ function renderRevelioOverview(d, m) {
   html += renderRevelioFunnel(funnel);
 
   html += renderRevelioConfirmedPocs(d);
-  html += renderRevelioTimeline(d.events || []);
+  html += renderRevelioTimeline(d.events || [], funnel);
   html += '<details style="margin-top:1rem"><summary style="cursor:pointer;color:var(--text-dim);font-size:.72rem">Raw manifest</summary>';
   html += `<pre style="margin-top:.5rem">${esc(JSON.stringify(m, null, 2))}</pre></details>`;
   html += '</div>';
@@ -1339,6 +1985,13 @@ function renderRevelioOverview(d, m) {
 }
 
 function revelioGoTo(anchorId, tabIdx) {
+  if (tabIdx === 2) {
+    const stage = revelioPocStages.find(s => s.stage_key === anchorId || `poc-${s.stage_key}` === anchorId);
+    if (stage && stage.hid) {
+      revelioGoToPoc(stage.hid);
+      return;
+    }
+  }
   switchTab(tabIdx, 'detail');
   setTimeout(() => {
     const panel = document.getElementById(`detail-tab-${tabIdx}`);
@@ -1392,24 +2045,27 @@ function renderRevelioStageBody(stageKey, bodyId) {
   const steps = messagesToSteps(msgs);
   const stepIdx = revelioStepState[stageKey] || 0;
   const query = revelioSearchQuery;
+  const stepBase = steps.length > 1 ? stepIdx : 0;
   let html = '';
   if (steps.length > 1) {
-    html += `<div class="step-nav">`;
+    html += `<div class="step-view"><div class="step-nav">`;
     html += `<button ${stepIdx <= 0 ? 'disabled' : ''} onclick="revelioStepNav('${jsStr(stageKey)}','${jsStr(bodyId)}',-1)">← Prev</button>`;
     html += `<span>Step <strong>${stepIdx + 1}</strong> / ${steps.length}</span>`;
     html += `<button ${stepIdx >= steps.length - 1 ? 'disabled' : ''} onclick="revelioStepNav('${jsStr(stageKey)}','${jsStr(bodyId)}',1)">Next →</button>`;
-    html += `<span style="color:var(--text-dim);font-size:.72rem;margin-left:auto">j/k to navigate</span>`;
+    html += `<span style="color:var(--text-dim);font-size:.72rem;margin-left:auto">j ← · k →</span>`;
     html += '</div>';
+    html += `<div class="step-content">${renderRevelioStepMessages(steps[stepIdx] || msgs, `${bodyId}-step`, query, stepBase)}</div></div>`;
+  } else {
+    html += renderRevelioStepMessages(steps[stepIdx] || msgs, `${bodyId}-step`, query, stepBase);
   }
-  html += renderRevelioStepMessages(steps[stepIdx] || msgs, `${bodyId}-step`, query);
   body.innerHTML = html;
   body.dataset.stageKey = stageKey;
   body.dataset.bodyId = bodyId;
 }
 
-function renderRevelioStepMessages(messages, idPrefix, query) {
+function renderRevelioStepMessages(messages, idPrefix, query, stepBase = 0) {
   let html = '';
-  let stepNum = 0;
+  let stepNum = stepBase;
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     const role = msg.role || 'unknown';
@@ -1433,11 +2089,14 @@ function renderRevelioStepMessages(messages, idPrefix, query) {
   return html;
 }
 
+function viewPocButton(hid, extraClass) {
+  if (!hid || !findPocStageByHid(hid)) return '<span style="font-size:.76rem;color:var(--text-dim)">PoC not run</span>';
+  const cls = ['view-poc-btn', extraClass || ''].filter(Boolean).join(' ');
+  return `<a href="#" class="${cls}" onclick="revelioGoToPoc('${jsStr(hid)}');return false">View PoC →</a>`;
+}
+
 function revelioPocLink(hid, pStages) {
-  if (!hid) return '';
-  const match = (pStages || []).find(p => p.hid === hid && (p.agent || '').includes('PoCBuilder'));
-  if (match) return `<a href="#" onclick="revelioGoTo('poc-${jsStr(match.stage_key)}',2);return false" style="font-size:.76rem">View PoC →</a>`;
-  return '<span style="font-size:.76rem;color:var(--text-dim)">PoC not run</span>';
+  return viewPocButton(hid);
 }
 
 function renderRevelioDetail(d, m) {
@@ -1447,12 +2106,15 @@ function renderRevelioDetail(d, m) {
   pipelinePageState = {};
   revelioPipeline = d.revelio_hypothesis_pipeline || [];
   revelioPocStages = d.revelio_poc_stages || [];
+  revelioStage2Classify = d.revelio_stage2_classify || [];
+  revelioHypothesisStages = d.revelio_hypothesis_stages || [];
+  selectedHypothesisKey = null;
+  hypothesisListFilter = defaultHypothesisListFilter(revelioPipeline);
+  selectedPocKey = null;
+  pocListFilter = defaultPocListFilter(getPocBuilderStages());
   confirmedPocPageState = { page: 0 };
-  const hStages = d.revelio_hypothesis_stages || [];
-  const pStages = d.revelio_poc_stages || [];
+  const pocBuilders = getPocBuilderStages();
   const pipeline = revelioPipeline;
-  const s1Stages = hStages.filter(s => (s.stage || '').startsWith('stage1'));
-  const s3Stages = hStages.filter(s => s.stage === 'stage3.filter');
 
   const tabs = ['Overview', 'Hypothesis', 'PoC', 'Log'];
   let html = `<div class="tabs" id="detail-tabs">`;
@@ -1463,44 +2125,32 @@ function renderRevelioDetail(d, m) {
 
   html += `<div class="tab-panel active" id="detail-tab-0">${renderRevelioOverview(d, m)}</div>`;
 
-  html += `<div class="tab-panel" id="detail-tab-1">`;
-  html += `<div class="filter-bar"><input type="text" id="revelio-hyp-search" placeholder="Search hypotheses, commands, errors..." oninput="revelioApplySearch('hyp')"></div>`;
-  html += renderRevelioPipelineTable(pipeline, {
-    showFilters: true,
-    tableId: 'pipeline-hypothesis',
-    sectionId: 'revelio-s1',
-  });
-  if (s1Stages.length) {
-    html += `<div class="section-title" style="margin-top:1.5rem">Stage 1 · Generation</div>`;
-    html += renderRevelioCollapsibleStageList(s1Stages, 'hyp', pStages);
-  }
-  html += renderRevelioStage2HypothesisTab(d.revelio_stage2_classify || [], d.revelio_stage2_dedup || [], pipeline);
-  if (s3Stages.length) {
-    html += `<div class="section-title" id="revelio-s3" style="margin-top:1.5rem">Stage 3 · Filter</div>`;
-    html += renderRevelioCollapsibleStageList(s3Stages, 'hyp-s3', pStages, { showPocLink: true });
-  }
-  if (!s1Stages.length && !s3Stages.length && !(d.revelio_stage2_classify || []).length && !pipeline.length) {
-    html += '<div class="empty"><p>No hypothesis-stage trajectories found.</p></div>';
+  html += `<div class="tab-panel hypothesis-tab-panel" id="detail-tab-1">`;
+  html += `<div class="filter-bar"><input type="text" id="revelio-hyp-search" placeholder="Search hypotheses..." oninput="revelioApplySearch('hyp')"></div>`;
+  if (pipeline.length) {
+    html += renderHypothesisTabShell(pipeline);
+  } else {
+    html += '<div class="empty"><p>No hypotheses found for this run.</p></div>';
   }
   html += '</div>';
 
-  html += `<div class="tab-panel" id="detail-tab-2">`;
-  html += `<div class="filter-bar"><input type="text" id="revelio-poc-search" placeholder="Search PoC trajectories..." oninput="revelioApplySearch('poc')"></div>`;
-  html += `<div id="revelio-poc">`;
-  if (!pStages.length) {
+  html += `<div class="tab-panel poc-tab-panel" id="detail-tab-2">`;
+  html += `<div class="filter-bar"><input type="text" id="revelio-poc-search" placeholder="Search PoCs..." oninput="revelioApplySearch('poc')"></div>`;
+  if (pocBuilders.length) {
+    html += renderPocTabShell(pocBuilders);
+  } else {
     const sm = d.revelio_summary || {};
     let msg = 'No PoC-stage trajectories found (trajectory.json agents).';
     if (sm.poc_status === 'skipped_no_hypotheses') msg = 'PoC stage did not run — no hypotheses survived filtering.';
     else if (sm.poc_status === 'skipped_or_incomplete') msg = 'PoC stage did not run or did not finish.';
     html += `<div class="empty"><p>${esc(msg)}</p></div>`;
-  } else {
-    html += renderRevelioCollapsibleStageList(pStages, 'poc', pStages, { showArtifacts: true });
   }
-  html += '</div></div>';
+  html += '</div>';
 
   html += `<div class="tab-panel log-tab-panel" id="detail-tab-3">${renderLogTab(d.log)}</div>`;
   document.getElementById('app').innerHTML = html;
-  updateRevelioPipelineTableBody('pipeline-hypothesis');
+  if (pipeline.length) refreshHypothesisTab();
+  if (pocBuilders.length) refreshPocTab();
   initConfirmedPocPanel();
   applyLogSearch();
   document.removeEventListener('keydown', revelioKeyHandler);
@@ -1515,8 +2165,8 @@ function revelioKeyHandler(e) {
   const bodyId = open.dataset.bodyId;
   if (!stageKey || !bodyId) return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-  if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); revelioStepNav(stageKey, bodyId, 1); }
-  if (e.key === 'k' || e.key === 'ArrowUp') { e.preventDefault(); revelioStepNav(stageKey, bodyId, -1); }
+  if (e.key === 'j' || e.key === 'ArrowLeft') { e.preventDefault(); revelioStepNav(stageKey, bodyId, -1); }
+  if (e.key === 'k' || e.key === 'ArrowRight') { e.preventDefault(); revelioStepNav(stageKey, bodyId, 1); }
 }
 
 function revelioApplySearch(tab) {
@@ -1524,18 +2174,8 @@ function revelioApplySearch(tab) {
   const input = document.getElementById(inputId);
   const cursor = input ? input.selectionStart : null;
   revelioSearchQuery = (input || {}).value || '';
-  document.querySelectorAll('.revelio-stage-card').forEach(card => {
-    const hay = card.dataset.search || '';
-    card.style.display = revelioMatchesSearch(hay, revelioSearchQuery) ? '' : 'none';
-  });
-  if (tab === 'hyp') {
-    if (pipelinePageState['pipeline-hypothesis']) {
-      pipelinePageState['pipeline-hypothesis'].page = 0;
-      pipelinePageState['pipeline-hypothesis'].packedPages = null;
-      pipelinePageState['pipeline-hypothesis'].packedKey = null;
-    }
-    updateRevelioPipelineTableBody('pipeline-hypothesis');
-  }
+  if (tab === 'poc') refreshPocTab();
+  if (tab === 'hyp') refreshHypothesisTab();
   if (input && document.activeElement === input && cursor != null) {
     input.focus();
     input.setSelectionRange(cursor, cursor);
@@ -1568,7 +2208,7 @@ function renderRevelioCollapsibleStageList(stages, idPrefix, pStages, opts) {
     const anchorId = s.stage === 'stage3.filter' && s.hid ? `hyp-${s.hid}` : (opts.showArtifacts ? `poc-${stageKey}` : idKey);
     html += `<div class="card revelio-stage-card" id="${anchorId}" data-search="${esc(searchText)}" style="margin-bottom:1rem">`;
     html += `<div class="stage-collapse-header" id="${idKey}-hdr" onclick="toggleRevelioStage('${jsStr(stageKey)}','${idKey}-body','${idKey}-hdr')">`;
-    html += `<span class="chevron">▶</span>`;
+    html += `<span class="chevron chevron-right"></span>`;
     if (s.hid) html += `<span class="badge badge-cyan">${esc(s.hid)}</span>`;
     html += `<span>${esc(cleanStageLabel(s.label || s.agent || '—'))}</span>`;
     if (info.verdict) {
@@ -1611,8 +2251,8 @@ function renderRevelioPocArtifacts(s, idKey) {
     if (h.file_path) bits.push(`<code>${esc(h.file_path)}</code>`);
     if (h.function) bits.push(`fn <code>${esc(h.function)}</code>`);
     if (typeof h.confidence === 'number') bits.push(`conf ${(h.confidence * 100).toFixed(0)}%`);
-    if (h.expected_crash) bits.push(`<span class="badge badge-red">${esc(h.expected_crash)}</span>`);
     if (bits.length) html += `<div style="font-size:.76rem;color:var(--text-dim)">${bits.join(' · ')}</div>`;
+    if (h.expected_crash) html += `<div class="expected-crash-note">${esc(h.expected_crash)}</div>`;
   }
 
   const sub = [];
@@ -1725,9 +2365,9 @@ function renderHypotheses(d) {
       html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin:.8rem 0;font-size:.82rem">`;
       if (h.file_path) html += `<div><span style="color:var(--text-dim)">File:</span> <code>${esc(h.file_path)}</code></div>`;
       if (h.function) html += `<div><span style="color:var(--text-dim)">Function:</span> <code>${esc(h.function)}</code></div>`;
-      if (h.expected_crash) html += `<div><span style="color:var(--text-dim)">Expected:</span> <span class="badge badge-red">${esc(h.expected_crash)}</span></div>`;
       if (h.trigger) html += `<div style="grid-column:1/-1"><span style="color:var(--text-dim)">Trigger:</span> ${esc(h.trigger)}</div>`;
       html += `</div>`;
+      if (h.expected_crash) html += `<div><span style="color:var(--text-dim);font-size:.78rem">Expected:</span><div class="expected-crash-note">${esc(h.expected_crash)}</div></div>`;
 
       // Preconditions
       if (h.preconditions && h.preconditions.length) {
@@ -1973,6 +2613,7 @@ function switchTab(idx, prefix) {
   const tabs = container.querySelectorAll(`#${prefix === 'detail' ? 'detail-tabs' : prefix} .tab`);
   tabs.forEach((t, i) => t.classList.toggle('active', i === idx));
   let i = 0;
+  let shownPanel = null;
   while (true) {
     const panel = document.getElementById(`${prefix === 'detail' ? 'detail' : prefix}-tab-${i}`);
     if (!panel) break;
@@ -1980,8 +2621,44 @@ function switchTab(idx, prefix) {
     panel.classList.toggle('active', active);
     if (panel.classList.contains('log-tab-panel')) panel.style.display = active ? 'flex' : 'none';
     else panel.style.display = active ? 'block' : 'none';
+    if (active) shownPanel = panel;
     i++;
   }
+  if (shownPanel) {
+    repackPagedListsIn(shownPanel);
+    const tabsBar = document.getElementById(`${prefix === 'detail' ? 'detail-tabs' : prefix}`);
+    if (tabsBar) {
+      // Only correct scroll when the tab bar is actually out of view (user
+      // scrolled deep into a tab's content) — scrollIntoView's "start"
+      // alignment snaps to an exact pixel offset even when already close,
+      // which produced a small unwanted jump on every single tab click.
+      const top = tabsBar.getBoundingClientRect().top;
+      if (top < 0 || top > 200) tabsBar.scrollIntoView({ behavior: 'instant', block: 'start' });
+    }
+    if (prefix === 'detail' && idx === 1) {
+      document.querySelector('#revelio-hyp-tab .hyp-list-scroll')?.scrollTo(0, 0);
+      document.getElementById('revelio-hyp-detail')?.scrollTo(0, 0);
+    }
+    if (prefix === 'detail' && idx === 2) {
+      document.querySelector('#revelio-poc-tab .hyp-list-scroll')?.scrollTo(0, 0);
+      document.getElementById('revelio-poc-detail')?.scrollTo(0, 0);
+    }
+  }
+}
+
+// Height-based pagination (packContentPages) measures clientHeight to decide
+// how many rows fit per page. A tab-panel is `display:none` until shown, so
+// that measurement reads 0 and wrongly assumes everything fits. Re-pack once
+// the panel is actually visible so pages reflect real available height.
+function repackPagedListsIn(panel) {
+  // updateRevelioPipelineTableBody/updateConfirmedPocPanel only actually
+  // re-pack when the cache key or measured height changed, so calling them
+  // on every tab switch is cheap once a panel has been packed at its real
+  // (visible) height — this just catches the hidden-tab-at-first-render case.
+  panel.querySelectorAll('.pipeline-table-wrap table.pipeline-table').forEach(table => {
+    if (pipelinePageState[table.id]) updateRevelioPipelineTableBody(table.id);
+  });
+  if (panel.querySelector('#confirmed-poc-wrap')) updateConfirmedPocPanel();
 }
 
 function toggleMsg(id, btn) {
