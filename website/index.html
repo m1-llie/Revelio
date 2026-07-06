@@ -387,6 +387,8 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .search-hit{background:rgba(239,159,39,.25);border-radius:2px}
 .action-link,.hyp-detail-pane a{user-select:none;text-decoration:none}
 .action-link:hover{color:var(--rv-text)}
+.back-hyp-link{display:inline-flex;align-items:center;gap:.25rem;font-size:.76rem;color:var(--rv-text-dim);margin-bottom:.75rem}
+.back-hyp-link:hover{color:var(--rv-text)}
 .view-poc-btn{display:inline-flex;align-items:center;gap:.25rem;margin-top:.35rem;padding:.4rem .85rem;font-size:.76rem;font-weight:600;color:var(--rv-bg);background:var(--rv-gold);border:1px solid var(--rv-gold);border-radius:6px;cursor:pointer;text-decoration:none;transition:background .15s,border-color .15s,color .15s}
 .stage-collapse-header a.view-poc-btn,.hyp-detail-pane a.view-poc-btn{color:var(--rv-bg);text-decoration:none}
 .view-poc-btn:hover,.stage-collapse-header a.view-poc-btn:hover,.hyp-detail-pane a.view-poc-btn:hover{background:var(--rv-gold-hover);border-color:var(--rv-gold-hover);color:var(--rv-bg);text-decoration:none}
@@ -1156,7 +1158,13 @@ function pipelineFinalBadge(row) {
 }
 
 function pipelineHid(row) {
-  return row.global_hid || row.hid || '';
+  // row.hid is a synthetic per-file display number (classify index based) —
+  // it is NOT globally unique and can collide with a real hid from a totally
+  // different hypothesis/PoC (every file's first hypothesis is "SF01"). Only
+  // global_hid is a reliable identity for matching against PoC stages; never
+  // fall back to row.hid here or a dropped/unresolved row can end up linked
+  // to an unrelated hypothesis's PoC.
+  return row.global_hid || '';
 }
 
 function pipelineDropReason(row) {
@@ -1292,6 +1300,11 @@ function hypothesisKey(row) {
 
 function findPipelineRow(key) {
   return (revelioPipeline || []).find(r => hypothesisKey(r) === key) || null;
+}
+
+function findPipelineRowByHid(hid) {
+  if (!hid) return null;
+  return (revelioPipeline || []).find(r => pipelineHid(r) === hid) || null;
 }
 
 function findClassification(file, index) {
@@ -1749,7 +1762,11 @@ function renderPocDetail(stage) {
   const keySlug = stage.stage_key.replace(/[^a-zA-Z0-9_-]/g, '_');
   const bodyId = `poc-trace-${keySlug}-body`;
   const h = stage.hypothesis || {};
-  let html = '<div class="hyp-detail-header">';
+  let html = '';
+  if (stage.hid && findPipelineRowByHid(stage.hid)) {
+    html += `<a href="#" class="action-link back-hyp-link" onclick="revelioGoToHypothesis('${jsStr(stage.hid)}');return false">← Back to hypothesis</a>`;
+  }
+  html += '<div class="hyp-detail-header">';
   html += '<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.35rem">';
   if (stage.hid) html += `<span class="badge badge-cyan">${esc(stage.hid)}</span>`;
   html += renderPocOutcomeBadge(stage);
@@ -1820,6 +1837,22 @@ function revelioGoToPoc(hid) {
     pocListFilter = { mode: 'all' };
     refreshPocTab();
     selectPoc(stage.stage_key, true);
+  }, 50);
+}
+
+function revelioGoToHypothesis(hid) {
+  const row = findPipelineRowByHid(hid);
+  if (!row) return;
+  const key = hypothesisKey(row);
+  selectedHypothesisKey = key;
+  hypothesisListFilter = { mode: 'all', file: row.file || '' };
+  switchTab(1, 'detail');
+  setTimeout(() => {
+    const fileSel = document.getElementById('hyp-file-filter');
+    if (fileSel) fileSel.value = hypothesisListFilter.file;
+    refreshHypothesisFilterBar();
+    refreshHypothesisList();
+    selectHypothesis(key, true);
   }, 50);
 }
 
