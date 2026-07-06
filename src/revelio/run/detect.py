@@ -343,6 +343,8 @@ def main(
 
         docker_env.config.env.update(DEFAULT_DOCKER_ENV)
 
+        effective_filter_model = filter_model or model_name
+        effective_poc_model = poc_model or model_name
         store.save_manifest(
             {
                 "run_id": store.run_id,
@@ -350,6 +352,8 @@ def main(
                 "target_ref": arvo if arvo_mode else str(project_path),
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
                 "model_name": model_name,
+                "filter_model": effective_filter_model,
+                "poc_model": effective_poc_model,
                 "pipeline": "scan_filter_detect",
                 "top_n": top_n,
                 "target_file": target_file if target_file else None,

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Drop-in replacement for the ARVO in-container script (`/usr/bin/arvo`).
-# Provides the same interface as n132/arvo Docker images so that vulagent
+# Provides the same interface as n132/arvo Docker images so that revelio
 # agents can interact with OSS-Fuzz-built containers identically.
 #
 # Layout:  /out/{asan,ubsan,msan}/<fuzzer_binaries>

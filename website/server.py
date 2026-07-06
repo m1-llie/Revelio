@@ -708,7 +708,305 @@ def _cc_traj_to_detail(run_dir, run_id=None):
     }
 
 
-def _revelio_to_detail(run_dir, run_id=None):
+def _classify_verdict_label(c):
+    """Human-readable classify verdict for stage2 UI."""
+    if not c.get("is_vulnerability"):
+        return "NOT"
+    sanitizers = c.get("sanitizers") or []
+    if c.get("is_asan") or "asan" in sanitizers:
+        parts = [s.upper() for s in sanitizers[:3]] if sanitizers else ["ASAN"]
+        return "+".join(parts) if len(parts) > 1 else "ASAN"
+    if sanitizers:
+        return "+".join(s.upper() for s in sanitizers[:3])
+    return "VUL(no-san)"
+
+
+def _load_revelio_stage2(traces_dir):
+    """Load stage2 classify + dedup trace files."""
+    classify_files = []
+    dedup_files = []
+    if not traces_dir.is_dir():
+        return classify_files, dedup_files
+    for f in sorted(traces_dir.glob("stage2_classify_*.json")):
+        try:
+            data = _read_json(f)
+            classifications = []
+            for c in data.get("classifications") or []:
+                if not isinstance(c, dict):
+                    continue
+                classifications.append({
+                    "index": c.get("index"),
+                    "summary": (c.get("summary") or "")[:500],
+                    "is_vulnerability": c.get("is_vulnerability"),
+                    "sanitizers": c.get("sanitizers") or [],
+                    "is_asan": c.get("is_asan"),
+                    "severity": c.get("severity"),
+                    "reason": (c.get("reason") or "")[:500],
+                    "verdict_label": _classify_verdict_label(c),
+                })
+            classify_files.append({
+                "file": data.get("file", f.stem),
+                "input_count": data.get("input_count", len(classifications)),
+                "classifications": classifications,
+                "cost": data.get("cost"),
+                "calls": data.get("calls"),
+            })
+        except Exception:
+            continue
+    for f in sorted(traces_dir.glob("stage2_dedup_*.json")):
+        try:
+            data = _read_json(f)
+            dedup_files.append({
+                "file": data.get("file", f.stem),
+                "candidate_pairs": data.get("candidate_pairs"),
+                "kept_count": data.get("kept_count"),
+                "removed": data.get("removed") or [],
+                "comparisons": data.get("comparisons") or [],
+            })
+        except Exception:
+            continue
+    return classify_files, dedup_files
+
+
+def _norm_summary(s):
+    return (s or "").strip().lower()
+
+
+def _classify_kept(c):
+    return bool(c.get("is_vulnerability")) and bool(c.get("sanitizers") or c.get("is_asan"))
+
+
+def _build_revelio_hypothesis_pipeline(
+    *,
+    stage2_classify,
+    stage2_dedup,
+    hypothesis_stages,
+    hypotheses,
+    poc_stages,
+    val_by_hid,
+    rep_by_hid,
+):
+    """One row per raw hypothesis with KEPT/DROPPED status at each pipeline gate."""
+    dedup_by_file = {df.get("file"): df for df in stage2_dedup}
+    stage3_by_summary = {}
+    stage3_by_kept_idx = {}
+    for s in hypothesis_stages:
+        if s.get("stage") != "stage3.filter":
+            continue
+        info = s.get("info") or {}
+        summary = _norm_summary(info.get("summary"))
+        hi = info.get("hypothesis_index")
+        entry = {
+            "verdict": info.get("verdict"),
+            "confidence": info.get("confidence"),
+            "reason": info.get("reason") or "",
+        }
+        if summary:
+            stage3_by_summary[summary] = entry
+        if hi is not None:
+            stage3_by_kept_idx[int(hi)] = entry
+
+    final_summaries = {
+        _norm_summary(h.get("summary") or h.get("title") or h.get("description"))
+        for h in hypotheses
+        if isinstance(h, dict)
+    }
+    final_hids = {
+        h.get("hypothesis_id") or h.get("id")
+        for h in hypotheses
+        if isinstance(h, dict) and (h.get("hypothesis_id") or h.get("id"))
+    }
+
+    poc_hids = {
+        ps.get("hid")
+        for ps in poc_stages
+        if ps.get("hid") and "PoCBuilder" in (ps.get("agent") or "")
+    }
+    confirmed_hids = set()
+    for hid in final_hids | poc_hids:
+        if not hid:
+            continue
+        v = val_by_hid.get(hid) or {}
+        r = rep_by_hid.get(hid) or {}
+        if v.get("crash_detected") or r.get("crash_detected"):
+            confirmed_hids.add(hid)
+
+    pipeline = []
+    for cf in stage2_classify:
+        df = dedup_by_file.get(cf.get("file")) or {}
+        removed_map = {
+            _norm_summary(r.get("summary")): (r.get("reason") or "")
+            for r in (df.get("removed") or [])
+            if isinstance(r, dict)
+        }
+        classify_kept_rows = [
+            c for c in (cf.get("classifications") or [])
+            if _classify_kept(c)
+        ]
+        post_dedup = [
+            c for c in classify_kept_rows
+            if _norm_summary(c.get("summary")) not in removed_map
+        ]
+        post_dedup_idx = {_norm_summary(c.get("summary")): i for i, c in enumerate(post_dedup)}
+
+        for c in cf.get("classifications") or []:
+            idx = c.get("index")
+            if idx is None:
+                continue
+            summary = c.get("summary") or ""
+            norm = _norm_summary(summary)
+            hid = f"SF{int(idx) + 1:02d}"
+
+            if _classify_kept(c):
+                classify = {"status": "kept", "verdict_label": c.get("verdict_label"), "reason": ""}
+            else:
+                classify = {"status": "dropped", "verdict_label": c.get("verdict_label"), "reason": c.get("reason") or ""}
+
+            if classify["status"] == "dropped":
+                dedup = {"status": "skipped", "reason": ""}
+                filt = {"status": "skipped", "verdict": None, "reason": ""}
+                dropped_at = "classify"
+            elif norm in removed_map:
+                dedup = {"status": "dropped", "reason": removed_map[norm]}
+                filt = {"status": "skipped", "verdict": None, "reason": ""}
+                dropped_at = "dedup"
+            else:
+                dedup = {"status": "kept", "reason": ""}
+                kept_idx = post_dedup_idx.get(norm)
+                s3 = stage3_by_summary.get(norm) or (
+                    stage3_by_kept_idx.get(kept_idx) if kept_idx is not None else None
+                )
+                if s3:
+                    verdict = s3.get("verdict")
+                    conf = s3.get("confidence") or 0
+                    if verdict == "INVALID" and conf >= 0.7:
+                        filt = {"status": "dropped", "verdict": verdict, "reason": s3.get("reason") or ""}
+                        dropped_at = "filter"
+                    else:
+                        filt = {"status": "kept", "verdict": verdict, "reason": s3.get("reason") or ""}
+                        dropped_at = None
+                else:
+                    filt = {"status": "skipped", "verdict": None, "reason": ""}
+                    dropped_at = None
+
+            survived = norm in final_summaries or hid in final_hids
+            if dropped_at and not survived:
+                pass
+            elif filt.get("status") == "dropped":
+                pass
+            elif not dropped_at:
+                dropped_at = None
+
+            if survived:
+                dropped_at = None
+
+            poc_status = "skipped"
+            if hid in poc_hids:
+                poc_status = "confirmed" if hid in confirmed_hids else "attempted"
+            elif survived and not dropped_at:
+                poc_status = "skipped"
+
+            pipeline.append({
+                "index": idx,
+                "hid": hid,
+                "file": cf.get("file"),
+                "summary": summary,
+                "classify": classify,
+                "dedup": dedup,
+                "filter": filt,
+                "poc": {"status": poc_status},
+                "final": {"survived": survived, "confirmed": hid in confirmed_hids},
+                "dropped_at": dropped_at,
+            })
+
+    pipeline.sort(key=lambda r: (r.get("file") or "", r.get("index") or 0))
+    return pipeline
+
+
+def _compute_revelio_funnel(
+    *,
+    stage2_classify,
+    stage2_dedup,
+    hypotheses,
+    hypothesis_stages,
+    poc_stages,
+    events,
+    confirmed,
+):
+    raw_count = 0
+    for cf in stage2_classify:
+        if cf.get("input_count"):
+            raw_count = max(raw_count, cf["input_count"])
+    if not raw_count:
+        for s in hypothesis_stages:
+            if s.get("stage", "").startswith("stage1"):
+                raw_count = max(raw_count, (s.get("info") or {}).get("hypothesis_count") or 0)
+
+    after_classify = 0
+    for cf in stage2_classify:
+        for c in cf.get("classifications") or []:
+            if c.get("is_vulnerability") and (c.get("sanitizers") or c.get("is_asan")):
+                after_classify += 1
+    if not after_classify and stage2_classify:
+        for cf in stage2_classify:
+            for c in cf.get("classifications") or []:
+                if c.get("is_vulnerability"):
+                    after_classify += 1
+
+    after_dedup = 0
+    for df in stage2_dedup:
+        after_dedup = max(after_dedup, df.get("kept_count") or 0)
+    if not after_dedup and after_classify:
+        after_dedup = after_classify
+
+    stage3_total = sum(1 for s in hypothesis_stages if s.get("stage") == "stage3.filter")
+    stage3_valid = sum(
+        1 for s in hypothesis_stages
+        if s.get("stage") == "stage3.filter" and (s.get("info") or {}).get("verdict") == "VALID"
+    )
+    after_filter = len(hypotheses) if hypotheses else stage3_valid
+
+    poc_attempted = sum(1 for ps in poc_stages if "PoCBuilder" in (ps.get("agent") or ""))
+    if not poc_attempted:
+        poc_attempted = sum(1 for ps in poc_stages)
+
+    return {
+        "raw": raw_count,
+        "after_classify": after_classify,
+        "after_dedup": after_dedup,
+        "stage3_reviewed": stage3_total,
+        "after_filter": after_filter,
+        "stage3_valid": stage3_valid,
+        "poc_attempted": poc_attempted,
+        "confirmed": confirmed,
+    }
+
+
+def _compute_revelio_cost(*, stage2_classify, hypothesis_stages, poc_stages, events):
+    scan_cost = 0.0
+    for ev in events:
+        payload = ev.get("payload") or {}
+        if ev.get("event") == "scan_filter_end" and payload.get("total_cost"):
+            scan_cost = float(payload["total_cost"])
+            break
+    if scan_cost == 0.0:
+        for cf in stage2_classify:
+            if cf.get("cost"):
+                scan_cost += float(cf["cost"])
+        for s in hypothesis_stages:
+            info = s.get("info") or {}
+            if info.get("model_cost"):
+                scan_cost += float(info["model_cost"])
+    poc_cost = 0.0
+    for ps in poc_stages:
+        info = ps.get("info") or {}
+        stats = info.get("model_stats") or {}
+        if stats.get("instance_cost"):
+            poc_cost += float(stats["instance_cost"])
+    return round(scan_cost + poc_cost, 4)
+
+
+def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
     """Detail builder for Revelio's `scan_filter_detect` pipeline.
 
     Bundles each hypothesis (from hypotheses.json) with its handoff artifacts
@@ -756,8 +1054,9 @@ def _revelio_to_detail(run_dir, run_id=None):
 
     # PoC-stage trajectories live in trajectory.json under `agents`
     # (PoCBuilderAgent_SFNN, ReporterAgent_SFNN_attempt*, …)
-    poc_stages = []  # ordered list of {label, hid, agent, info, messages, raw_count}
+    poc_stages = []
     traj_path = run_dir / "trajectory.json"
+    poc_idx = 0
     if traj_path.exists():
         try:
             traj_raw = _read_json(traj_path)
@@ -766,27 +1065,31 @@ def _revelio_to_detail(run_dir, run_id=None):
                 if not isinstance(agent_data, dict):
                     continue
                 msgs = agent_data.get("messages", []) or []
-                parsed = _parse_tool_calls_messages(msgs)
-                # Match …_SFNN suffix for hypothesis pairing
+                parsed = _parse_tool_calls_messages(msgs) if include_messages else []
                 hm = re.search(r"_(SF\d+)(?:_|$)", agent_name)
                 hid = hm.group(1) if hm else None
                 poc_stages.append({
+                    "stage_key": f"poc-{poc_idx}",
                     "label": agent_name,
                     "hid": hid,
                     "agent": agent_name,
                     "info": agent_data.get("info", {}),
                     "messages": parsed,
                     "raw_count": len(msgs),
+                    "message_count": len(msgs),
                 })
+                poc_idx += 1
         except Exception:
             pass
 
     # Hypothesis-stage trajectories live under traces/{stage1,stage2,stage3_filter}.
-    # stage1 has whole-file, focused, and per-function analyses (plain user/assistant strings).
-    # stage3_filter/*.json has a `trajectory` field using the tool_calls + role:tool format.
     hypothesis_stages = []
+    stage2_classify = []
+    stage2_dedup = []
     traces_dir = run_dir / "traces"
     if traces_dir.is_dir():
+        stage2_classify, stage2_dedup = _load_revelio_stage2(traces_dir)
+        stage1_idx = 0
         for f in sorted(traces_dir.glob("stage1_*.json")):
             try:
                 data = _read_json(f)
@@ -797,15 +1100,19 @@ def _revelio_to_detail(run_dir, run_id=None):
             wf = data.get("wholefile") or {}
             wf_msgs = wf.get("messages") or []
             if wf_msgs:
+                parsed = _parse_tool_calls_messages(wf_msgs) if include_messages else []
                 hypothesis_stages.append({
+                    "stage_key": f"hyp-s1-wf-{stage1_idx}",
                     "label": f"stage1 · whole-file ({fname})",
                     "stage": "stage1.wholefile",
                     "info": {
                         "hypothesis_count": len((wf.get("hypotheses") or [])),
                     },
-                    "messages": _parse_tool_calls_messages(wf_msgs),
+                    "messages": parsed,
                     "raw_count": len(wf_msgs),
+                    "message_count": len(wf_msgs),
                 })
+                stage1_idx += 1
 
             for idx, foc in enumerate(data.get("focused") or []):
                 if not isinstance(foc, dict):
@@ -813,16 +1120,20 @@ def _revelio_to_detail(run_dir, run_id=None):
                 fmsgs = foc.get("messages") or []
                 if not fmsgs:
                     continue
+                parsed = _parse_tool_calls_messages(fmsgs) if include_messages else []
                 hypothesis_stages.append({
+                    "stage_key": f"hyp-s1-foc-{stage1_idx}",
                     "label": f"stage1 · focused #{idx} ({fname})",
                     "stage": "stage1.focused",
                     "info": {
                         "focus_prompt": (foc.get("focus_prompt") or "")[:200],
                         "hypothesis_count": len((foc.get("hypotheses") or [])),
                     },
-                    "messages": _parse_tool_calls_messages(fmsgs),
+                    "messages": parsed,
                     "raw_count": len(fmsgs),
+                    "message_count": len(fmsgs),
                 })
+                stage1_idx += 1
 
             for fn in data.get("functions") or []:
                 if not isinstance(fn, dict):
@@ -831,17 +1142,22 @@ def _revelio_to_detail(run_dir, run_id=None):
                 if not fmsgs:
                     continue
                 fn_name = fn.get("function") or "?"
+                parsed = _parse_tool_calls_messages(fmsgs) if include_messages else []
                 hypothesis_stages.append({
+                    "stage_key": f"hyp-s1-fn-{stage1_idx}",
                     "label": f"stage1 · function `{fn_name}` ({fname})",
                     "stage": "stage1.function",
                     "info": {
                         "function": fn_name,
                         "hypothesis_count": len((fn.get("hypotheses") or [])),
                     },
-                    "messages": _parse_tool_calls_messages(fmsgs),
+                    "messages": parsed,
                     "raw_count": len(fmsgs),
+                    "message_count": len(fmsgs),
                 })
+                stage1_idx += 1
 
+        stage3_idx = 0
         stage3_dir = traces_dir / "stage3_filter"
         if stage3_dir.is_dir():
             stage3_files = sorted(stage3_dir.glob("*.json"))
@@ -861,9 +1177,13 @@ def _revelio_to_detail(run_dir, run_id=None):
                     continue
                 hi = data.get("hypothesis_index")
                 verdict = data.get("verdict") or "?"
+                hid = f"SF{int(hi) + 1:02d}" if hi is not None else None
+                parsed = _parse_tool_calls_messages(traj) if include_messages else []
                 hypothesis_stages.append({
+                    "stage_key": f"hyp-s3-{stage3_idx}",
                     "label": f"stage3 filter · hyp #{hi} — {verdict}",
                     "stage": "stage3.filter",
+                    "hid": hid,
                     "info": {
                         "hypothesis_index": hi,
                         "verdict": verdict,
@@ -873,9 +1193,11 @@ def _revelio_to_detail(run_dir, run_id=None):
                         "model_cost": data.get("model_cost"),
                         "model_calls": data.get("model_calls"),
                     },
-                    "messages": _parse_tool_calls_messages(traj),
+                    "messages": parsed,
                     "raw_count": len(traj),
+                    "message_count": len(traj),
                 })
+                stage3_idx += 1
 
     # Hypothesis metadata for each PoC stage (so the frontend can show what
     # hypothesis the PoC builder was working on).
@@ -902,26 +1224,66 @@ def _revelio_to_detail(run_dir, run_id=None):
         if v.get("crash_detected") or r.get("crash_detected"):
             confirmed += 1
 
-    cost_total = 0.0
-    if log_text:
-        for line in log_text.splitlines():
-            if "cost=$" in line:
-                try:
-                    cost_total += float(line.split("cost=$")[1].split(")")[0])
-                except (ValueError, IndexError):
-                    pass
+    funnel = _compute_revelio_funnel(
+        stage2_classify=stage2_classify,
+        stage2_dedup=stage2_dedup,
+        hypotheses=hypotheses,
+        hypothesis_stages=hypothesis_stages,
+        poc_stages=poc_stages,
+        events=events,
+        confirmed=confirmed,
+    )
+    cost_total = _compute_revelio_cost(
+        stage2_classify=stage2_classify,
+        hypothesis_stages=hypothesis_stages,
+        poc_stages=poc_stages,
+        events=events,
+    )
+
+    duration_seconds = None
+    if events:
+        try:
+            import datetime as dt
+            ts0 = events[0].get("timestamp")
+            ts1 = events[-1].get("timestamp")
+            if ts0 and ts1:
+                t0 = dt.datetime.fromisoformat(ts0.replace("Z", "+00:00"))
+                t1 = dt.datetime.fromisoformat(ts1.replace("Z", "+00:00"))
+                duration_seconds = round((t1 - t0).total_seconds(), 1)
+        except Exception:
+            pass
 
     hyp_msg_total = sum(s.get("raw_count", 0) for s in hypothesis_stages)
     poc_msg_total = sum(s.get("raw_count", 0) for s in poc_stages)
+
+    poc_status = "not_run"
+    if poc_stages:
+        poc_status = "ran"
+    elif funnel.get("after_filter", 0) == 0:
+        poc_status = "skipped_no_hypotheses"
+    elif not traj_path.exists():
+        poc_status = "skipped_or_incomplete"
+
+    hypothesis_pipeline = _build_revelio_hypothesis_pipeline(
+        stage2_classify=stage2_classify,
+        stage2_dedup=stage2_dedup,
+        hypothesis_stages=hypothesis_stages,
+        hypotheses=hypotheses,
+        poc_stages=poc_stages,
+        val_by_hid=val_by_hid,
+        rep_by_hid=rep_by_hid,
+    )
 
     return {
         "manifest": manifest,
         "events": events,
         "log": log_text,
         "revelio": True,
-        # Hypothesis-stage and PoC-stage trajectories rendered as two top-level tabs.
         "revelio_hypothesis_stages": hypothesis_stages,
         "revelio_poc_stages": poc_stages,
+        "revelio_stage2_classify": stage2_classify,
+        "revelio_stage2_dedup": stage2_dedup,
+        "revelio_hypothesis_pipeline": hypothesis_pipeline,
         "revelio_summary": {
             "hypothesis_count": len(hyp_by_hid),
             "confirmed": confirmed,
@@ -929,7 +1291,11 @@ def _revelio_to_detail(run_dir, run_id=None):
             "poc_steps": len(poc_stages),
             "hypothesis_msgs": hyp_msg_total,
             "poc_msgs": poc_msg_total,
-            "cost_total": round(cost_total, 4),
+            "cost_total": cost_total,
+            "duration_seconds": duration_seconds,
+            "funnel": funnel,
+            "poc_status": poc_status,
+            "has_trajectory": traj_path.exists(),
         },
         # Legacy fields kept empty so the existing frontend doesn't choke
         "index": {"counters": {}},
@@ -937,6 +1303,32 @@ def _revelio_to_detail(run_dir, run_id=None):
         "hypothesis_outputs": {},
         "trajectory_summaries": [],
     }
+
+
+def _revelio_get_stage(run_dir, stage_key, offset=0, limit=None):
+    """Load messages for a single Revelio stage (lazy-load API)."""
+    detail = _revelio_to_detail(run_dir, include_messages=True)
+    for collection in (detail.get("revelio_hypothesis_stages") or [], detail.get("revelio_poc_stages") or []):
+        for stage in collection:
+            if stage.get("stage_key") == stage_key:
+                messages = stage.get("messages") or []
+                total = len(messages)
+                if limit is not None:
+                    messages = messages[offset:offset + limit]
+                else:
+                    messages = messages[offset:]
+                return {
+                    "stage_key": stage_key,
+                    "label": stage.get("label"),
+                    "stage": stage.get("stage"),
+                    "hid": stage.get("hid"),
+                    "info": stage.get("info"),
+                    "messages": messages,
+                    "total": total,
+                    "offset": offset,
+                    "limit": limit,
+                }
+    return None
 
 
 # ── New experiment_traj formats (ClaudeCode / Codex / KISSSorcar) ─────────
@@ -1711,6 +2103,17 @@ def make_handler(output_dirs):
                     return
                 if rest == "":
                     self._handle_run_detail(run_dir, run_id=run_id)
+                elif rest.startswith("stage/"):
+                    stage_key = rest[len("stage/"):]
+                    qs = parse_qs(parsed.query)
+                    offset = int(qs.get("offset", ["0"])[0])
+                    limit_raw = qs.get("limit", [None])[0]
+                    limit = int(limit_raw) if limit_raw else None
+                    stage = _revelio_get_stage(run_dir, stage_key, offset=offset, limit=limit)
+                    if stage is None:
+                        _json_resp(self, {"error": "stage not found"}, 404)
+                    else:
+                        _json_resp(self, stage)
                 elif rest == "events":
                     self._handle_events(run_dir)
                 elif rest == "log":
@@ -1778,8 +2181,8 @@ def make_handler(output_dirs):
                         pass
                     continue
 
-                # Revelio scan_filter_detect: manifest + trajectory.json + hypotheses.json
-                if fmt == "manifest" and (run_dir / "trajectory.json").exists() and (run_dir / "hypotheses.json").exists():
+                # Revelio scan_filter_detect: manifest + hypotheses.json (trajectory.json optional)
+                if fmt == "manifest" and (run_dir / "hypotheses.json").exists():
                     fmt = "revelio_detect"
                     # fall through to the manifest branch below — it computes summary fine
 
@@ -1822,6 +2225,8 @@ def make_handler(output_dirs):
                         "target_ref": manifest.get("target_ref"),
                         "target_type": manifest.get("target_type"),
                         "model_name": manifest.get("model_name"),
+                        "filter_model": manifest.get("filter_model"),
+                        "poc_model": manifest.get("poc_model"),
                         "pipeline": manifest.get("pipeline"),
                         "created_at": manifest.get("created_at_utc"),
                         "counters": counters,
@@ -1848,9 +2253,9 @@ def make_handler(output_dirs):
 
         def _handle_run_detail(self, run_dir, run_id=None):
             fmt = _detect_traj_format(run_dir)
-            # Revelio scan_filter_detect runs: manifest + trajectory.json + hypotheses.json
-            if fmt == "manifest" and (run_dir / "trajectory.json").exists() and (run_dir / "hypotheses.json").exists():
-                _json_resp(self, _revelio_to_detail(run_dir, run_id=run_id))
+            # Revelio scan_filter_detect runs: manifest + hypotheses.json (trajectory.json optional)
+            if fmt == "manifest" and (run_dir / "hypotheses.json").exists():
+                _json_resp(self, _revelio_to_detail(run_dir, run_id=run_id, include_messages=False))
                 return
             if fmt == "cc_messages":
                 _json_resp(self, _cc_msg_to_detail(run_dir, run_id=run_id))
@@ -1999,7 +2404,7 @@ def make_handler(output_dirs):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="RevelioAgent Trace Viewer")
+    parser = argparse.ArgumentParser(description="Revelio Trace Viewer")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1 for security)")
     parser.add_argument("--port", type=int, default=8877, help="Port number (default: 8877)")
     parser.add_argument("--output-dir", nargs="*", help="Output directories to scan")
@@ -2011,7 +2416,7 @@ def main():
         output_dirs = [d for d in DEFAULT_OUTPUT_DIRS if d.exists()]
 
     host = args.host
-    print(f"RevelioAgent Trace Viewer")
+    print(f"Revelio Trace Viewer")
     print(f"  Scanning: {[str(d) for d in output_dirs]}")
     print(f"  Serving:  http://{host}:{args.port}")
     if host == "127.0.0.1":

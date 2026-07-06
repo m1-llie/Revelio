@@ -19,10 +19,10 @@
 #     scripts/batch_scan_filter.sh scripts/batch_scan_filter/jobs.tsv
 #
 # name	image	model	api_key_env	files_file	filter_model	extra_args
-openssl	vulagent/openssl:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_1	files.openssl.txt		
-dnsmasq	vulagent/dnsmasq:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_1	files.dnsmasq.txt		
-poppler	vulagent/poppler:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_1	files.poppler.txt		
-proj4	vulagent/proj4:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_2	files.proj4.txt		
-curl	vulagent/curl:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_2	files.curl.txt		
-openexr	vulagent/openexr:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_2	files.openexr.txt		
-sleuthkit	vulagent/sleuthkit:latest	openrouter/anthropic/claude-haiku-4.5	OPENROUTER_KEY	files.sleuthkit.txt
+openssl	revelio/openssl:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_1	files.openssl.txt
+dnsmasq	revelio/dnsmasq:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_1	files.dnsmasq.txt
+poppler	revelio/poppler:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_1	files.poppler.txt
+proj4	revelio/proj4:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_2	files.proj4.txt
+curl	revelio/curl:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_2	files.curl.txt
+openexr	revelio/openexr:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_2	files.openexr.txt
+sleuthkit	revelio/sleuthkit:latest	openrouter/anthropic/claude-haiku-4.5	OPENROUTER_KEY	files.sleuthkit.txt

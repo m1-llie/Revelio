@@ -14,7 +14,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Static
 
 ROLE_LABELS = {
-    "assistant": "agent(Vul-Agent)",
+    "assistant": "agent(Revelio)",
     "user": "user(Environment)",
     "system": "system",
     "tool": "tool(result)",
