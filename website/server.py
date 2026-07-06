@@ -838,6 +838,64 @@ def _classify_kept(c):
     return bool(c.get("is_vulnerability")) and bool(c.get("sanitizers") or c.get("is_asan"))
 
 
+def _reasons_align(a, b, n=160):
+    a = (a or "").strip()
+    b = (b or "").strip()
+    if not a or not b:
+        return True
+    if a == b:
+        return True
+    chunk = a[:n]
+    return chunk in b or b[:n] in a
+
+
+def _stage3_entry_from_stage(stage):
+    if not stage:
+        return None
+    info = stage.get("info") or {}
+    return {
+        "verdict": info.get("verdict"),
+        "confidence": info.get("confidence"),
+        "reason": info.get("reason") or "",
+    }
+
+
+def _resolve_stage3_stage(file_, norm, filt, hypothesis_stages, stage1_locations=None, classify_index=None):
+    """Match a pipeline row to its stage3 filter trace.
+
+    Filter traces are keyed by position in the post-dedup batch, not by the
+    classify index or global hypothesis id — positional maps collide. Match on
+    (file, summary) and disambiguate with verdict/reason when needed.
+    """
+    if not file_ or not norm:
+        return None
+    stages = [
+        s for s in hypothesis_stages
+        if s.get("stage") == "stage3.filter"
+        and (s.get("info") or {}).get("file") == file_
+        and _norm_summary((s.get("info") or {}).get("summary")) == norm
+    ]
+    if not stages:
+        return None
+    if len(stages) == 1:
+        return stages[0]
+    verdict = (filt or {}).get("verdict")
+    reason = (filt or {}).get("reason") or ""
+    if verdict:
+        by_verdict = [
+            s for s in stages
+            if (s.get("info") or {}).get("verdict") == verdict
+            and _reasons_align(reason, (s.get("info") or {}).get("reason"))
+        ]
+        if len(by_verdict) == 1:
+            return by_verdict[0]
+        if by_verdict:
+            stages = by_verdict
+    if len(stages) == 1:
+        return stages[0]
+    return None
+
+
 def _build_revelio_hypothesis_pipeline(
     *,
     stage2_classify,
@@ -852,29 +910,6 @@ def _build_revelio_hypothesis_pipeline(
     """One row per raw hypothesis with KEPT/DROPPED status at each pipeline gate."""
     stage1_locations = stage1_locations or {}
     dedup_by_file = {df.get("file"): df for df in stage2_dedup}
-    # Keyed by (file, ...): stage3_filter's hypothesis_index is a per-file
-    # position (every file's first surviving hypothesis is "hyp_00"), not a
-    # global one. A dict keyed on the bare index or bare summary text would
-    # collide across every file that happens to share an index or wording,
-    # silently overwriting one file's verdict with an unrelated file's.
-    stage3_by_summary = {}
-    stage3_by_kept_idx = {}
-    for s in hypothesis_stages:
-        if s.get("stage") != "stage3.filter":
-            continue
-        info = s.get("info") or {}
-        file_ = info.get("file")
-        summary = _norm_summary(info.get("summary"))
-        hi = info.get("hypothesis_index")
-        entry = {
-            "verdict": info.get("verdict"),
-            "confidence": info.get("confidence"),
-            "reason": info.get("reason") or "",
-        }
-        if file_ and summary:
-            stage3_by_summary[(file_, summary)] = entry
-        if file_ and hi is not None:
-            stage3_by_kept_idx[(file_, int(hi))] = entry
 
     # Group final hypotheses by (file, summary) rather than collapsing into a
     # single dict entry: several distinct hypotheses can share identical
@@ -933,23 +968,6 @@ def _build_revelio_hypothesis_pipeline(
             for r in (df.get("removed") or [])
             if isinstance(r, dict)
         }
-        classify_kept_rows = [
-            c for c in (cf.get("classifications") or [])
-            if _classify_kept(c)
-        ]
-        post_dedup = [
-            c for c in classify_kept_rows
-            if _norm_summary(c.get("summary")) not in removed_map
-        ]
-        # Keyed by raw classify index (unique), not summary text: several
-        # rows can share identical generic wording (see _resolve_global_hid),
-        # and a text-keyed dict would collapse them onto the same position.
-        post_dedup_idx = {
-            c.get("index"): i
-            for i, c in enumerate(post_dedup)
-            if c.get("index") is not None
-        }
-
         for c in cf.get("classifications") or []:
             idx = c.get("index")
             if idx is None:
@@ -957,6 +975,7 @@ def _build_revelio_hypothesis_pipeline(
             summary = c.get("summary") or ""
             norm = _norm_summary(summary)
             hid = f"SF{int(idx) + 1:02d}"
+            stage3_trace_key = None
 
             if _classify_kept(c):
                 classify = {"status": "kept", "verdict_label": c.get("verdict_label"), "reason": ""}
@@ -973,15 +992,12 @@ def _build_revelio_hypothesis_pipeline(
                 dropped_at = "dedup"
             else:
                 dedup = {"status": "kept", "reason": ""}
-                kept_idx = post_dedup_idx.get(idx)
-                # Prefer the positional match (unambiguous) over summary-text
-                # matching, which collapses hypotheses that share identical
-                # generic wording onto whichever one a dict happened to keep.
                 file_ = cf.get("file")
-                s3 = (
-                    (stage3_by_kept_idx.get((file_, kept_idx)) if kept_idx is not None else None)
-                    or stage3_by_summary.get((file_, norm))
+                s3_stage = _resolve_stage3_stage(
+                    file_, norm, None, hypothesis_stages, stage1_locations, idx,
                 )
+                s3 = _stage3_entry_from_stage(s3_stage)
+                stage3_trace_key = s3_stage.get("stage_key") if s3_stage else None
                 if s3:
                     verdict = s3.get("verdict")
                     conf = s3.get("confidence") or 0
@@ -1002,6 +1018,7 @@ def _build_revelio_hypothesis_pipeline(
                 else:
                     filt = {"status": "skipped", "verdict": None, "reason": ""}
                     dropped_at = None
+                    stage3_trace_key = None
 
             global_hid = _resolve_global_hid(cf.get("file"), norm, idx)
             survived = global_hid is not None and not dropped_at
@@ -1023,6 +1040,7 @@ def _build_revelio_hypothesis_pipeline(
                 "poc": {"status": poc_status},
                 "final": {"survived": survived, "confirmed": confirmed},
                 "dropped_at": dropped_at,
+                "stage3_trace_key": stage3_trace_key,
             })
 
     pipeline.sort(key=lambda r: (r.get("file") or "", r.get("index") or 0))
