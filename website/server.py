@@ -906,8 +906,10 @@ def _build_revelio_hypothesis_pipeline(
     val_by_hid,
     rep_by_hid,
     stage1_locations=None,
+    duplicate_of=None,
 ):
     """One row per raw hypothesis with KEPT/DROPPED status at each pipeline gate."""
+    duplicate_of = duplicate_of or {}
     stage1_locations = stage1_locations or {}
     dedup_by_file = {df.get("file"): df for df in stage2_dedup}
 
@@ -955,8 +957,10 @@ def _build_revelio_hypothesis_pipeline(
     for ghid in all_ghids | poc_hids:
         if not ghid:
             continue
-        v = val_by_hid.get(ghid) or {}
-        r = rep_by_hid.get(ghid) or {}
+        # val_by_hid/rep_by_hid store the raw handoff wrapper
+        # ({"stage", ..., "data": {...}}) — the real fields live under "data".
+        v = (val_by_hid.get(ghid) or {}).get("data") or {}
+        r = (rep_by_hid.get(ghid) or {}).get("data") or {}
         if v.get("crash_detected") or r.get("crash_detected"):
             confirmed_hids.add(ghid)
 
@@ -1023,6 +1027,10 @@ def _build_revelio_hypothesis_pipeline(
             global_hid = _resolve_global_hid(cf.get("file"), norm, idx)
             survived = global_hid is not None and not dropped_at
             confirmed = bool(global_hid and global_hid in confirmed_hids)
+            crash_confidence = (
+                ((val_by_hid.get(global_hid) or {}).get("data") or {}).get("crash_confidence")
+                if global_hid else None
+            )
 
             poc_status = "skipped"
             if global_hid and global_hid in poc_hids:
@@ -1038,7 +1046,12 @@ def _build_revelio_hypothesis_pipeline(
                 "dedup": dedup,
                 "filter": filt,
                 "poc": {"status": poc_status},
-                "final": {"survived": survived, "confirmed": confirmed},
+                "final": {
+                    "survived": survived,
+                    "confirmed": confirmed,
+                    "duplicate_of": duplicate_of.get(global_hid) if global_hid else None,
+                    "crash_confidence": crash_confidence,
+                },
                 "dropped_at": dropped_at,
                 "stage3_trace_key": stage3_trace_key,
             })
@@ -1047,7 +1060,7 @@ def _build_revelio_hypothesis_pipeline(
     return pipeline
 
 
-def _compute_revelio_funnel(*, pipeline, confirmed):
+def _compute_revelio_funnel(*, pipeline, confirmed, ranked_count=None):
     """Derive funnel counts directly from the per-hypothesis pipeline rows
     (the same data behind the Hypothesis pipeline table) instead of separate
     event/trace heuristics, so every stage count is guaranteed consistent
@@ -1055,22 +1068,30 @@ def _compute_revelio_funnel(*, pipeline, confirmed):
     raw_count = len(pipeline)
     after_classify = sum(1 for r in pipeline if r["classify"]["status"] == "kept")
     after_dedup = sum(1 for r in pipeline if r["dedup"]["status"] == "kept")
-    # "Eligible for PoC", not strictly "filter verdict was kept": PoC
-    # attempts are keyed off whether a hypothesis made it into the final
-    # aggregated output (final.survived), which also includes hypotheses the
-    # filter stage couldn't reach a real verdict on but let through anyway
-    # (e.g. a sandbox/container access error). Using the stricter
-    # filter-verdict-only count here produced "Filtered" values lower than
-    # "PoC tried", which is a contradiction — PoC can't attempt more than
-    # what was actually eligible.
-    after_filter = sum(1 for r in pipeline if r["final"]["survived"])
-    poc_attempted = sum(1 for r in pipeline if r["poc"]["status"] in ("attempted", "confirmed"))
+    # Survived the static-filter gate (not dropped at filter), including
+    # unresolved reviews (filter status "skipped", e.g. container access errors).
+    after_static_filter = sum(
+        1 for r in pipeline
+        if r["dedup"]["status"] == "kept" and r.get("dropped_at") != "filter"
+    )
+    if ranked_count is not None:
+        after_rank = ranked_count
+    else:
+        after_rank = len({
+            r["global_hid"] for r in pipeline
+            if r["final"]["survived"] and r.get("global_hid")
+        })
+    poc_attempted = len({
+        r["global_hid"] for r in pipeline
+        if r["poc"]["status"] in ("attempted", "confirmed") and r.get("global_hid")
+    })
 
     return {
         "raw": raw_count,
         "after_classify": after_classify,
         "after_dedup": after_dedup,
-        "after_filter": after_filter,
+        "after_static_filter": after_static_filter,
+        "after_rank": after_rank,
         "poc_attempted": poc_attempted,
         "confirmed": confirmed,
     }
@@ -1135,6 +1156,7 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
     poc_by_hid = {}
     val_by_hid = {}
     rep_by_hid = {}
+    duplicate_of = {}
     if handoff_dir.is_dir():
         for f in handoff_dir.glob("poc_recipe_*.json"):
             hid = f.stem.replace("poc_recipe_", "")
@@ -1145,6 +1167,8 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
         for f in handoff_dir.glob("report_*.json"):
             hid = f.stem.replace("report_", "")
             rep_by_hid[hid] = _maybe_json(f)
+        dedup_wrapper = _maybe_json(handoff_dir / "dedup_findings.json")
+        duplicate_of = ((dedup_wrapper or {}).get("data") or {}).get("duplicate_of") or {}
 
     # PoC-stage trajectories live in trajectory.json under `agents`
     # (PoCBuilderAgent_SFNN, ReporterAgent_SFNN_attempt*, …)
@@ -1329,8 +1353,9 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
     # Confirmed count derived from validation/report artifacts.
     confirmed = 0
     for hid in hyp_by_hid:
-        v = val_by_hid.get(hid) or {}
-        r = rep_by_hid.get(hid) or {}
+        # val_by_hid/rep_by_hid store the raw handoff wrapper — unwrap "data".
+        v = (val_by_hid.get(hid) or {}).get("data") or {}
+        r = (rep_by_hid.get(hid) or {}).get("data") or {}
         if v.get("crash_detected") or r.get("crash_detected"):
             confirmed += 1
 
@@ -1343,9 +1368,14 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
         val_by_hid=val_by_hid,
         rep_by_hid=rep_by_hid,
         stage1_locations=_load_stage1_hypothesis_locations(traces_dir),
+        duplicate_of=duplicate_of,
     )
 
-    funnel = _compute_revelio_funnel(pipeline=hypothesis_pipeline, confirmed=confirmed)
+    funnel = _compute_revelio_funnel(
+        pipeline=hypothesis_pipeline,
+        confirmed=confirmed,
+        ranked_count=len(hyp_by_hid),
+    )
     # A "Filtered: 0" that comes from every filter call erroring out (e.g. an
     # upstream API auth failure) looks identical to a legitimate "everything
     # was reviewed and rejected" outcome unless we flag it explicitly.
@@ -1376,7 +1406,7 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
     poc_status = "not_run"
     if poc_stages:
         poc_status = "ran"
-    elif funnel.get("after_filter", 0) == 0:
+    elif funnel.get("after_rank", 0) == 0:
         poc_status = "skipped_no_hypotheses"
     elif not traj_path.exists():
         poc_status = "skipped_or_incomplete"

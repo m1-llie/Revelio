@@ -46,8 +46,15 @@ def _format_result(sanitizer: str | None, crash: bool, returncode: int | None, o
     )
 
 
-def make_validate_tool(env: Any) -> Callable:
-    """Create a validate tool closure bound to the given environment."""
+def make_validate_tool(env: Any, capture: list[dict] | None = None) -> Callable:
+    """Create a validate tool closure bound to the given environment.
+
+    ``capture``, if given, receives one ``{"sanitizer", "crash", "returncode",
+    "output"}`` record per sanitizer run with the *untruncated* raw output —
+    used by the orchestrator to extract a crash signature (DEDUP_TOKEN, etc.)
+    for post-confirmation findings dedup, since the LLM-facing string returned
+    below is truncated and the agent may further summarize/omit it.
+    """
 
     sanitizers = _discover_sanitizers(env)
 
@@ -68,7 +75,10 @@ def make_validate_tool(env: Any) -> Callable:
             result = env.execute("arvo 2>&1")
             output = result.get("output", "")
             returncode = result.get("returncode")
-            return _format_result(None, check_crash(output, returncode), returncode, output)
+            crash = check_crash(output, returncode)
+            if capture is not None:
+                capture.append({"sanitizer": None, "crash": crash, "returncode": returncode, "output": output})
+            return _format_result(None, crash, returncode, output)
 
         # Multi-sanitizer layout — test each sanitizer
         parts: list[str] = []
@@ -80,6 +90,8 @@ def make_validate_tool(env: Any) -> Callable:
             crash = check_crash(output, returncode)
             if crash:
                 any_crash = True
+            if capture is not None:
+                capture.append({"sanitizer": san, "crash": crash, "returncode": returncode, "output": output})
             parts.append(_format_result(san, crash, returncode, output))
 
         summary = f"crash_detected: {any_crash}\nsanitizers_tested: {', '.join(sanitizers)}\n\n"

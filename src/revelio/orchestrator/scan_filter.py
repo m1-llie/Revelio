@@ -52,9 +52,9 @@ EXCLUDED_DIRS = {
 def _convert_hypothesis(hyp: dict, index: int, file_path: str) -> VulnHypothesis:
     """Convert a scan_and_filter dict hypothesis to a VulnHypothesis dataclass.
 
-    Propagates Stage 2 triage metadata (``_severity``/``_primitive``/
-    ``_attacker_controls``/``_sanitizers``/``_cwe_ids``) and Stage 2
-    reachability (``_reachable``/``_fuzz_targets``) onto the dataclass so
+    Propagates triage/dedup metadata (``_severity``/``_primitive``/
+    ``_attacker_controls``/``_sanitizers``/``_cwe_ids``) and reachability
+    annotation (``_reachable``/``_fuzz_targets``) onto the dataclass so
     downstream ranking can use them.
     """
     h = hyp.get("hypothesis", hyp)
@@ -75,11 +75,11 @@ def _convert_hypothesis(hyp: dict, index: int, file_path: str) -> VulnHypothesis
     return VulnHypothesis(
         hypothesis_id=f"SF{index:02d}",
         title=h.get("summary", "Unknown vulnerability"),
-        description=h.get("summary", ""),
+        description=h.get("description") or h.get("summary", ""),
         file_path=file_path,
         function=func,
-        trigger=None,
-        preconditions=[],
+        trigger=h.get("trigger") or None,
+        preconditions=list(h.get("preconditions", [])),
         expected_crash="; ".join(str(w) for w in warnings) if warnings else None,
         confidence=hyp.get("_filter_confidence", 0.5),
         references=references,
@@ -128,7 +128,8 @@ class ScanFilterOrchestrator:
         self.file_extensions = file_extensions or DEFAULT_FILE_EXTENSIONS
         self.max_workers = max_workers
         self.filter_model = filter_model or model_name
-        # Build filter model config for get_model() (used by DefaultAgent in Stage 3)
+        # Build filter model config for get_model() (used by DefaultAgent in
+        # independent static filtering)
         if filter_model_config:
             self.filter_model_config = filter_model_config
         else:
@@ -269,6 +270,11 @@ class ScanFilterOrchestrator:
         safe_name: str,
     ) -> None:
         """Write a single sub-agent's trace + verdict to disk.
+
+        Name intentionally still says "stage3" — it writes to the on-disk
+        ``stage3_filter/`` path, kept for backward compatibility with existing
+        run outputs, decoupled from the ``_run_independent_static_filtering``
+        name used for this step elsewhere in the code.
 
         Called once per hypothesis right after its filter agent returns so that
         a crash or interrupt in a later hypothesis never discards the work of
@@ -432,14 +438,15 @@ class ScanFilterOrchestrator:
             return md, source
         return "", ""
 
-    def _run_stage1_for_file(
+    def _run_proposal_phase_for_file(
         self, rel_path: str, project_path: str, source: str,
         cost_tracker: CostTracker | None = None,
         check_results: list[dict] | None = None,
         harness_context: str = "",
         harness_source: str = "",
     ) -> tuple[list[dict], dict, list[dict], list[dict]]:
-        """Run Stage 1 (multi-pass hypothesis generation) for a single file.
+        """Run the Initial Hypothesis Proposal band (Figure 3) for one file:
+        extract functions, summarize file content, synthesize hypotheses.
 
         Returns (all_hypotheses, wholefile_result, focused_results, function_analyses).
         """
@@ -540,13 +547,14 @@ class ScanFilterOrchestrator:
         all_hypotheses = aggregate_hypotheses(wholefile_result, focused_results, function_analyses)
         return all_hypotheses, wholefile_result, focused_results, function_analyses
 
-    def _run_stage2(
+    def _run_sanitizer_aware_triage(
         self, all_hypotheses: list[dict], source: str,
         cost_tracker: CostTracker | None = None,
-    ) -> tuple[list[dict], list[dict], dict]:
-        """Run Stage 2 (classification & dedup).
+    ) -> tuple[list[dict], list[dict]]:
+        """In-scope Hypotheses via sanitizer-aware triage (Figure 3, refinement
+        band) — one LLM call per hypothesis judging is_vulnerability/sanitizers.
 
-        Returns (kept, classify_trace, dedup_trace).
+        Returns (in_scope_hypotheses, classify_trace).
         """
         source_lines = source.splitlines()
         dedup_kwargs = dict(self.model_kwargs)
@@ -634,29 +642,49 @@ class ScanFilterOrchestrator:
             elif not c.get("sanitizers"):
                 h["_removed"] = f"Not sanitizer-triggerable: {c['reason']}"
 
-        valid_hyps = [all_hypotheses[i] for i in valid_indices]
-        cwe_map = {j: classifications[valid_indices[j]]["cwe_ids"] for j in range(len(valid_indices))}
+        in_scope_hypotheses = [all_hypotheses[i] for i in valid_indices]
+        return in_scope_hypotheses, classify_trace
 
-        kept, removed, comparisons = dedup_hypotheses(valid_hyps, cwe_map, self.model_name, dedup_kwargs,
-                                                      workers=self.max_workers, cost_tracker=cost_tracker)
-        self._log(f"  [scan_filter] Dedup: {len(valid_hyps)} -> {len(kept)} (removed {len(removed)})")
+    def _run_root_cause_dedup(
+        self, in_scope_hypotheses: list[dict],
+        cost_tracker: CostTracker | None = None,
+    ) -> tuple[list[dict], dict]:
+        """Merged Hypotheses via deduplicate root causes (Figure 3, refinement
+        band): deterministic line/CWE-overlap prefilter + pairwise LLM judgement
+        + union-find merge (see ``dedup_hypotheses``).
+
+        Returns (merged_hypotheses, dedup_trace).
+        """
+        dedup_kwargs = dict(self.model_kwargs)
+        dedup_kwargs["temperature"] = 0.0
+        cwe_map = {j: h.get("_cwe_ids", []) for j, h in enumerate(in_scope_hypotheses)}
+
+        merged, removed, comparisons = dedup_hypotheses(
+            in_scope_hypotheses, cwe_map, self.model_name, dedup_kwargs,
+            workers=self.max_workers, cost_tracker=cost_tracker,
+        )
+        self._log(f"  [scan_filter] Dedup: {len(in_scope_hypotheses)} -> {len(merged)} (removed {len(removed)})")
 
         dedup_trace = {
             "candidate_pairs": len(comparisons),
             "comparisons": comparisons,
-            "kept_count": len(kept),
+            "kept_count": len(merged),
             "removed": [
                 {"summary": r.get("hypothesis", r).get("summary", ""), "reason": r.get("_removed", "")}
                 for r in removed
             ],
         }
 
-        return kept, classify_trace, dedup_trace
+        return merged, dedup_trace
 
     def _annotate_reachability(self, kept: list[dict], rel_path: str) -> None:
-        """Annotate ``kept`` hypotheses in-place with reachability metadata.
+        """Advisory reachability signal feeding Figure 3's "Reachability-Annotated
+        Hypotheses" box — but note this only *annotates* via ``arvo targets``
+        (deterministic, no LLM call); the actual filtering that box's name implies
+        happens separately, in ``_run_independent_static_filtering``.
 
-        Sets on each hypothesis dict:
+        Annotate ``kept`` hypotheses in-place with reachability metadata. Sets on
+        each hypothesis dict:
             * ``_reachable`` — ``True`` if at least one fuzz-target binary
               links the hotspot function, ``False`` if none, ``None`` if the
               lookup is unavailable (non-multi-sanitizer image, stripped
@@ -686,20 +714,28 @@ class ScanFilterOrchestrator:
             f"unreachable, {reach_counts['unknown']} unknown"
         )
 
-    def _run_stage3(
+    def _run_independent_static_filtering(
         self, kept: list[dict], target_file: str,
         cost_tracker: CostTracker | None = None,
         check_results: list[dict] | None = None,
         safe_name: str | None = None,
     ) -> tuple[list[dict], dict[int, dict]]:
-        """Run Stage 3 (Docker sub-agent filtering). Returns (final_hypotheses, filter_results).
+        """Independent static filtering (Figure 3, refinement band) via a Docker
+        sub-agent: a real coding agent (``DefaultAgent`` + unrestricted ``bash``
+        tool) run in a tool-use loop against the same shared container the whole
+        scan runs in — NOT a single LLM call, and NOT restricted to
+        ``target_file``; its prompt explicitly encourages tracing callers/callees
+        repo-wide. See ``run_filter_agent`` for the prompt/agent setup.
+
+        Returns (final_hypotheses, filter_results).
 
         When ``safe_name`` is provided, each sub-agent's trace is persisted to
-        ``stage3_filter/hyp_<i>_<safe_name>.json`` immediately after the agent
+        ``stage3_filter/hyp_<i>_<safe_name>.json`` (name kept for backward
+        compatibility with existing run outputs) immediately after the agent
         returns, so a crash or interrupt mid-stage never loses the work of
         already-completed sub-agents.
         """
-        self._log(f"  [scan_filter] Stage 3: filtering {len(kept)} hypotheses with sub-agents...")
+        self._log(f"  [scan_filter] Independent static filtering: {len(kept)} hypotheses with sub-agents...")
 
         filter_results: dict[int, dict] = {}
         # Run filter agents sequentially in the shared container to avoid interference
@@ -752,6 +788,19 @@ class ScanFilterOrchestrator:
             f"(removed {len(kept) - len(final_hypotheses)})"
         )
         return final_hypotheses, filter_results
+
+    def _rank_for_confirmation(self, all_vuln_hypotheses: list[VulnHypothesis]) -> None:
+        """Ranked Hypothesis Queue via rank for PoC confirmation (Figure 3,
+        refinement band) — deterministic, no LLM call. Sorts in-place by
+        (reachable, severity, confidence) — descending — so that
+        reachable-from-fuzzer, higher-severity, higher-confidence hypotheses
+        land at the top of hypotheses.json and survive ``--top-n``, then
+        reassigns sequential hypothesis IDs to match the new order.
+        """
+        all_vuln_hypotheses.sort(key=hypothesis_priority_key, reverse=True)
+        for idx, h in enumerate(all_vuln_hypotheses, start=1):
+            h.hypothesis_id = f"SF{idx:02d}"
+        self._log(f"[scan_filter] Ranked {len(all_vuln_hypotheses)} hypotheses for PoC confirmation")
 
     def run(
         self,
@@ -827,10 +876,10 @@ class ScanFilterOrchestrator:
                 f"{n_with_unchecked} with unchecked params"
             )
 
-            # Stage 1: Hypothesis generation
-            self._log(f"[scan_filter] Stage 1: Hypothesis generation for {rel_path}")
+            # Initial Hypothesis Proposal (Figure 3, proposal band)
+            self._log(f"[scan_filter] Initial Hypothesis Proposal for {rel_path}")
             cost_before = cost_tracker.snapshot()
-            all_hypotheses, wf, fr, fa = self._run_stage1_for_file(
+            all_hypotheses, wf, fr, fa = self._run_proposal_phase_for_file(
                 rel_path, project_path, source, cost_tracker=cost_tracker,
                 check_results=check_results,
                 harness_context=harness_context,
@@ -840,11 +889,12 @@ class ScanFilterOrchestrator:
             s1_cost -= cost_before[0]
             s1_calls -= cost_before[1]
             self._log(
-                f"[scan_filter] Stage 1 done: {len(all_hypotheses)} raw hypotheses "
+                f"[scan_filter] Initial Hypothesis Proposal done: {len(all_hypotheses)} raw hypotheses "
                 f"(${s1_cost:.4f}, {s1_calls} calls)"
             )
 
-            # Save Stage 1 trace
+            # Save Initial Hypothesis Proposal trace (on-disk name kept as
+            # "stage1_*" for backward compatibility with existing run outputs).
             self.store.save_trace(f"stage1_{safe_name}.json", {
                 "file": rel_path,
                 "wholefile": {
@@ -885,21 +935,30 @@ class ScanFilterOrchestrator:
             if not all_hypotheses:
                 continue
 
-            # Stage 2: Classification & dedup
-            self._log(f"[scan_filter] Stage 2: Classification & dedup for {rel_path}")
+            # all_hypotheses is this file's contribution to the Raw Hypothesis
+            # Pool (Figure 3 proposal-band output) — refinement band starts here.
+            # Triage + dedup cost/calls are tracked as one combined span (as
+            # before) so the on-disk stage2_classify_*.json trace content is
+            # unchanged.
+            self._log(f"[scan_filter] Sanitizer-aware triage for {rel_path}")
             cost_before = cost_tracker.snapshot()
-            kept, classify_trace, dedup_trace = self._run_stage2(
+            in_scope, classify_trace = self._run_sanitizer_aware_triage(
                 all_hypotheses, source, cost_tracker=cost_tracker,
+            )
+            self._log(f"[scan_filter] Deduplicate root causes for {rel_path}")
+            merged, dedup_trace = self._run_root_cause_dedup(
+                in_scope, cost_tracker=cost_tracker,
             )
             s2_cost, s2_calls = cost_tracker.snapshot()
             s2_cost -= cost_before[0]
             s2_calls -= cost_before[1]
             self._log(
-                f"[scan_filter] Stage 2 done: {len(kept)} kept "
+                f"[scan_filter] Triage + dedup done: {len(merged)} merged "
                 f"(${s2_cost:.4f}, {s2_calls} calls)"
             )
 
-            # Save Stage 2 traces
+            # Save triage/dedup traces (on-disk names kept as "stage2_*" for
+            # backward compatibility with existing run outputs).
             self.store.save_trace(f"stage2_classify_{safe_name}.json", {
                 "file": rel_path,
                 "input_count": len(all_hypotheses),
@@ -912,24 +971,27 @@ class ScanFilterOrchestrator:
                 **dedup_trace,
             })
 
+            kept = merged
             if not kept:
                 self._log(f"[scan_filter] No hypotheses survived classification/dedup for {rel_path}")
                 continue
 
-            # Reachability annotation (between Stage 2 and Stage 3): use
-            # ``arvo targets <symbol>`` to discover which fuzz-target binaries
-            # link each hypothesis's hotspot function. Result is advisory
-            # (a ranking signal), NOT a hard filter — unreachable-from-fuzzer
-            # bugs are still worth reporting, they just drop in priority.
+            # Reachability annotation feeding the "Reachability-Annotated
+            # Hypotheses" box (Figure 3): use ``arvo targets <symbol>`` to
+            # discover which fuzz-target binaries link each hypothesis's
+            # hotspot function. Result is advisory (a ranking signal), NOT a
+            # hard filter — unreachable-from-fuzzer bugs are still worth
+            # reporting, they just drop in priority.
             if arvo_mode:
                 self._annotate_reachability(kept, rel_path)
 
-            # Stage 3: Docker sub-agent filtering.
-            # Traces are persisted per-hypothesis inside _run_stage3 as each
-            # sub-agent returns, so partial progress survives an interrupt.
-            self._log(f"[scan_filter] Stage 3: Sub-agent filtering for {rel_path}")
+            # Independent static filtering (Figure 3, refinement band) via a
+            # Docker sub-agent. Traces are persisted per-hypothesis inside
+            # _run_independent_static_filtering as each sub-agent returns, so
+            # partial progress survives an interrupt.
+            self._log(f"[scan_filter] Independent static filtering for {rel_path}")
             cost_before = cost_tracker.snapshot()
-            final, filter_results = self._run_stage3(
+            final, filter_results = self._run_independent_static_filtering(
                 kept, rel_path, cost_tracker=cost_tracker, check_results=check_results,
                 safe_name=safe_name,
             )
@@ -937,7 +999,7 @@ class ScanFilterOrchestrator:
             s3_cost -= cost_before[0]
             s3_calls -= cost_before[1]
             self._log(
-                f"[scan_filter] Stage 3 done: {len(final)} final "
+                f"[scan_filter] Independent static filtering done: {len(final)} final "
                 f"(${s3_cost:.4f}, {s3_calls} calls)"
             )
 
@@ -959,12 +1021,7 @@ class ScanFilterOrchestrator:
                 files_total=len(files),
             )
 
-        # Rank by (reachable, severity, confidence) — descending — so that
-        # reachable-from-fuzzer, higher-severity, higher-confidence hypotheses
-        # land at the top of hypotheses.json and survive ``--top-n``.
-        all_vuln_hypotheses.sort(key=hypothesis_priority_key, reverse=True)
-        for idx, h in enumerate(all_vuln_hypotheses, start=1):
-            h.hypothesis_id = f"SF{idx:02d}"
+        self._rank_for_confirmation(all_vuln_hypotheses)
 
         total_cost, total_calls = cost_tracker.snapshot()
         self._log(

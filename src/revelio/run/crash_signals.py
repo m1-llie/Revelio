@@ -29,6 +29,7 @@ string match catches it reliably.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 
@@ -147,6 +148,83 @@ def collect_indicators(
     return indicators
 
 
+# ASan/UBSan/MSan print a ``DEDUP_TOKEN: <token>`` line when built/run with
+# ``dedup_token_length=N`` (see scripts/arvo_ossfuzz), derived from the top N
+# relevant stack frames of the crash — a ready-made, precise dedup key.
+_DEDUP_TOKEN_RE = re.compile(r"^\s*DEDUP_TOKEN:\s*(\S+)", re.MULTILINE)
+_SUMMARY_RE = re.compile(r"^\s*SUMMARY:\s*(.+?)\s*$", re.MULTILINE)
+_TOP_FRAME_RE = re.compile(r"^\s*#0\s+0x[0-9a-fA-F]+\s+in\s+(\S+)", re.MULTILINE)
+
+
+def extract_dedup_token(output: str | None) -> str | None:
+    """Extract the sanitizer's ``DEDUP_TOKEN: <token>`` line, if present."""
+    if not output:
+        return None
+    m = _DEDUP_TOKEN_RE.search(output)
+    return m.group(1) if m else None
+
+
+def extract_crash_summary(output: str | None) -> str | None:
+    """Extract the sanitizer's human-readable ``SUMMARY: ...`` line, if present.
+
+    Display-only — not used as a dedup key, since summary lines can include
+    noisy details (addresses, offsets) that vary between otherwise-identical
+    crashes.
+    """
+    if not output:
+        return None
+    m = _SUMMARY_RE.search(output)
+    return m.group(1) if m else None
+
+
+def extract_top_stack_frame(output: str | None) -> str | None:
+    """Extract the function symbol of stack frame #0, if present."""
+    if not output:
+        return None
+    m = _TOP_FRAME_RE.search(output)
+    return m.group(1) if m else None
+
+
+# Signatures that mean a sanitizer/fuzzer harness genuinely attributed the crash to a
+# specific bug class (and usually a symbolized stack trace) — as opposed to a bare
+# signal death or a generic runtime assertion with no attribution to any function.
+_SANITIZER_SIGNATURES: frozenset[str] = CRASH_SIGNATURES - {"assertion failed", "check failed:"}
+
+
+def classify_crash_confidence(output: str | None) -> str:
+    """Return "sanitizer" if a real sanitizer/fuzzer banner fired, else "generic".
+
+    "generic" covers bare signal deaths and generic runtime assertions (e.g. glibc's
+    own ``*** buffer overflow detected ***`` fortify abort) that carry no attribution
+    to any specific function or bug class — these should not be trusted as strongly
+    as an actual sanitizer report.
+    """
+    if output and find_matched_signatures(output, _SANITIZER_SIGNATURES):
+        return "sanitizer"
+    return "generic"
+
+
+def build_fallback_signature(
+    output: str | None,
+    *,
+    signatures: Iterable[str] | None = None,
+) -> str:
+    """Best-effort crash signature for when no ``DEDUP_TOKEN`` is available
+    (e.g. flat-layout ARVO images, which don't set ``dedup_token_length``).
+
+    Composed from the sorted set of matched crash-type signatures plus the
+    top stack frame's function symbol — the most bug-identifying information
+    available without a real dedup token. Falls back to ``"unknown"`` if
+    nothing matches (should be rare, since this only runs on confirmed
+    crashes).
+    """
+    parts = sorted(find_matched_signatures(output, signatures))
+    frame = extract_top_stack_frame(output)
+    if frame:
+        parts.append(f"frame0:{frame}")
+    return "|".join(parts) if parts else "unknown"
+
+
 __all__ = [
     "CRASH_SIGNATURES",
     "CRASH_SIGNAL_RETURN_CODES",
@@ -154,4 +232,9 @@ __all__ = [
     "find_matched_signatures",
     "check_crash",
     "collect_indicators",
+    "extract_dedup_token",
+    "extract_crash_summary",
+    "extract_top_stack_frame",
+    "build_fallback_signature",
+    "classify_crash_confidence",
 ]

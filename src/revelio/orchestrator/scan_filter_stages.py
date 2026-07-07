@@ -1,11 +1,12 @@
 """Extracted pure functions for the scan-and-filter pipeline.
 
-Contains:
+Contains, following the paper's Figure 3 pipeline:
 - LLM helpers (litellm wrappers)
-- Tree-sitter function parsing
-- Stage 1: Multi-pass hypothesis generation phases
-- Stage 2: Classification & dedup
-- Stage 3: Docker sub-agent filter templates & runner
+- Tree-sitter function parsing (Extract Functions)
+- Initial Hypothesis Proposal: multi-pass hypothesis generation phases
+  (summarize file content, synthesize hypotheses)
+- Sanitizer-aware triage & deduplicate root causes (classification & dedup)
+- Independent static filtering: Docker sub-agent filter templates & runner
 """
 
 from __future__ import annotations
@@ -536,6 +537,7 @@ def _remove_overlapping(funcs: list[FunctionInfo]) -> list[FunctionInfo]:
 
 
 def parse_functions(file_path: Path, source: str) -> list[FunctionInfo]:
+    """Extract Functions (Figure 3, proposal band) via tree-sitter — deterministic, no LLM call."""
     ext = file_path.suffix.lower()
     if ext in {".c", ".cpp", ".cc", ".cxx", ".h", ".hpp"}:
         funcs = _parse_c(source)
@@ -607,13 +609,17 @@ def make_batches(funcs: list[FunctionInfo], short_threshold: int = 100,
 
 
 # ===========================================================================
-# Stage 1: Hypothesis generation
+# Initial Hypothesis Proposal (Figure 3, proposal band)
 # ===========================================================================
 
 
 HYPOTHESIS_SCHEMA = json.dumps([{
     "hypothesis": {
-        "summary": "Brief description of the vulnerability",
+        "summary": "Brief one-line description of the vulnerability",
+        "description": "Detailed explanation of why this is a vulnerability: the memory-safety "
+                        "mechanism (e.g. OOB read/write, UAF, double-free) and how it leads to a crash",
+        "trigger": "The specific attacker-controlled input or interaction that would trigger the crash",
+        "preconditions": ["Condition that must hold for the bug to be reachable/exploitable"],
         "files_reviewed": ["file_path"],
         "harness_entry": "entry function or null",
         "call_chains": ["A -> B -> C"],
@@ -744,6 +750,8 @@ def phase_summarize(
     check_analysis_context: str = "",
     harness_context: str = "",
 ) -> tuple[str, str, list[dict]]:
+    """Summarize File Content (Figure 3, proposal band) — a distinct LLM call whose
+    conversation history seeds the subsequent Synthesize Hypotheses calls below."""
     msgs: list[dict] = []
 
     # Present the TARGET file first and unambiguously, so the model's
@@ -799,6 +807,7 @@ def phase_analyze_wholefile(
     model: str, file_path: Path, summary_msgs: list[dict], kwargs: dict,
     cost_tracker: CostTracker | None = None,
 ) -> dict:
+    """Synthesize Hypotheses (Figure 3, proposal band) — whole-file pass."""
     msgs = list(summary_msgs)
     analysis = chat_send(
         msgs, model,
@@ -841,6 +850,7 @@ def phase_analyze_focused(
     focus_prompt: str, kwargs: dict,
     cost_tracker: CostTracker | None = None,
 ) -> dict:
+    """Synthesize Hypotheses (Figure 3, proposal band) — one focused-assumption pass."""
     msgs = list(summary_msgs)
     analysis = chat_send(msgs, model, focus_prompt, kwargs, cost_tracker=cost_tracker)
     _, hypotheses = _ask_for_json(msgs, model, kwargs, cost_tracker=cost_tracker)
@@ -853,6 +863,7 @@ def phase_analyze_functions(
     cost_tracker: CostTracker | None = None,
     check_results: list[dict] | None = None,
 ) -> dict:
+    """Synthesize Hypotheses (Figure 3, proposal band) \u2014 one pass per function batch."""
     combined_snippet = "\n\n".join(
         f"Function `{f.name}` (lines {f.start_line}\u2013{f.end_line}):\n"
         f"```\n{truncate(f.source, 6_000)}\n```"
@@ -926,6 +937,8 @@ def aggregate_hypotheses(
     focused_results: list[dict],
     function_analyses: list[dict],
 ) -> list[dict]:
+    """Merge all Synthesize Hypotheses passes into one file's contribution to the
+    Raw Hypothesis Pool (Figure 3, proposal band output)."""
     all_hyps: list[dict] = list(wholefile_result.get("hypotheses", []))
     for fr in focused_results:
         all_hyps.extend(fr.get("hypotheses", []))
@@ -935,7 +948,7 @@ def aggregate_hypotheses(
 
 
 # ===========================================================================
-# Stage 2: Classification & Dedup
+# Sanitizer-aware triage & deduplicate root causes (Figure 3, refinement band)
 # ===========================================================================
 
 
@@ -965,9 +978,9 @@ def _format_hypothesis_text(hyp: dict, source_lines: list[str] | None = None) ->
 
 
 # Sanitizers the downstream validator (tools/validate.py) actually tests
-# against, and whose signatures crash_signals.py recognizes. The filter gate
-# in Stage 2 keeps any hypothesis the classifier judges triggerable by one
-# or more of these.
+# against, and whose signatures crash_signals.py recognizes. The sanitizer-
+# aware triage gate keeps any hypothesis the classifier judges triggerable by
+# one or more of these.
 SUPPORTED_SANITIZERS: tuple[str, ...] = ("asan", "ubsan", "msan")
 
 
@@ -1028,7 +1041,8 @@ def _reachable_rank(value: Any) -> int:
 
 
 def hypothesis_priority_key(hyp: Any) -> tuple[int, int, float]:
-    """Composite sort key for ranking hypotheses by triage importance.
+    """Composite sort key used to rank for PoC confirmation (Figure 3, refinement
+    band) — deterministic, no LLM call. See ``ScanFilterOrchestrator._rank_for_confirmation``.
 
     Works with both ``VulnHypothesis`` dataclass instances and plain dicts.
     Returns ``(reachable_rank, severity_rank, confidence)``; use with
@@ -1107,7 +1121,8 @@ def classify_hypothesis(
     source_lines: list[str] | None = None,
     cost_tracker: CostTracker | None = None,
 ) -> dict:
-    """Ask LLM: is this a real memory-safety vulnerability and how severe is it?
+    """Sanitizer-aware triage (Figure 3, refinement band) — one LLM call per
+    hypothesis: is this a real memory-safety vulnerability, and how severe is it?
 
     Returns a dict with:
         is_vulnerability: bool
@@ -1321,7 +1336,9 @@ def dedup_hypotheses(
     workers: int = 8,
     cost_tracker: CostTracker | None = None,
 ) -> tuple[list[dict], list[dict], list[dict]]:
-    """Dedup hypotheses using LLM judgement.
+    """Deduplicate root causes (Figure 3, refinement band) — merge hypotheses that
+    describe the same underlying vulnerability, via a deterministic candidate-pair
+    prefilter plus pairwise LLM judgement and union-find merging.
 
     Only pairs with overlapping lines AND at least one shared CWE are candidates.
     For each candidate pair, ask the LLM if they are the same vulnerability.
@@ -1403,7 +1420,7 @@ def dedup_hypotheses(
 
 
 # ===========================================================================
-# Stage 3: Docker sub-agent filtering
+# Independent static filtering (Figure 3, refinement band): Docker sub-agent
 # ===========================================================================
 
 
@@ -1558,7 +1575,13 @@ def run_filter_agent(
     agent_cost_limit: float = 2.0,
     check_results: list[dict] | None = None,
 ) -> dict:
-    """Run a DefaultAgent inside the existing Docker container to verify one hypothesis.
+    """Independent static filtering (Figure 3, refinement band): a real coding agent
+    (``DefaultAgent``) with an unrestricted ``bash`` tool, run in the same shared
+    Docker container as the rest of the scan — not a single LLM call, and not
+    restricted to ``target_file``. Its only tool is arbitrary shell execution, and
+    its prompt (``FILTER_AGENT_SYSTEM``/``FILTER_AGENT_INSTANCE`` below) explicitly
+    tells it the repo root and encourages tracing callers/callees repo-wide to
+    reason about reachability. See ``ScanFilterOrchestrator._run_independent_static_filtering``.
 
     Returns dict with verdict, confidence, reason, reasoning, error.
     """

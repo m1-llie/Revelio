@@ -2,12 +2,15 @@
 
 import logging
 import os
+import re
 import shlex
 import subprocess
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
+_MESG_TTYNAME_RE = re.compile(r"^mesg: ttyname failed:.*\n?", re.MULTILINE)
 
 
 @dataclass
@@ -131,9 +134,7 @@ class DockerEnvironment:
                 cmd.extend(["-e", f"{key}={value}"])
         for key, value in self.config.env.items():
             cmd.extend(["-e", f"{key}={value}"])
-        # Suppress "mesg: ttyname failed" from login shell in non-TTY environment
-        wrapped_command = f"mesg n 2>/dev/null || true; {command}"
-        cmd.extend([self.container_id, "bash", "-lc", wrapped_command])
+        cmd.extend([self.container_id, "bash", "-lc", command])
 
         result = subprocess.run(
             cmd,
@@ -144,7 +145,11 @@ class DockerEnvironment:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        return {"output": result.stdout, "returncode": result.returncode, "exception_info": None}
+        # bash -l emits "mesg: ttyname failed: ..." on its own startup (before our
+        # command even runs) when there's no controlling terminal; `mesg n` can't
+        # suppress it since it fires during login-shell init, not from our command.
+        output = _MESG_TTYNAME_RE.sub("", result.stdout)
+        return {"output": output, "returncode": result.returncode, "exception_info": None}
 
     def cleanup(self):
         """Stop and remove the Docker container."""

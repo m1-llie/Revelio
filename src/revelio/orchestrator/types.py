@@ -38,6 +38,7 @@ class OrchestratorResult:
     poc_paths: list[str] = field(default_factory=list)
     script_paths: list[str] = field(default_factory=list)
     validation_paths: list[str] = field(default_factory=list)
+    duplicate_of: dict[str, str] = field(default_factory=dict)  # hid -> canonical hid it duplicates
 
 
 Parser = Callable[[str], Any]

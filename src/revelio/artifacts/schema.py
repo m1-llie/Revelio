@@ -142,6 +142,13 @@ class ValidationResult:
     reproduction_command: str | None = None
     logs_path: str | None = None
     evidence_paths: list[str] = field(default_factory=list)
+    # Crash signature for post-confirmation findings dedup (see orchestrator/dedup.py).
+    dedup_token: str | None = None
+    crash_summary: str | None = None
+    fallback_signature: str | None = None
+    # "sanitizer" if a real sanitizer/fuzzer banner fired, "generic" if the crash is a
+    # bare signal death or unattributed runtime assertion (see crash_signals.classify_crash_confidence).
+    crash_confidence: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -158,6 +165,33 @@ class BugReport:
         data = asdict(self)
         data["references"] = [r.to_dict() for r in self.references]
         return data
+
+
+@dataclass
+class DedupGroup:
+    """One group of confirmed findings sharing a crash signature."""
+
+    signature_type: str  # "dedup_token" | "fallback"
+    signature: str
+    canonical_hid: str
+    duplicate_hids: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class DedupReport:
+    """Result of grouping a run's confirmed findings by crash signature."""
+
+    groups: list[DedupGroup] = field(default_factory=list)
+    duplicate_of: dict[str, str] = field(default_factory=dict)  # hid -> canonical hid
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "groups": [g.to_dict() for g in self.groups],
+            "duplicate_of": dict(self.duplicate_of),
+        }
 
 
 def serialize_artifact(obj: Any) -> dict[str, Any]:

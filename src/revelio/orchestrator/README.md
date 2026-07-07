@@ -7,7 +7,7 @@ Key files:
 - `hypothesis.py` - `HypothesisOrchestrator`: parallel file-level scanning coordinator.
 - `file_hypothesis.py` - `FileHypothesisRunner`: per-file hypothesis agent runner.
 - `scan_filter.py` - `ScanFilterOrchestrator`: multi-pass scan + classify/dedup + Docker sub-agent filtering.
-- `scan_filter_stages.py` - Stage 1/2/3 implementations for the scan-filter pipeline (LLM calls, tree-sitter parsing, filter agent runner).
+- `scan_filter_stages.py` - hypothesis-proposal (extract functions / summarize file content / synthesize hypotheses), sanitizer-aware triage, deduplicate-root-causes, and independent-static-filtering implementations for the scan-filter pipeline (LLM calls, tree-sitter parsing, filter agent runner).
 - `context.py` - Artifact-to-prompt context packet builder.
 - `parsers.py` - Parsing of structured agent outputs (YAML/JSON).
 - `specs.py` - Default agent specs and config wiring.
@@ -29,18 +29,27 @@ Pipeline stages (detect mode):
    Stops on first confirmed crash.
 4. **Reporting** - `ReporterAgent` writes a bug report for confirmed crashes.
 
-Pipeline stages (scan_filter / scan_filter_detect):
-1. **Stage 1: Multi-pass hypothesis generation** - Tree-sitter function parsing,
-   multiple focused LLM passes (direct litellm calls, not agents).
-2. **Stage 2: Classification + dedup** - LLM-based classification (real vuln? ASAN-triggerable?)
-   and pairwise deduplication with union-find.
-3. **Stage 3: Docker sub-agent filtering** - `DefaultAgent` in shared container
-   inspects code statically, returns VALID/INVALID verdict.
-4. **(scan_filter_detect only)** - Continues to `MultiAgentOrchestrator` for PoC + report stages.
+Pipeline stages (`scan_filter_detect` — the only pipeline `detect.py` runs today; there is no
+`--pipeline` flag). Two bands, matching the paper's Figure 3:
 
-Pipeline modes (controlled via `--pipeline` flag in `detect.py`):
-- `file` - Single file hypothesis only (uses `FileHypothesisRunner` directly).
-- `project` - Parallel hypotheses only (stops after stage 1).
-- `detect` - Full pipeline (hypothesis + PoC + report).
-- `scan_filter` - Multi-pass scan + classify/dedup + filter (stops after hypotheses).
-- `scan_filter_detect` - scan_filter then PoC building + validation + report.
+**Initial Hypothesis Proposal (proposal band)** — per file, high-recall expansion:
+1. **Extract Functions** - tree-sitter function parsing. Deterministic, no LLM call.
+2. **Summarize File Content** - a distinct LLM call producing a file summary; its
+   conversation history seeds the passes below.
+3. **Synthesize Hypotheses** - multiple concurrent single-shot LLM passes (whole-file,
+   focused-assumption, per-function-batch — direct litellm calls, not agents), merged
+   into the file's contribution to the Raw Hypothesis Pool.
+
+**Hypothesis Triage and Filtering (refinement band)** — precision and ranking:
+4. **In-scope Hypotheses** via sanitizer-aware triage - one LLM call per hypothesis:
+   real vulnerability? ASAN/UBSAN/MSAN-triggerable?
+5. **Merged Hypotheses** via deduplicate root causes - deterministic line/CWE-overlap
+   prefilter + pairwise LLM judgement + union-find merge.
+6. **Reachability-Annotated Hypotheses** via independent static filtering - split
+   across two mechanisms: a deterministic `arvo targets` reachability annotation
+   (advisory ranking signal only, never filters), then a real coding agent
+   (`DefaultAgent` + unrestricted `bash` tool, full container/repo scope — not a
+   single LLM call, not restricted to one file) that returns a VALID/INVALID verdict.
+7. **Ranked Hypothesis Queue** via rank for PoC confirmation - deterministic sort by
+   (reachable, severity, confidence), no LLM call.
+8. Continues to `MultiAgentOrchestrator` for PoC building + validation + reporting.

@@ -23,17 +23,21 @@ A trustworthy and precise vulnerability detection AI agent that discovers memory
 detect.py  --arvo / --project
                 │
                 └── ScanFilterOrchestrator (per file)
-                      ├── Stage 1: Multi-pass LLM analysis (tree-sitter + focused passes)
-                      ├── Stage 2: LLM classification + dedup
-                      ├── Stage 3: Docker sub-agent filtering
+                      ├── Initial Hypothesis Proposal: extract functions (tree-sitter),
+                      │   summarize file content, synthesize hypotheses (focused passes)
+                      ├── In-scope Hypotheses: sanitizer-aware triage (LLM classification)
+                      ├── Merged Hypotheses: deduplicate root causes
+                      ├── Reachability-Annotated Hypotheses: independent static filtering
+                      │   (Docker sub-agent)
+                      ├── Ranked Hypothesis Queue: rank for PoC confirmation
                       └── MultiAgentOrchestrator
                             ├── PoCBuilderAgent × N (uses validate tool)
                             └── ReporterAgent × N
 ```
 
 The pipeline uses three separate model tiers:
-- **`--model`** — cheap/fast model for Stage 1-2 hypothesis generation (e.g., Haiku)
-- **`--filter-model`** — mid-tier model for Stage 3 sub-agent verification (e.g., Sonnet)
+- **`--model`** — cheap/fast model for the proposal + triage/dedup hypothesis generation (e.g., Haiku)
+- **`--filter-model`** — mid-tier model for the independent static filtering sub-agent (e.g., Sonnet)
 - **`--poc-model`** — strongest model for PoC building + validation/report (e.g., Opus)
 
 ## Quick Start
@@ -181,7 +185,7 @@ python -m revelio.run.detect \
 | `--max-poc-attempts` | `3` | Max validation attempts per hypothesis (PoCBuilder's `validate` tool calls) |
 | `--keep-container` | `false` | Keep Docker container after run (for debugging) |
 | `--agents-config-dir` | built-in | Custom directory for per-agent YAML configs |
-| `--filter-model` | Sonnet 4.6 | Model for scan_filter Stage 3 sub-agent verification |
+| `--filter-model` | Sonnet 4.6 | Model for the independent static filtering sub-agent |
 | `--filter-workers` | `4` | Parallel workers for sub-agent filtering |
 | `--poc-model` | same as `--model` | Model for PoC builder/reporter agents |
 | `--max-functions` | `50` | Max functions to analyze per file in scan_filter |
@@ -281,10 +285,10 @@ SILENT_STARTUP=1 python tools/cost_report.py output/<run_id> --write
 
 The report reads saved `trajectory.json` and `traces/*.json`. For agent
 trajectories it can split cost into cached input, uncached input, and output
-when Anthropic/LiteLLM usage fields are present. Some scan_filter Stage 1/2
-traces currently only save aggregate `cost`/`calls`, so those stages are
-included in direct API cost but cannot always be split into cached/uncached
-tokens retroactively.
+when Anthropic/LiteLLM usage fields are present. Some scan_filter
+proposal/refinement traces currently only save aggregate `cost`/`calls`, so
+those stages are included in direct API cost but cannot always be split into
+cached/uncached tokens retroactively.
 
 ### Validating PoCs
 

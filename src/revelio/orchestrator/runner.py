@@ -29,7 +29,14 @@ from revelio.orchestrator.parsers import (
     parse_poc_recipe,
     parse_validation_result,
 )
+from revelio.orchestrator.dedup import compute_dedup_report
 from revelio.orchestrator.scan_filter_stages import hypothesis_priority_key
+from revelio.run.crash_signals import (
+    build_fallback_signature,
+    classify_crash_confidence,
+    extract_crash_summary,
+    extract_dedup_token,
+)
 from revelio.tools.validate import make_validate_tool
 from revelio.orchestrator.types import AgentRunResult, AgentSpec, OrchestratorResult
 
@@ -343,7 +350,11 @@ class MultiAgentOrchestrator:
             log_fn=self._log_fn,
             global_model_config=self.model_config,
         )
-        validate_tool = make_validate_tool(self.env)
+        # Captures raw (untruncated) sanitizer output per validate() call, across
+        # all hypotheses, for post-confirmation crash-signature extraction —
+        # see the loop below and compute_dedup_report() after it.
+        validate_capture: list[dict] = []
+        validate_tool = make_validate_tool(self.env, capture=validate_capture)
 
         self.store.append_event("run_start", {"arvo_mode": self.arvo_mode})
         common_vars = {"project_path": self.project_path, "arvo_mode": self.arvo_mode, "top_n": self.top_n}
@@ -513,6 +524,13 @@ class MultiAgentOrchestrator:
 
             # Stage 3: Report generation
             self._log(f"Crash confirmed for {item.hypothesis_id}. Generating report...")
+            # Crash signature for post-confirmation dedup, extracted from the raw
+            # (untruncated) output of the validate() call that actually crashed —
+            # not poc_section's LLM-reported output_excerpt, which can be
+            # truncated/paraphrased away by the agent.
+            raw_crash_output = next(
+                (rec["output"] for rec in reversed(validate_capture) if rec["crash"]), None,
+            )
             validation = ValidationResult(
                 hypothesis_id=item.hypothesis_id,
                 crash_detected=True,
@@ -520,6 +538,12 @@ class MultiAgentOrchestrator:
                 output_excerpt=poc_section.get("output_excerpt", ""),
                 indicators=list(poc_section.get("indicators") or []),
                 reproduction_command=poc_section.get("reproduction_command"),
+                dedup_token=extract_dedup_token(raw_crash_output),
+                crash_summary=extract_crash_summary(raw_crash_output),
+                fallback_signature=(
+                    build_fallback_signature(raw_crash_output) if raw_crash_output else None
+                ),
+                crash_confidence=classify_crash_confidence(raw_crash_output),
             )
             self._artifacts["validation"] = validation
             self.store.write_handoff("validation", validation, hypothesis_id=item.hypothesis_id)
@@ -600,6 +624,18 @@ class MultiAgentOrchestrator:
         if success_count > 0:
             self.store.append_event("run_success_all", {"count": success_count})
             self._log(f"Run finished: {success_count} hypothesis confirmed.")
+
+            # Post-confirmation findings dedup: group confirmed hypotheses by
+            # crash signature. Purely a post-hoc comparison of already-written
+            # validation handoffs — does not affect the loop above.
+            dedup_report = compute_dedup_report(self.store.layout.handoffs_dir)
+            self.store.write_handoff("dedup_findings", dedup_report)
+            if dedup_report.duplicate_of:
+                self._log(
+                    f"Findings dedup: {len(dedup_report.duplicate_of)} duplicate(s) folded into "
+                    f"{success_count - len(dedup_report.duplicate_of)} unique finding(s)."
+                )
+
             return OrchestratorResult(
                 status="success",
                 summary=f"Confirmed {success_count} vulnerabilities.",
@@ -607,6 +643,7 @@ class MultiAgentOrchestrator:
                 report_paths=report_files,
                 poc_paths=poc_files,
                 script_paths=script_files,
+                duplicate_of=dedup_report.duplicate_of,
             )
 
         self.store.append_event("run_failure", {})
