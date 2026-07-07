@@ -6,6 +6,7 @@
 <title>Revelio — Trace Viewer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" rel="stylesheet">
 <style>
 /* ── Reset & Base ─────────────────────────────────────────────── */
@@ -65,7 +66,7 @@
   --yellow:       var(--rv-amber);
   --cyan:         var(--rv-teal);
   --radius:       10px;
-  --sans:         'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --sans:         'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   --mono:         'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
 }
 html{font-size:15px;scrollbar-gutter:stable}
@@ -76,16 +77,26 @@ code,pre{font-family:var(--mono);font-size:.85rem}
 pre{background:var(--rv-code-bg);border:none;border-radius:var(--radius);padding:1rem;overflow-x:auto;white-space:pre-wrap;word-break:break-word;line-height:1.5;color:var(--rv-text-dim)}
 
 /* ── Layout ───────────────────────────────────────────────────── */
-nav{background:var(--rv-bg);border-bottom:1px solid var(--rv-divider);padding:.8rem 1.5rem;position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:1.2rem}
-nav .logo{display:flex;align-items:center;gap:.55rem;font-size:1.2rem;font-weight:700;color:var(--rv-brand);cursor:pointer}
-nav .logo-icon{width:32px;height:32px;border-radius:8px;background:var(--rv-gold-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-nav .logo-icon i{font-size:18px;color:var(--rv-gold);line-height:1}
+nav{background:var(--rv-bg);border-bottom:1px solid var(--rv-divider);padding:.8rem 1.5rem;position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:1.2rem;min-height:24px}
 nav .breadcrumb{color:var(--rv-text-dim);font-size:.85rem;display:flex;align-items:center;gap:.4rem}
 nav .breadcrumb span{cursor:pointer;color:var(--rv-text-dim)}
 nav .breadcrumb span:hover{color:var(--rv-text)}
 nav .breadcrumb .sep{color:var(--rv-text-faint)}
 
-.container{max-width:1200px;margin:0 auto;padding:2rem 1.5rem;overflow-x:hidden}
+.layout{display:flex;align-items:flex-start;width:100%}
+.sidebar{flex:0 0 260px;position:sticky;top:40px;align-self:flex-start;height:calc(100vh - 40px);padding:1.1rem 1.25rem;display:flex;flex-direction:column;gap:.1rem;border-right:1px solid var(--rv-divider);box-sizing:border-box}
+.sidebar-brand{display:flex;align-items:center;gap:.65rem;cursor:pointer;padding:.4rem .35rem .9rem}
+.sidebar-brand-icon{width:34px;height:34px;border-radius:9px;background:var(--rv-gold-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sidebar-brand-icon i{font-size:18px;color:var(--rv-gold);line-height:1}
+.sidebar-brand-title{font-size:1.05rem;font-weight:800;color:var(--rv-text)}
+.sidebar-brand-sub{font-size:.62rem;font-weight:600;letter-spacing:.06em;color:var(--rv-text-faint);margin-top:1px}
+.sidebar-section-label{font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--rv-text-faint);padding:.5rem .7rem .4rem}
+.sidebar-item{display:flex;align-items:center;gap:.65rem;padding:.6rem .9rem;border-radius:8px;font-size:.86rem;font-weight:500;color:var(--rv-text-dim);cursor:pointer;transition:background .15s,color .15s}
+.sidebar-item i{font-size:16px;width:16px;text-align:center}
+.sidebar-item:hover{background:var(--rv-tint);color:var(--rv-text)}
+.sidebar-item.active{background:var(--rv-text);color:var(--rv-bg);font-weight:700}
+.sidebar-item.active i{color:var(--rv-bg)}
+.container{flex:1;min-width:0;max-width:1200px;margin:0 auto;padding:2rem 1.5rem;overflow-x:hidden}
 #app{overflow-x:hidden;width:100%}
 
 /* ── Cards ────────────────────────────────────────────────────── */
@@ -95,15 +106,54 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .card p{font-size:.85rem;color:var(--text-dim);line-height:1.5}
 
 /* ── Run list ─────────────────────────────────────────────────── */
-.run-list{background:var(--bg-card);border-radius:var(--radius);overflow:hidden}
-.run-card{cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:start;background:transparent;border-radius:0;margin-bottom:0;border-bottom:1px solid var(--rv-divider);transition:background .15s}
-.run-list .run-card:last-child{border-bottom:none}
-.run-card:hover{background:var(--rv-tint)}
-.run-meta{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.6rem}
-.run-meta .tag{font-size:.72rem;padding:2px 8px;border-radius:4px;border:none;color:var(--text-dim);white-space:nowrap;background:var(--rv-panel-2)}
-.run-meta .tag.success{color:var(--green)}
-.run-meta .tag.partial{color:var(--orange)}
-.run-stats .big{color:var(--green)}
+.run-list{background:var(--bg-card);border-radius:var(--radius);width:100%;overflow-x:auto}
+.runs-grid-row{display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;min-height:44px;border-bottom:0.5px solid var(--rv-divider);width:100%;min-width:52rem}
+.run-list .runs-grid-row:last-child{border-bottom:none}
+.runs-grid-header{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--rv-text-faint);padding:.45rem 1rem .4rem;border-bottom:0.5px solid var(--rv-divider);min-height:0;overflow:visible}
+.runs-meta-group{overflow:visible}
+.runs-meta-group>*{min-width:0;overflow:visible}
+.run-col-run{flex:0 0 38%;min-width:10rem;max-width:32rem}
+.runs-meta-group{flex:1;display:grid;grid-template-columns:9.25rem 9rem 4.5rem 9.25rem 6rem;justify-content:end;gap:0 .75rem;align-items:center;min-width:0}
+.runs-sort-btn{display:inline-flex;align-items:center;gap:.25rem;background:none;border:none;padding:0;font:inherit;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--rv-text-faint);cursor:pointer;user-select:none;white-space:nowrap;max-width:100%}
+.runs-sort-btn.runs-col-num{justify-content:flex-end;width:100%}
+.runs-sort-btn:hover{color:var(--rv-text-dim)}
+.runs-sort-btn.active{color:var(--rv-text-dim)}
+.runs-sort-arrows{display:inline-flex;flex-direction:column;align-items:center;justify-content:space-between;flex-shrink:0;width:.55rem;height:.85rem;margin-left:.15rem}
+.runs-sort-arrow{display:block;line-height:1;font-size:7px;height:.35rem}
+.runs-sort-arrow.up{transform:translateY(1px)}
+.runs-sort-arrow.down{transform:translateY(-1px)}
+.runs-sort-arrow{color:var(--rv-text-faint);opacity:.35}
+.runs-sort-arrow.on{color:var(--rv-gold);opacity:1}
+.run-row{cursor:pointer;background:transparent;transition:background .15s}
+.run-list .run-row:hover{background:var(--rv-panel-2)}
+.run-col-run{min-width:0}
+.run-col-run .run-name{font-size:14px;font-weight:500;color:var(--rv-text);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.run-col-run .run-target{font-size:12px;color:var(--rv-text-dim);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.run-col-status{min-width:0;padding-right:.35rem}
+.run-col-model{font-size:12px;color:var(--rv-text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;padding-left:.5rem}
+.run-col-cost{font-size:13px;color:var(--rv-text);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:.75rem}
+.runs-grid-header .runs-meta-group>:nth-child(3){padding-right:.75rem}
+.run-col-started{font-size:12px;color:var(--rv-text-dim);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;min-width:0}
+.run-col-confirmed{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.runs-col-num{text-align:right}
+.run-confirmed-num{font-size:17px;font-weight:500;line-height:1}
+.run-confirmed-num.zero{color:var(--rv-text-faint)}
+.run-confirmed-num.hit{color:var(--rv-green)}
+.run-status-pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap;line-height:1.3}
+.run-status-pill.success{background:var(--rv-green-bg);color:var(--rv-green)}
+.run-status-pill.neutral{background:rgba(110,109,128,.12);color:var(--rv-text-dim)}
+.run-col-score.score-indicators{justify-content:flex-end}
+
+/* ── Vulnerabilities list ─────────────────────────────────────── */
+.vuln-col-finding{flex:0 0 38%;min-width:14rem;max-width:34rem}
+.vuln-col-finding .vuln-summary{font-size:14px;font-weight:500;color:var(--rv-text);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vuln-col-finding .vuln-loc{font-size:12px;color:var(--rv-text-dim);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.vuln-meta-group{flex:1;display:grid;grid-template-columns:9rem 12rem 7rem 11rem;justify-content:end;gap:0 .75rem;align-items:center;min-width:0;overflow:visible}
+.vuln-meta-group>*{min-width:0;overflow:visible}
+.vuln-col-type{font-size:12px;font-family:var(--mono);color:var(--rv-text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vuln-col-repo{font-size:12px;color:var(--rv-text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vuln-col-severity{text-align:right}
+.vuln-col-date{font-size:12px;color:var(--rv-text-dim);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 
 /* ── Badge / Pill ─────────────────────────────────────────────── */
 .badge{display:inline-block;font-size:.7rem;padding:2px 8px;border-radius:999px;font-weight:600;letter-spacing:.02em;border:none}
@@ -121,10 +171,6 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .pipeline-badge.skipped,.pipeline-badge.not-reached{background:transparent;color:var(--rv-text-faint);border:1px dashed rgba(110,109,128,.38);font-weight:600;font-size:.62rem;letter-spacing:.04em;text-transform:uppercase}
 .pipeline-badge.dup{background:rgba(168,166,184,.12);color:var(--rv-text-dim)}
 .pipeline-badge.warn{background:var(--rv-amber-bg);color:var(--rv-amber)}
-
-.run-stats{text-align:right;white-space:nowrap}
-.run-stats .big{font-size:1.8rem;font-weight:800}
-.run-stats .label{font-size:.72rem;color:var(--text-dim)}
 
 /* ── Tabs ─────────────────────────────────────────────────────── */
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--rv-divider);margin-bottom:1.5rem;overflow-x:auto;scroll-margin-top:4.5rem}
@@ -228,8 +274,6 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 
 /* ── Responsive ───────────────────────────────────────────────── */
 @media(max-width:640px){
-  .run-card{grid-template-columns:1fr}
-  .run-stats{text-align:left}
   .overview-grid{overflow-x:auto}
   .stat-card{flex:1 0 auto;min-width:6.5rem;padding:.65rem .85rem}
   .agent-row{grid-template-columns:1fr;gap:.3rem}
@@ -247,10 +291,17 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .filter-bar .filter-label{font-size:.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em}
 .filter-bar .filter-reset{background:none;border:none;border-radius:var(--radius);padding:.5rem .8rem;color:var(--text-dim);font-size:.78rem;cursor:pointer;transition:all .15s}
 .filter-bar .filter-reset:hover{color:var(--rv-text);background:var(--rv-panel-2)}
-
-/* ── Run card (updated) ──────────────────────────────────────── */
-.run-card .run-title{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
-.run-card .run-title .cve-id{font-size:1rem;font-weight:700;color:var(--text-bright)}
+/* A plain <select>'s option popup can't be size-limited via CSS in any browser,
+   so filters with potentially long option lists (type, repository) use this
+   custom dropdown instead — same look as .filter-bar select, but the open menu
+   caps at ~10 rows and scrolls beyond that. */
+.custom-select{position:relative}
+.custom-select-btn{box-sizing:border-box;-webkit-appearance:none;appearance:none;background:var(--rv-tint);border:none;border-radius:var(--radius);padding:.45rem 1.7rem .45rem .8rem;margin:0;line-height:1.2;color:var(--text-bright);font-size:.82rem;cursor:pointer;transition:box-shadow .15s;font-family:inherit;white-space:nowrap;max-width:11rem;overflow:hidden;text-overflow:ellipsis;text-align:left;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23A8A6B8'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .6rem center}
+.custom-select-btn:focus{box-shadow:0 0 0 1px var(--rv-gold);outline:none}
+.custom-select-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:50;min-width:100%;max-width:20rem;max-height:19.5rem;overflow-y:auto;background:var(--bg-card);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,.35);padding:.25rem;scrollbar-width:thin;scrollbar-color:rgba(110,109,128,.5) transparent}
+.custom-select-option{padding:.35rem .6rem;border-radius:6px;font-size:.8rem;color:var(--text);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.custom-select-option:hover{background:var(--rv-panel-2)}
+.custom-select-option.active{background:var(--rv-gold-bg);color:var(--rv-gold)}
 
 /* ── Score indicators ────────────────────────────────────────── */
 .score-indicators{display:flex;gap:.5rem;align-items:center;flex-shrink:0}
@@ -350,12 +401,12 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .stage2-card.not{border-left-color:var(--text-dim)}
 .stage2-card.asan{border-left-color:var(--green)}
 .confirmed-poc-panel{margin:.5rem 0 1.25rem;width:100%}
-.confirmed-poc-wrap{height:36rem;overflow:hidden;border:none;border-radius:var(--radius);background:var(--rv-tint);padding:.85rem 1rem}
+.confirmed-poc-wrap{height:36rem;overflow:hidden;border:none;border-radius:var(--radius);background:transparent;padding:.85rem 0}
 .confirmed-poc-wrap .confirmed-poc-card:last-child{margin-bottom:0;border-bottom:none}
-.confirmed-poc-card{background:transparent;border:none;border-bottom:1px solid var(--rv-divider);border-radius:0;margin-bottom:0;padding:1rem 1.15rem}
+.confirmed-poc-card{background:var(--rv-tint);border:none;border-bottom:1px solid var(--rv-divider);border-radius:0;margin-bottom:0;padding:1rem 1.15rem}
 .confirmed-poc-card.asan,.confirmed-poc-card.not{border-left:none}
 .confirmed-poc-card.clickable{cursor:pointer;transition:background-color .12s}
-.confirmed-poc-card.clickable:hover{background:var(--rv-tint)}
+.confirmed-poc-card.clickable:hover{background:var(--rv-tint-strong)}
 .pipeline-panel{display:flex;flex-direction:column;margin:.5rem 0 1.25rem;width:100%}
 .pipeline-panel-full .pipeline-table-wrap{height:22rem;overflow:hidden}
 .pipeline-table-wrap{border:none;border-radius:var(--radius);background:var(--rv-tint);width:100%;padding:.75rem 1rem;box-sizing:border-box}
@@ -387,7 +438,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .stage-collapse-header .stage-card-title-wrap{flex:1 1 100%;width:100%;line-height:1.45;padding-left:1.1rem;color:var(--text)}
 .card.revelio-stage-card{background:transparent;padding:1rem 0}
 .stage-collapse-body{display:none;padding-top:.8rem}
-.stage-collapse-body.open{display:block;max-height:30rem;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
+.stage-collapse-body.open{display:block;max-height:40rem;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
 .stage-collapse-body.open:has(.step-view){padding-top:0}
 .step-view{border:none;border-radius:8px;background:var(--rv-tint)}
 .step-nav{display:flex;align-items:center;gap:.6rem;margin:0;padding:.45rem .65rem;background:var(--rv-panel-2);border-bottom:1px solid var(--rv-divider);font-size:.78rem;flex-wrap:wrap;position:sticky;top:0;z-index:2}
@@ -476,15 +527,29 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 <body>
 
 <nav>
-  <div class="logo" onclick="navigate('')">
-    <div class="logo-icon"><i class="ti ti-sparkles"></i></div>
-    Revelio
-  </div>
   <div class="breadcrumb" id="breadcrumb"></div>
 </nav>
 
-<div class="container" id="app">
-  <div class="loading"><div class="spinner"></div><br>Loading runs...</div>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand" onclick="navigate('')">
+      <div class="sidebar-brand-icon"><i class="ti ti-sparkles"></i></div>
+      <div>
+        <div class="sidebar-brand-title">Revelio</div>
+        <div class="sidebar-brand-sub">VULNERABILITY AGENT</div>
+      </div>
+    </div>
+    <div class="sidebar-section-label">Console</div>
+    <div class="sidebar-item" id="sidebar-run" onclick="navigate('')">
+      <i class="ti ti-list-details"></i> Run
+    </div>
+    <div class="sidebar-item" id="sidebar-vulns" onclick="navigate('vulns')">
+      <i class="ti ti-bug"></i> Vulnerabilities
+    </div>
+  </aside>
+  <div class="container" id="app">
+    <div class="loading"><div class="spinner"></div><br>Loading runs...</div>
+  </div>
 </div>
 
 <script>
@@ -537,7 +602,11 @@ document.addEventListener('DOMContentLoaded', () => route());
 
 async function route() {
   const hash = window.location.hash.slice(1);
-  if (hash && hash !== '') {
+  if (hash === 'vulns') {
+    currentView = 'vulnerabilities';
+    currentRunId = null;
+    await loadVulnerabilitiesList();
+  } else if (hash && hash !== '') {
     currentRunId = decodeURIComponent(hash);
     currentView = 'detail';
     vulnContextLoaded = false;
@@ -549,11 +618,21 @@ async function route() {
     await loadRunsList();
   }
   updateBreadcrumb();
+  updateSidebarActive();
+}
+
+function updateSidebarActive() {
+  const run = document.getElementById('sidebar-run');
+  const vulns = document.getElementById('sidebar-vulns');
+  if (run) run.classList.toggle('active', currentView !== 'vulnerabilities');
+  if (vulns) vulns.classList.toggle('active', currentView === 'vulnerabilities');
 }
 
 function updateBreadcrumb() {
   const bc = document.getElementById('breadcrumb');
-  if (currentView === 'list') {
+  if (currentView === 'vulnerabilities') {
+    bc.innerHTML = '<span>Vulnerabilities</span>';
+  } else if (currentView === 'list') {
     bc.innerHTML = '<span onclick="navigate(\'\')">All Runs</span>';
   } else {
     bc.innerHTML = `<span onclick="navigate('')">All Runs</span><span class="sep">/</span><span>${esc(currentRunId)}</span>`;
@@ -602,8 +681,136 @@ function batchLabel(bt) {
   return bt.replace(/^batch_/, '').replace(/_/g, '-') || '—';
 }
 
-// Current filter state
-let listFilters = { search: '', batchType: '', status: '', model: '', score: '' };
+// Current filter/sort state
+let listFilters = { search: '', status: '', model: '' };
+let listSort = { field: 'date', dir: 'desc' };
+let vulnerabilitiesData = [];
+let vulnFilters = { search: '', severity: '', type: '', repo: '' };
+let vulnSort = { field: 'date', dir: 'desc' };
+let pendingPocNav = null; // {runId, hid} — jump to a PoC after loadRunDetail resolves
+
+// ── Custom scrollable dropdown ───────────────────────────────────
+// A plain <select>'s popup can't be capped at N rows via CSS in any browser,
+// so filters with potentially long option lists use this instead.
+function customSelectHtml(id, allLabel, options, selected) {
+  const current = options.find(o => o.value === selected);
+  const btnLabel = current ? current.label : allLabel;
+  let html = `<div class="custom-select" id="${esc(id)}-wrap">`;
+  html += `<button type="button" class="custom-select-btn" onclick="toggleCustomSelect('${jsStr(id)}')">${esc(btnLabel)}</button>`;
+  html += `<div class="custom-select-menu" id="${esc(id)}-menu" style="display:none">`;
+  html += `<div class="custom-select-option${selected ? '' : ' active'}" onclick="chooseCustomSelect('${jsStr(id)}','')">${esc(allLabel)}</div>`;
+  for (const o of options) {
+    html += `<div class="custom-select-option${selected === o.value ? ' active' : ''}" onclick="chooseCustomSelect('${jsStr(id)}','${jsStr(o.value)}')">${esc(o.label)}</div>`;
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function toggleCustomSelect(id) {
+  const menu = document.getElementById(id + '-menu');
+  if (!menu) return;
+  const isOpen = menu.style.display !== 'none';
+  document.querySelectorAll('.custom-select-menu').forEach(m => m.style.display = 'none');
+  menu.style.display = isOpen ? 'none' : 'block';
+}
+
+function chooseCustomSelect(id, value) {
+  const menu = document.getElementById(id + '-menu');
+  if (menu) menu.style.display = 'none';
+  customSelectOnChange[id]?.(value);
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.custom-select')) {
+    document.querySelectorAll('.custom-select-menu').forEach(m => m.style.display = 'none');
+  }
+});
+
+const customSelectOnChange = {};
+
+function runStatusLabel(status) {
+  if (status === 'success') return 'Found Vulnerabilities';
+  if (status === 'partial') return 'Partial';
+  if (status === 'unknown' || !status) return 'None Detected';
+  return status;
+}
+
+function runStatusPill(status) {
+  const label = runStatusLabel(status);
+  const cls = status === 'success' ? 'success' : 'neutral';
+  return `<span class="run-status-pill ${cls}">${esc(label)}</span>`;
+}
+
+function runModelDisplay(r) {
+  return esc(runModelTags(r).join(', '));
+}
+
+function runStartedDisplay(r) {
+  if (!r.created_at) return '—';
+  return new Date(r.created_at).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function runCostDisplay(r) {
+  return r.total_cost ? '$' + r.total_cost.toFixed(2) : '—';
+}
+
+function runConfirmedCell(r) {
+  const sc = r.score;
+  if (sc) {
+    return `<div class="run-col-score score-indicators">
+      <div class="score-dot"><div class="dot hit ${sc.file_hit ? 'hit-yes' : 'hit-no'}"></div><div class="dot-label">File</div></div>
+      <div class="score-dot"><div class="dot hit ${sc.function_hit ? 'hit-yes' : 'hit-no'}"></div><div class="dot-label">Func</div></div>
+      <div class="score-dot"><div class="dot hit ${sc.line_hit ? 'hit-yes' : 'hit-no'}"></div><div class="dot-label">Line</div></div>
+    </div>`;
+  }
+  const n = r.hypotheses_confirmed || 0;
+  const cls = n >= 1 ? 'hit' : 'zero';
+  return `<span class="run-confirmed-num ${cls}">${n}</span>`;
+}
+
+function runSortValue(r, field) {
+  const { cveId } = parseRunId(r.run_id);
+  if (field === 'name') return (cveId || r.run_id || '').toLowerCase();
+  if (field === 'status') return r.status === 'success' ? 1 : 0;
+  if (field === 'cost') return r.total_cost || 0;
+  if (field === 'date') return r.created_at || '';
+  if (field === 'model') return (r.model_name ? r.model_name.split('/').pop() : '').toLowerCase();
+  if (field === 'confirmed') return r.hypotheses_confirmed || 0;
+  return r.created_at || '';
+}
+
+function runSortHeader(label, field, numeric) {
+  const active = listSort.field === field;
+  const ascOn = active && listSort.dir === 'asc';
+  const descOn = active && listSort.dir === 'desc';
+  const numCls = numeric ? ' runs-col-num' : '';
+  return `<button type="button" class="runs-sort-btn${numCls}${active ? ' active' : ''}" onclick="toggleRunSort('${jsStr(field)}')">`
+    + `<span>${esc(label)}</span>`
+    + `<span class="runs-sort-arrows" aria-hidden="true">`
+    + `<span class="runs-sort-arrow up${ascOn ? ' on' : ''}">▲</span>`
+    + `<span class="runs-sort-arrow down${descOn ? ' on' : ''}">▼</span>`
+    + `</span></button>`;
+}
+
+function toggleRunSort(field) {
+  const defaults = { name: 'asc', status: 'desc', model: 'asc', cost: 'desc', date: 'desc', confirmed: 'desc' };
+  if (listSort.field === field) listSort.dir = listSort.dir === 'asc' ? 'desc' : 'asc';
+  else listSort = { field, dir: defaults[field] || 'asc' };
+  renderRunsList();
+}
+
+function sortRunRows(rows) {
+  const { field, dir } = listSort;
+  const mul = dir === 'desc' ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    const av = runSortValue(a, field);
+    const bv = runSortValue(b, field);
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * mul;
+    return String(av).localeCompare(String(bv)) * mul;
+  });
+}
 
 function renderRunsList() {
   const app = document.getElementById('app');
@@ -613,12 +820,9 @@ function renderRunsList() {
   }
 
   // Collect unique values for dropdown filters
-  const batchTypes = new Set();
   const statuses = new Set();
   const models = new Set();
   for (const r of runsData) {
-    const { batchType } = parseRunId(r.run_id);
-    if (batchType) batchTypes.add(batchType);
     if (r.status) statuses.add(r.status);
     const m = r.model_name ? r.model_name.split('/').pop() : '';
     if (m) models.add(m);
@@ -626,104 +830,66 @@ function renderRunsList() {
 
   // Apply filters
   const q = (listFilters.search || '').toLowerCase().trim();
-  const filtered = runsData.filter(r => {
-    const { batchType, cveId } = parseRunId(r.run_id);
+  let filtered = runsData.filter(r => {
+    const { cveId } = parseRunId(r.run_id);
     if (q && !(r.run_id || '').toLowerCase().includes(q)
         && !(cveId || '').toLowerCase().includes(q)
         && !(r.target_ref || '').toLowerCase().includes(q)
         && !(r.model_name || '').toLowerCase().includes(q)) return false;
-    if (listFilters.batchType && batchType !== listFilters.batchType) return false;
     if (listFilters.status && r.status !== listFilters.status) return false;
     if (listFilters.model) {
       const rm = r.model_name ? r.model_name.split('/').pop() : '';
       if (rm !== listFilters.model) return false;
     }
-    if (listFilters.score) {
-      const sc = r.score;
-      if (!sc) return listFilters.score === 'no_score';
-      if (listFilters.score === 'no_score') return !sc;
-      if (listFilters.score === 'file_hit') return sc.file_hit;
-      if (listFilters.score === 'file_miss') return !sc.file_hit;
-      if (listFilters.score === 'func_hit') return sc.function_hit;
-      if (listFilters.score === 'func_miss') return !sc.function_hit;
-      if (listFilters.score === 'line_hit') return sc.line_hit;
-      if (listFilters.score === 'line_miss') return !sc.line_hit;
-      if (listFilters.score === 'all_hit') return sc.file_hit && sc.function_hit && sc.line_hit;
-      if (listFilters.score === 'none_hit') return !sc.file_hit && !sc.function_hit && !sc.line_hit;
-    }
     return true;
   });
+  filtered = sortRunRows(filtered);
 
   // Build filter bar
+  customSelectOnChange['filter-status'] = (v) => { listFilters.status = v; renderRunsList(); };
+  customSelectOnChange['filter-model'] = (v) => { listFilters.model = v; renderRunsList(); };
   let html = `<div class="filter-bar">
     <input type="text" id="run-search" placeholder="Search CVE ID, target, model..." value="${esc(listFilters.search || '')}" onkeydown="if(event.key==='Enter')applyFilters()" oninput="applyFilters()">
-    <select id="filter-batch" onchange="applyFilters()" title="Run type: Revelio, file-scan, Claude Code, etc.">
-      <option value="">All Types</option>
-      ${[...batchTypes].sort().map(bt => `<option value="${esc(bt)}" ${listFilters.batchType===bt?'selected':''}>${esc(batchLabel(bt))}</option>`).join('')}
-    </select>
-    <select id="filter-status" onchange="applyFilters()" title="Run outcome: success, partial, failed, etc.">
-      <option value="">All Statuses</option>
-      ${[...statuses].sort().map(s => `<option value="${esc(s)}" ${listFilters.status===s?'selected':''}>${esc(s)}</option>`).join('')}
-    </select>
-    <select id="filter-model" onchange="applyFilters()" title="LLM model used for the run">
-      <option value="">All Models</option>
-      ${[...models].sort().map(m => `<option value="${esc(m)}" ${listFilters.model===m?'selected':''}>${esc(m)}</option>`).join('')}
-    </select>
-    <select id="filter-score" onchange="applyFilters()" title="Benchmark accuracy vs known CVE location (ARVO runs only)">
-      <option value="">All Scores</option>
-      <option value="all_hit" ${listFilters.score==='all_hit'?'selected':''}>All Hit</option>
-      <option value="file_hit" ${listFilters.score==='file_hit'?'selected':''}>File Hit</option>
-      <option value="func_hit" ${listFilters.score==='func_hit'?'selected':''}>Func Hit</option>
-      <option value="line_hit" ${listFilters.score==='line_hit'?'selected':''}>Line Hit</option>
-      <option value="file_miss" ${listFilters.score==='file_miss'?'selected':''}>File Miss</option>
-      <option value="func_miss" ${listFilters.score==='func_miss'?'selected':''}>Func Miss</option>
-      <option value="line_miss" ${listFilters.score==='line_miss'?'selected':''}>Line Miss</option>
-      <option value="none_hit" ${listFilters.score==='none_hit'?'selected':''}>No Hits</option>
-      <option value="no_score" ${listFilters.score==='no_score'?'selected':''}>Not Scored</option>
-    </select>
+    ${customSelectHtml('filter-status', 'All Statuses', [...statuses].sort().map(s => ({ value: s, label: runStatusLabel(s) })), listFilters.status)}
+    ${customSelectHtml('filter-model', 'All Models', [...models].sort().map(m => ({ value: m, label: m })), listFilters.model)}
     <button class="filter-reset" onclick="resetFilters()">Reset</button>
   </div>`;
 
-  const hasActiveFilters = q || listFilters.batchType || listFilters.status || listFilters.model || listFilters.score;
-  html += `<h2 style="color:var(--text-bright);margin-bottom:1.5rem">Runs <span style="font-size:.85rem;color:var(--text-dim);font-weight:400">(${filtered.length}${hasActiveFilters ? ' / ' + runsData.length : ''})</span></h2>`;
+  const hasActiveFilters = q || listFilters.status || listFilters.model;
+  html += `<h2 style="color:var(--text-bright);margin-bottom:1rem">Runs <span style="font-size:.85rem;color:var(--text-dim);font-weight:400">(${filtered.length}${hasActiveFilters ? ' / ' + runsData.length : ''})</span></h2>`;
 
   if (hasActiveFilters && !filtered.length) {
     html += '<div class="empty"><p>No runs match your filters.</p></div>';
+    app.innerHTML = html;
+    return;
   }
 
-  html += '<div class="run-list">';
+  html += `<div class="run-list">
+    <div class="runs-grid-row runs-grid-header">
+      ${runSortHeader('Run', 'name', false)}
+      <div class="runs-meta-group">
+        ${runSortHeader('Status', 'status', false)}
+        ${runSortHeader('Model', 'model', false)}
+        ${runSortHeader('Cost', 'cost', true)}
+        ${runSortHeader('Started', 'date', true)}
+        ${runSortHeader('Confirmed', 'confirmed', true)}
+      </div>
+    </div>`;
   for (const r of filtered) {
     const { cveId } = parseRunId(r.run_id);
-    const statusCls = r.status === 'success' ? 'success' : r.status === 'partial' ? 'partial' : r.status === 'Submitted' || r.status === 'completed' ? 'success' : 'unknown';
-    const statusLabel = r.status === 'success' ? 'All Confirmed' : r.status === 'partial' ? 'Partial' : r.status === 'unknown' ? 'Unknown' : r.status;
-    const date = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
-    const modelTags = runModelTags(r);
-    const costStr = r.total_cost ? '$' + r.total_cost.toFixed(2) : '';
-    const durStr = r.duration_seconds ? fmtDuration(r.duration_seconds) : '';
-    const sc = r.score;
     html += `
-    <div class="card run-card" onclick="navigate('${encUri(r.run_id)}')">
-      <div>
-        <div class="run-title">
-          <span class="cve-id">${esc(cveId)}</span>
-        </div>
-        <p style="margin-top:.3rem">${esc(r.target_ref || '—')}</p>
-        <div class="run-meta">
-          <span class="tag ${statusCls}">${statusLabel}</span>
-          ${modelTags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}
-          ${costStr ? `<span class="tag">${costStr}</span>` : ''}
-          ${durStr ? `<span class="tag">${durStr}</span>` : ''}
-          <span class="tag">${date}</span>
-        </div>
+    <div class="runs-grid-row run-row" onclick="navigate('${encUri(r.run_id)}')">
+      <div class="run-col-run">
+        <div class="run-name">${esc(cveId)}</div>
+        <div class="run-target" title="${esc(r.target_ref || '')}">${esc(r.target_ref || '—')}</div>
       </div>
-      ${sc ? `<div class="score-indicators">
-        <div class="score-dot"><div class="dot hit ${sc.file_hit?'hit-yes':'hit-no'}"></div><div class="dot-label">File</div></div>
-        <div class="score-dot"><div class="dot hit ${sc.function_hit?'hit-yes':'hit-no'}"></div><div class="dot-label">Func</div></div>
-        <div class="score-dot"><div class="dot hit ${sc.line_hit?'hit-yes':'hit-no'}"></div><div class="dot-label">Line</div></div>
-      </div>` : `<div class="run-stats">
-        <div class="big">${r.hypotheses_confirmed || 0}</div>
-        <div class="label">confirmed</div>
-      </div>`}
+      <div class="runs-meta-group">
+      <div class="run-col-status">${runStatusPill(r.status)}</div>
+      <div class="run-col-model" title="${runModelDisplay(r)}">${runModelDisplay(r)}</div>
+      <div class="run-col-cost">${runCostDisplay(r)}</div>
+      <div class="run-col-started">${esc(runStartedDisplay(r))}</div>
+      <div class="run-col-confirmed">${runConfirmedCell(r)}</div>
+      </div>
     </div>`;
   }
   html += '</div>';
@@ -735,10 +901,6 @@ function applyFilters() {
   const isRunSearch = active && active.id === 'run-search';
   const cursor = isRunSearch ? active.selectionStart : null;
   listFilters.search = (document.getElementById('run-search') || {}).value || '';
-  listFilters.batchType = (document.getElementById('filter-batch') || {}).value || '';
-  listFilters.status = (document.getElementById('filter-status') || {}).value || '';
-  listFilters.model = (document.getElementById('filter-model') || {}).value || '';
-  listFilters.score = (document.getElementById('filter-score') || {}).value || '';
   renderRunsList();
   if (isRunSearch) {
     const input = document.getElementById('run-search');
@@ -750,8 +912,184 @@ function applyFilters() {
 }
 
 function resetFilters() {
-  listFilters = { search: '', batchType: '', status: '', model: '', score: '' };
+  listFilters = { search: '', status: '', model: '' };
+  listSort = { field: 'date', dir: 'desc' };
   renderRunsList();
+}
+
+// ── Vulnerabilities list ─────────────────────────────────────────
+async function loadVulnerabilitiesList() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading vulnerabilities...</div>';
+  try {
+    vulnerabilitiesData = await api('/api/vulnerabilities');
+    renderVulnerabilitiesList();
+  } catch (e) {
+    app.innerHTML = `<div class="empty"><div class="icon">!</div><p>Failed to load vulnerabilities: ${esc(e.message)}</p></div>`;
+  }
+}
+
+const VULN_SEVERITY_RANK = { critical: 4, high: 3, medium: 2, low: 1, none: 0 };
+
+function vulnSeverityBadge(sev) {
+  const s = (sev || '').toLowerCase();
+  const cls = s === 'critical' || s === 'high' ? 'badge-red' : s === 'medium' ? 'badge-orange' : s === 'low' ? 'badge-cyan' : 'badge-dup';
+  return `<span class="badge ${cls}">${esc(sev || 'unknown')}</span>`;
+}
+
+function vulnDateDisplay(v) {
+  if (!v.created_at) return '—';
+  return new Date(v.created_at).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function vulnSortValue(v, field) {
+  if (field === 'type') return (v.primitive || '').toLowerCase();
+  if (field === 'repo') return (v.target_ref || '').toLowerCase();
+  if (field === 'severity') return VULN_SEVERITY_RANK[(v.severity || '').toLowerCase()] ?? -1;
+  if (field === 'date') return v.created_at || '';
+  return v.created_at || '';
+}
+
+function vulnSortHeader(label, field, numeric) {
+  const active = vulnSort.field === field;
+  const ascOn = active && vulnSort.dir === 'asc';
+  const descOn = active && vulnSort.dir === 'desc';
+  const numCls = numeric ? ' runs-col-num' : '';
+  return `<button type="button" class="runs-sort-btn${numCls}${active ? ' active' : ''}" onclick="toggleVulnSort('${jsStr(field)}')">`
+    + `<span>${esc(label)}</span>`
+    + `<span class="runs-sort-arrows" aria-hidden="true">`
+    + `<span class="runs-sort-arrow up${ascOn ? ' on' : ''}">▲</span>`
+    + `<span class="runs-sort-arrow down${descOn ? ' on' : ''}">▼</span>`
+    + `</span></button>`;
+}
+
+function toggleVulnSort(field) {
+  const defaults = { type: 'asc', repo: 'asc', severity: 'desc', date: 'desc' };
+  if (vulnSort.field === field) vulnSort.dir = vulnSort.dir === 'asc' ? 'desc' : 'asc';
+  else vulnSort = { field, dir: defaults[field] || 'asc' };
+  renderVulnerabilitiesList();
+}
+
+function sortVulnRows(rows) {
+  const { field, dir } = vulnSort;
+  const mul = dir === 'desc' ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    const av = vulnSortValue(a, field);
+    const bv = vulnSortValue(b, field);
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * mul;
+    return String(av).localeCompare(String(bv)) * mul;
+  });
+}
+
+function goToVulnRow(runId, hid) {
+  if (currentRunId === runId && currentView === 'detail') {
+    revelioGoToPoc(hid);
+    return;
+  }
+  pendingPocNav = { runId, hid };
+  navigate(runId);
+}
+
+function renderVulnerabilitiesList() {
+  const app = document.getElementById('app');
+  if (!vulnerabilitiesData.length) {
+    app.innerHTML = '<div class="empty"><div class="icon">&#128269;</div><p>No confirmed vulnerabilities found across any run yet.</p></div>';
+    return;
+  }
+
+  const severities = new Set();
+  const types = new Set();
+  const repos = new Set();
+  for (const v of vulnerabilitiesData) {
+    if (v.severity) severities.add(v.severity);
+    if (v.primitive) types.add(v.primitive);
+    if (v.target_ref) repos.add(v.target_ref);
+  }
+
+  const q = (vulnFilters.search || '').toLowerCase().trim();
+  let filtered = vulnerabilitiesData.filter(v => {
+    if (q && !(v.summary || '').toLowerCase().includes(q)
+        && !(v.target_ref || '').toLowerCase().includes(q)
+        && !(v.primitive || '').toLowerCase().includes(q)
+        && !(v.file || '').toLowerCase().includes(q)) return false;
+    if (vulnFilters.severity && v.severity !== vulnFilters.severity) return false;
+    if (vulnFilters.type && v.primitive !== vulnFilters.type) return false;
+    if (vulnFilters.repo && v.target_ref !== vulnFilters.repo) return false;
+    return true;
+  });
+  filtered = sortVulnRows(filtered);
+
+  customSelectOnChange['filter-type'] = (v) => { vulnFilters.type = v; renderVulnerabilitiesList(); };
+  customSelectOnChange['filter-repo'] = (v) => { vulnFilters.repo = v; renderVulnerabilitiesList(); };
+  customSelectOnChange['filter-severity'] = (v) => { vulnFilters.severity = v; renderVulnerabilitiesList(); };
+
+  let html = `<div class="filter-bar">
+    <input type="text" id="vuln-search" placeholder="Search finding, type, repo..." value="${esc(vulnFilters.search || '')}" onkeydown="if(event.key==='Enter')applyVulnFilters()" oninput="applyVulnFilters()">
+    ${customSelectHtml('filter-type', 'All Types', [...types].sort().map(t => ({ value: t, label: t })), vulnFilters.type)}
+    ${customSelectHtml('filter-repo', 'All Repositories', [...repos].sort().map(r => ({ value: r, label: r })), vulnFilters.repo)}
+    ${customSelectHtml('filter-severity', 'All Severities', [...severities].sort((a, b) => (VULN_SEVERITY_RANK[b] ?? -1) - (VULN_SEVERITY_RANK[a] ?? -1)).map(s => ({ value: s, label: s })), vulnFilters.severity)}
+    <button class="filter-reset" onclick="resetVulnFilters()">Reset</button>
+  </div>`;
+
+  const hasActiveFilters = q || vulnFilters.severity || vulnFilters.type || vulnFilters.repo;
+  html += `<h2 style="color:var(--text-bright);margin-bottom:1rem">Vulnerabilities <span style="font-size:.85rem;color:var(--text-dim);font-weight:400">(${filtered.length}${hasActiveFilters ? ' / ' + vulnerabilitiesData.length : ''})</span></h2>`;
+
+  if (hasActiveFilters && !filtered.length) {
+    html += '<div class="empty"><p>No vulnerabilities match your filters.</p></div>';
+    app.innerHTML = html;
+    return;
+  }
+
+  html += `<div class="run-list">
+    <div class="runs-grid-row runs-grid-header">
+      <div>Finding</div>
+      <div class="vuln-meta-group">
+        ${vulnSortHeader('Type', 'type', false)}
+        ${vulnSortHeader('Repository', 'repo', false)}
+        ${vulnSortHeader('Severity', 'severity', true)}
+        ${vulnSortHeader('Date found', 'date', true)}
+      </div>
+    </div>`;
+  for (const v of filtered) {
+    html += `
+    <div class="runs-grid-row run-row" onclick="goToVulnRow('${jsStr(v.run_id)}','${jsStr(v.hid)}')">
+      <div class="vuln-col-finding">
+        <div class="vuln-summary">${esc(v.summary || v.hid || '—')}</div>
+        <div class="vuln-loc" title="${esc(v.file || '')}">${esc(v.file || '—')}${v.duplicate_of ? ` · dup of ${esc(v.duplicate_of)}` : ''}</div>
+      </div>
+      <div class="vuln-meta-group">
+        <div class="vuln-col-type">${esc(v.primitive || '—')}</div>
+        <div class="vuln-col-repo" title="${esc(v.target_ref || '')}">${esc(v.target_ref || '—')}</div>
+        <div class="vuln-col-severity">${vulnSeverityBadge(v.severity)}</div>
+        <div class="vuln-col-date">${esc(vulnDateDisplay(v))}</div>
+      </div>
+    </div>`;
+  }
+  html += '</div>';
+  app.innerHTML = html;
+}
+
+function applyVulnFilters() {
+  const active = document.activeElement;
+  const isVulnSearch = active && active.id === 'vuln-search';
+  const cursor = isVulnSearch ? active.selectionStart : null;
+  vulnFilters.search = (document.getElementById('vuln-search') || {}).value || '';
+  renderVulnerabilitiesList();
+  if (isVulnSearch) {
+    const input = document.getElementById('vuln-search');
+    if (input) {
+      input.focus();
+      if (cursor != null) input.setSelectionRange(cursor, cursor);
+    }
+  }
+}
+
+function resetVulnFilters() {
+  vulnFilters = { search: '', severity: '', type: '', repo: '' };
+  vulnSort = { field: 'date', dir: 'desc' };
+  renderVulnerabilitiesList();
 }
 
 // ── Run Detail ─────────────────────────────────────────────────
@@ -1303,9 +1641,7 @@ function renderHypothesisFilterButtons() {
   const unresolved = scope.filter(isHypothesisUnresolved).length;
   const mode = hypothesisListFilter.mode;
   let html = '';
-  if (!hypothesisListFilter.file) {
-    html += `<button type="button" class="${mode === 'all' ? 'active' : ''}" onclick="revelioHypothesisFilter('all',this)">All (${scope.length})</button>`;
-  }
+  html += `<button type="button" class="${mode === 'all' ? 'active' : ''}" onclick="revelioHypothesisFilter('all',this)">All (${scope.length})</button>`;
   html += `<button type="button" class="${mode === 'dropped' ? 'active' : ''}" onclick="revelioHypothesisFilter('dropped',this)">Dropped (${dropped})</button>`;
   html += `<button type="button" class="${mode === 'survived' ? 'active' : ''}" onclick="revelioHypothesisFilter('survived',this)">Survived (${survived})</button>`;
   if (unresolved) {
@@ -1666,7 +2002,7 @@ function renderHypothesisDetail(row) {
   if (row.filter && row.filter.status !== 'skipped') {
     html += `<div class="hyp-detail-meta">${pipelineStatusBadge(row.filter)}</div>`;
     if (row.filter.reason) html += `<p class="hyp-detail-body">${esc(row.filter.reason)}</p>`;
-    if (s3) html += renderRevelioCollapsibleStageList([s3], `hyp-s3-${keySlug}`, revelioPocStages, { showPocLink: true, pocHid: pipelineHid(row), rowHid: pipelineHid(row) });
+    if (s3) html += renderRevelioCollapsibleStageList([s3], `hyp-s3-${keySlug}`, revelioPocStages, { rowHid: pipelineHid(row) });
   } else {
     html += stageNotReachedNotice('Did not reach static filtering.');
   }
@@ -2191,7 +2527,7 @@ function renderRevelioOverview(d, m) {
   html += statCardModels(m);
   html += statCard(sm.duration_seconds != null ? fmtDuration(sm.duration_seconds) : '—', 'Duration');
   html += statCard('$' + (sm.cost_total || 0).toFixed(4), 'Cost');
-  html += statCard(funnel.confirmed || 0, 'Confirmed', true);
+  html += statCard(funnel.confirmed || 0, 'Confirmed');
   html += '</div>';
 
   html += renderRevelioFunnel(funnel);
@@ -2371,6 +2707,11 @@ function renderRevelioDetail(d, m) {
   applyLogSearch();
   document.removeEventListener('keydown', revelioKeyHandler);
   document.addEventListener('keydown', revelioKeyHandler);
+  if (pendingPocNav && pendingPocNav.runId === currentRunId) {
+    const hid = pendingPocNav.hid;
+    pendingPocNav = null;
+    setTimeout(() => revelioGoToPoc(hid), 50);
+  }
 }
 
 function revelioKeyHandler(e) {

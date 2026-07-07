@@ -91,6 +91,28 @@ def _is_run_dir(path):
     return False
 
 
+def _sum_log_poc_cost(log_text):
+    """Sum every "cost=$N" occurrence in a Revelio run's log.txt.
+
+    This is the only place the true PoC-builder spend survives when a
+    hypothesis gets retried: trajectory.json's `agents` dict is keyed by
+    agent name (e.g. "PoCBuilderAgent_SF01"), so a retried hypothesis
+    overwrites its own entry and silently drops every earlier attempt's
+    cost. The log line is written once per attempt (including ones that hit
+    LimitsExceeded and never called finish()), so summing it captures every
+    dollar actually spent, not just the last attempt per hypothesis. Excludes
+    the "total cost: $" scan/hypothesis-generation summary line (no "=").
+    """
+    total = 0.0
+    for line in (log_text or "").splitlines():
+        if "cost=$" in line:
+            try:
+                total += float(line.split("cost=$")[1].split(")")[0])
+            except (ValueError, IndexError):
+                pass
+    return total
+
+
 def _detect_traj_format(run_dir):
     """Return one of: 'manifest', 'revelio_traj', 'cc_traj_jsonl',
     'cc_messages', 'codex_messages', 'kiss_yaml', or None."""
@@ -741,6 +763,8 @@ def _load_revelio_stage2(traces_dir):
                     "sanitizers": c.get("sanitizers") or [],
                     "is_asan": c.get("is_asan"),
                     "severity": c.get("severity"),
+                    "primitive": c.get("primitive"),
+                    "cwe_ids": c.get("cwe_ids") or [],
                     "reason": (c.get("reason") or "")[:500],
                     "verdict_label": _classify_verdict_label(c),
                 })
@@ -981,10 +1005,16 @@ def _build_revelio_hypothesis_pipeline(
             hid = f"SF{int(idx) + 1:02d}"
             stage3_trace_key = None
 
+            classify_common = {
+                "verdict_label": c.get("verdict_label"),
+                "severity": c.get("severity"),
+                "primitive": c.get("primitive"),
+                "cwe_ids": c.get("cwe_ids") or [],
+            }
             if _classify_kept(c):
-                classify = {"status": "kept", "verdict_label": c.get("verdict_label"), "reason": ""}
+                classify = {"status": "kept", "reason": "", **classify_common}
             else:
-                classify = {"status": "dropped", "verdict_label": c.get("verdict_label"), "reason": c.get("reason") or ""}
+                classify = {"status": "dropped", "reason": c.get("reason") or "", **classify_common}
 
             if classify["status"] == "dropped":
                 dedup = {"status": "skipped", "reason": ""}
@@ -1097,7 +1127,7 @@ def _compute_revelio_funnel(*, pipeline, confirmed, ranked_count=None):
     }
 
 
-def _compute_revelio_cost(*, stage2_classify, hypothesis_stages, poc_stages, events):
+def _compute_revelio_cost(*, stage2_classify, hypothesis_stages, poc_stages, events, log_text=""):
     scan_cost = 0.0
     for ev in events:
         payload = ev.get("payload") or {}
@@ -1112,12 +1142,19 @@ def _compute_revelio_cost(*, stage2_classify, hypothesis_stages, poc_stages, eve
             info = s.get("info") or {}
             if info.get("model_cost"):
                 scan_cost += float(info["model_cost"])
-    poc_cost = 0.0
-    for ps in poc_stages:
-        info = ps.get("info") or {}
-        stats = info.get("model_stats") or {}
-        if stats.get("instance_cost"):
-            poc_cost += float(stats["instance_cost"])
+    # Prefer log.txt's "cost=$" lines over trajectory.json's poc_stages: the
+    # latter is keyed by agent name (e.g. "PoCBuilderAgent_SF01"), so a
+    # hypothesis retried after LimitsExceeded overwrites its own trajectory
+    # entry and silently drops every earlier attempt's cost. The log line is
+    # written once per attempt regardless of outcome, so it's the only place
+    # the true total spend survives.
+    poc_cost = _sum_log_poc_cost(log_text) if log_text else 0.0
+    if poc_cost == 0.0:
+        for ps in poc_stages:
+            info = ps.get("info") or {}
+            stats = info.get("model_stats") or {}
+            if stats.get("instance_cost"):
+                poc_cost += float(stats["instance_cost"])
     return round(scan_cost + poc_cost, 4)
 
 
@@ -1385,6 +1422,7 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
         hypothesis_stages=hypothesis_stages,
         poc_stages=poc_stages,
         events=events,
+        log_text=log_text,
     )
 
     duration_seconds = None
@@ -2230,6 +2268,8 @@ def make_handler(output_dirs):
 
             if path == "/api/runs":
                 self._handle_runs_list()
+            elif path == "/api/vulnerabilities":
+                self._handle_vulnerabilities_list()
             elif path.startswith("/api/runs/"):
                 parts = path[len("/api/runs/"):].split("/", 1)
                 run_id = parts[0]
@@ -2330,19 +2370,12 @@ def make_handler(output_dirs):
                     if index_path.exists():
                         idx = _read_json(index_path)
                         counters = idx.get("counters", {})
-                    # parse log for cost info
-                    total_cost = 0.0
+                    # parse log for PoC-builder cost (every attempt, including retries)
                     log_path = run_dir / "log.txt"
-                    if log_path.exists():
-                        with open(log_path) as f:
-                            for line in f:
-                                if "cost=$" in line:
-                                    try:
-                                        c = line.split("cost=$")[1].split(")")[0]
-                                        total_cost += float(c)
-                                    except (ValueError, IndexError):
-                                        pass
-                    # check success from events
+                    total_cost = _sum_log_poc_cost(log_path.read_text(errors="replace")) if log_path.exists() else 0.0
+                    # check success from events; scan_filter_end also carries the
+                    # hypothesis-generation phase's cost, which log.txt's "cost=$"
+                    # lines don't include (that summary line uses "cost: $", no "=").
                     events_path = run_dir / "events.jsonl"
                     status = "unknown"
                     hypotheses_confirmed = 0
@@ -2352,6 +2385,8 @@ def make_handler(output_dirs):
                             if ev.get("event") == "run_success_all":
                                 status = "success"
                                 hypotheses_confirmed = ev.get("payload", {}).get("count", 0)
+                            elif ev.get("event") == "scan_filter_end" and (ev.get("payload") or {}).get("total_cost"):
+                                total_cost += float(ev["payload"]["total_cost"])
                         if status == "unknown":
                             for ev in events:
                                 if ev.get("event") == "run_success":
@@ -2387,6 +2422,40 @@ def make_handler(output_dirs):
             runs.sort(key=lambda r: r.get("created_at") or "", reverse=True)
             runs.sort(key=lambda r: (_case_key(r), r.get("source_dir") or ""))
             _json_resp(self, runs)
+
+        def _handle_vulnerabilities_list(self):
+            """Flatten every confirmed finding across every Revelio scan_filter_detect
+            run into one list — reuses _revelio_to_detail's pipeline building (same
+            crash_detected / dedup / (file,index)->global_hid matching as the per-run
+            detail view) rather than re-implementing that matching here."""
+            vulns = []
+            for run_dir, out_dir in _find_all_run_dirs(output_dirs):
+                if not (run_dir / "hypotheses.json").exists() or _detect_traj_format(run_dir) != "manifest":
+                    continue
+                run_id = _run_dir_to_id(run_dir, out_dir)
+                try:
+                    detail = _revelio_to_detail(run_dir, run_id=run_id, include_messages=False)
+                except Exception:
+                    continue
+                manifest = detail.get("manifest") or {}
+                for row in detail.get("revelio_hypothesis_pipeline") or []:
+                    final = row.get("final") or {}
+                    if not final.get("confirmed"):
+                        continue
+                    classify = row.get("classify") or {}
+                    vulns.append({
+                        "run_id": run_id,
+                        "hid": row.get("global_hid"),
+                        "target_ref": manifest.get("target_ref"),
+                        "created_at": manifest.get("created_at_utc"),
+                        "file": row.get("file"),
+                        "summary": row.get("summary"),
+                        "primitive": classify.get("primitive"),
+                        "severity": classify.get("severity"),
+                        "cwe_ids": classify.get("cwe_ids") or [],
+                        "duplicate_of": final.get("duplicate_of"),
+                    })
+            _json_resp(self, vulns)
 
         def _handle_run_detail(self, run_dir, run_id=None):
             fmt = _detect_traj_format(run_dir)
