@@ -95,8 +95,10 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .card p{font-size:.85rem;color:var(--text-dim);line-height:1.5}
 
 /* ── Run list ─────────────────────────────────────────────────── */
-.run-card{cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:start}
-.run-card:hover{background:var(--rv-panel-2)}
+.run-list{background:var(--bg-card);border-radius:var(--radius);overflow:hidden}
+.run-card{cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:start;background:transparent;border-radius:0;margin-bottom:0;border-bottom:1px solid var(--rv-divider);transition:background .15s}
+.run-list .run-card:last-child{border-bottom:none}
+.run-card:hover{background:var(--rv-tint)}
 .run-meta{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.6rem}
 .run-meta .tag{font-size:.72rem;padding:2px 8px;border-radius:4px;border:none;color:var(--text-dim);white-space:nowrap;background:var(--rv-panel-2)}
 .run-meta .tag.success{color:var(--green)}
@@ -351,6 +353,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .confirmed-poc-wrap{height:36rem;overflow:hidden;border:none;border-radius:var(--radius);background:var(--rv-tint);padding:.85rem 1rem}
 .confirmed-poc-wrap .confirmed-poc-card:last-child{margin-bottom:0;border-bottom:none}
 .confirmed-poc-card{background:transparent;border:none;border-bottom:1px solid var(--rv-divider);border-radius:0;margin-bottom:0;padding:1rem 1.15rem}
+.confirmed-poc-card.asan,.confirmed-poc-card.not{border-left:none}
 .confirmed-poc-card.clickable{cursor:pointer;transition:background-color .12s}
 .confirmed-poc-card.clickable:hover{background:var(--rv-tint)}
 .pipeline-panel{display:flex;flex-direction:column;margin:.5rem 0 1.25rem;width:100%}
@@ -382,7 +385,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .stage-collapse-header a:hover{color:var(--rv-text)}
 .stage-collapse-header .chevron-right{margin-top:1px}
 .stage-collapse-header .stage-card-title-wrap{flex:1 1 100%;width:100%;line-height:1.45;padding-left:1.1rem;color:var(--text)}
-.card.revelio-stage-card{background:var(--rv-tint);padding:1rem 1.15rem}
+.card.revelio-stage-card{background:transparent;padding:1rem 0}
 .stage-collapse-body{display:none;padding-top:.8rem}
 .stage-collapse-body.open{display:block;max-height:30rem;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
 .stage-collapse-body.open:has(.step-view){padding-top:0}
@@ -522,7 +525,15 @@ function navigate(hash) {
 }
 
 window.addEventListener('hashchange', route);
-window.addEventListener('load', () => { route(); });
+// Not gated on window 'load': #app already exists by the time this inline
+// script runs, and route() only needs the DOM + its own fetch() calls —
+// waiting for 'load' means waiting on unrelated slow subresources (e.g. the
+// tabler-icons CDN stylesheet) before showing real content, which stretches
+// out how long the static loading skeleton sits on screen before being
+// swapped for the full page. DOMContentLoaded still waits for the rest of
+// this script to finish executing (route() touches `let`-declared globals
+// further down the file that must exist first), just not for stylesheets/images.
+document.addEventListener('DOMContentLoaded', () => route());
 
 async function route() {
   const hash = window.location.hash.slice(1);
@@ -680,6 +691,7 @@ function renderRunsList() {
     html += '<div class="empty"><p>No runs match your filters.</p></div>';
   }
 
+  html += '<div class="run-list">';
   for (const r of filtered) {
     const { cveId } = parseRunId(r.run_id);
     const statusCls = r.status === 'success' ? 'success' : r.status === 'partial' ? 'partial' : r.status === 'Submitted' || r.status === 'completed' ? 'success' : 'unknown';
@@ -714,6 +726,7 @@ function renderRunsList() {
       </div>`}
     </div>`;
   }
+  html += '</div>';
   app.innerHTML = html;
 }
 
@@ -2167,17 +2180,6 @@ function confirmedPocPage(delta) {
 
 function initConfirmedPocPanel() {
   updateConfirmedPocPanel();
-  // Web fonts (Inter/JetBrains Mono, plus the tabler-icons webfont loaded via a
-  // <link> the Font Loading API doesn't track) can still be loading on first
-  // paint, so the initial pack measures against fallback-font metrics. Force a
-  // full repack — not just a height recompute — once real fonts/resources are
-  // in: packedPages must be cleared, since the cache-invalidation check below
-  // compares wrap.clientHeight against a value read right after resetting
-  // wrap.style.height to '', which always falls back to the same fixed CSS
-  // default, so it never actually detects that a repack is needed on its own.
-  const repack = () => { confirmedPocPageState.packedPages = null; updateConfirmedPocPanel(); };
-  if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(repack);
-  window.addEventListener('load', repack, { once: true });
 }
 
 function renderRevelioOverview(d, m) {
@@ -2187,7 +2189,7 @@ function renderRevelioOverview(d, m) {
   html += '<div class="overview-grid">';
   html += statCardTarget(m.target_ref);
   html += statCardModels(m);
-  html += statCard(sm.duration_seconds != null ? sm.duration_seconds + 's' : '—', 'Duration');
+  html += statCard(sm.duration_seconds != null ? fmtDuration(sm.duration_seconds) : '—', 'Duration');
   html += statCard('$' + (sm.cost_total || 0).toFixed(4), 'Cost');
   html += statCard(funnel.confirmed || 0, 'Confirmed', true);
   html += '</div>';
@@ -3155,7 +3157,9 @@ function statCardTarget(ref) {
 }
 
 function shortModel(name) {
-  return name ? String(name).split('/').pop() : '—';
+  if (!name) return '—';
+  // Strip a trailing dated-snapshot suffix (e.g. "claude-haiku-4-5-20251001" -> "claude-haiku-4-5").
+  return String(name).split('/').pop().replace(/-\d{8}$/, '');
 }
 
 function revelioModelsUsed(m) {
