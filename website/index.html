@@ -53,8 +53,8 @@
   --rv-asan-border:rgba(226,75,74,0.25);
   --rv-msg-system-bg:#17181F;
   --rv-msg-system-border:rgba(232,230,240,0.08);
-  --rv-msg-user-bg:#181A22;
-  --rv-msg-user-border:rgba(91,141,239,0.2);
+  --rv-msg-user-bg:#17181F;
+  --rv-msg-user-border:rgba(232,230,240,0.14);
   --rv-msg-assistant-bg:#14201C;
   --rv-msg-assistant-border:rgba(93,202,165,0.2);
   --rv-sidebar-active-bg:  var(--rv-text);
@@ -117,8 +117,8 @@
   --rv-asan-border:rgba(193,61,61,0.25);
   --rv-msg-system-bg:#EEEFF6;
   --rv-msg-system-border:rgba(27,31,59,0.08);
-  --rv-msg-user-bg:#E9EEFB;
-  --rv-msg-user-border:rgba(59,111,217,0.2);
+  --rv-msg-user-bg:#EEEFF6;
+  --rv-msg-user-border:rgba(27,31,59,0.14);
   --rv-msg-assistant-bg:#E9F6F0;
   --rv-msg-assistant-border:rgba(42,157,124,0.2);
   /* A solid dark-navy fill (the dark theme's --rv-text) reads as harsh/heavy
@@ -307,7 +307,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .agent-row .detail{font-size:.78rem;color:var(--text-dim);text-align:right}
 
 /* ── Log viewer ───────────────────────────────────────────────── */
-.log-tab-panel.active{display:flex;flex-direction:column;height:calc(100vh - 13.5rem);margin-bottom:0;padding-bottom:1rem;box-sizing:border-box}
+.log-tab-panel.active{display:flex;flex-direction:column;height:calc(100vh - 11.65rem);margin-bottom:0;padding-bottom:1rem;box-sizing:border-box}
 .log-tab-header{flex-shrink:0}
 .log-tab-panel .filter-bar{flex-shrink:0;margin-bottom:.35rem}
 .log-panel{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
@@ -347,7 +347,11 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 }
 
 /* ── Search & Filter bar ──────────────────────────────────────── */
-.filter-bar{display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
+/* padding-top gives the search input's focus box-shadow ring room to render
+   above it — .tab-panel's overflow-x:hidden implicitly clips overflow-y too
+   (mixed overflow values force both axes non-visible per spec), and the
+   filter-bar sits flush at the panel's very top with no buffer otherwise. */
+.filter-bar{display:flex;gap:.5rem;margin-bottom:1rem;padding-top:3px;flex-wrap:wrap;align-items:center}
 .filter-bar input{flex:1;min-width:200px;background:var(--rv-tint);border:none;border-radius:var(--radius);padding:.5rem .8rem;color:var(--text-bright);font-size:.82rem;outline:none;transition:box-shadow .15s}
 .filter-bar input:focus{box-shadow:0 0 0 1px var(--rv-gold)}
 .filter-bar input::placeholder{color:var(--text-dim)}
@@ -392,8 +396,20 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .funnel-subtitle{font-size:.68rem;color:var(--text-dim);text-align:center;margin:-.25rem 0 .45rem;width:100%}
 .funnel-separator{color:var(--rv-text-faint);font-size:.85rem;padding:0 .15rem;user-select:none}
 #revelio-hyp-list,#revelio-poc-list,#confirmed-poc-panel{scroll-margin-top:4.5rem}
-.hyp-master-detail{display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:1rem;height:calc(100vh - 16rem);min-height:24rem}
-.hyp-list-pane{display:flex;flex-direction:column;border:none;border-radius:var(--radius);background:var(--bg-card);overflow:hidden;min-height:0}
+.hyp-master-detail{position:relative;display:grid;grid-template-columns:272px 1fr;gap:1rem;height:calc(100vh - 15rem);min-height:24rem;transition:grid-template-columns .25s ease,column-gap .25s ease}
+.hyp-master-detail.sidebar-collapsed{grid-template-columns:0 1fr;column-gap:0}
+/* hypothesis-tab-panel/poc-tab-panel get a little left padding specifically
+   so the collapse button (below) can hang half off its circle past x=0
+   without the tab panel's overflow-x:hidden clipping it. */
+.hypothesis-tab-panel,.poc-tab-panel,.log-tab-panel{padding-left:14px}
+.hyp-sidebar-toggle{position:absolute;top:1rem;transform:translateX(-50%);width:28px;height:28px;border-radius:50%;border:1px solid var(--rv-divider);background:var(--bg-card);color:var(--text-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.8rem;line-height:1;padding:0;z-index:5;transition:background .15s,color .15s,left .25s ease}
+.hyp-sidebar-toggle:hover{background:var(--rv-panel-2);color:var(--text)}
+/* Positioned absolutely over its grid column (rather than sized by the grid
+   track) so collapsing never reflows/squishes its own content — the grid
+   track snaps to 0 instantly to hand space to the detail pane, while the
+   sidebar itself purely slides+fades via transform/opacity. */
+.hyp-list-pane{position:absolute;top:0;left:0;width:272px;height:100%;display:flex;flex-direction:column;border:none;border-radius:var(--radius);background:var(--bg-card);overflow:hidden;min-height:0;transition:transform .25s ease,opacity .2s ease}
+.hyp-master-detail.sidebar-collapsed .hyp-list-pane{transform:translateX(-100%);opacity:0;pointer-events:none}
 .hyp-list-toolbar{padding:.65rem;border-bottom:1px solid var(--rv-divider);flex-shrink:0;display:flex;flex-direction:column;gap:.5rem}
 .hyp-file-select{width:100%;background:var(--rv-tint);border:none;color:var(--text);padding:.35rem .5rem;border-radius:4px;font-size:.76rem}
 .hyp-file-group{margin-bottom:.45rem;border:none;border-radius:8px;background:transparent}
@@ -415,7 +431,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .hyp-list-item:hover,.hyp-list-item.active{background:var(--rv-tint)}
 .hyp-list-item .hyp-list-meta{display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;margin-bottom:.25rem}
 .hyp-list-item .hyp-list-summary{font-size:.78rem;line-height:1.4;color:var(--text)}
-.hyp-detail-pane{overflow-y:auto;border:none;border-radius:var(--radius);background:var(--bg-card);padding:1rem 1.15rem;min-height:0;scrollbar-width:thin;scrollbar-color:rgba(110,109,128,.5) transparent;scrollbar-gutter:stable}
+.hyp-detail-pane{grid-column:2;overflow-y:auto;border:none;border-radius:var(--radius);background:var(--bg-card);padding:1rem 1.15rem;min-height:0;scrollbar-width:thin;scrollbar-color:rgba(110,109,128,.5) transparent;scrollbar-gutter:stable}
 .hyp-detail-empty{display:flex;align-items:center;justify-content:center;min-height:12rem;color:var(--text-dim);font-size:.85rem;text-align:center;padding:2rem}
 .hyp-detail-header{margin-bottom:1rem}
 .hyp-detail-header .hyp-detail-summary{font-size:.92rem;line-height:1.5;color:var(--text-bright);margin:.5rem 0}
@@ -465,12 +481,12 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .hyp-detail-meta:last-child{margin-bottom:0}
 .hyp-detail-body{font-size:.78rem;color:var(--text-dim);line-height:1.5;margin:0 0 .5rem}
 .hyp-detail-body:last-child,.hyp-detail-body:last-of-type{margin-bottom:0}
-.hyp-detail-actions{margin-top:.5rem}
+.hyp-detail-actions{margin-top:.1rem}
 .hyp-badge-group{display:inline-flex;flex-wrap:wrap;align-items:center;gap:.35rem}
 .hyp-badge-group-gates{padding-left:.75rem;border-left:1px solid var(--rv-divider)}
 .hyp-group-label{font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--rv-text-faint);margin-right:.1rem}
 .stage-notice{font-size:.76rem;line-height:1.45;color:var(--rv-text-faint);padding:.55rem .75rem;border:1px dashed rgba(110,109,128,.28);border-radius:var(--radius);background:transparent;margin:0}
-@media(max-width:900px){.hyp-master-detail{grid-template-columns:1fr;height:auto}.hyp-list-pane{max-height:16rem}}
+@media(max-width:900px){.hyp-master-detail,.hyp-master-detail.sidebar-collapsed{grid-template-columns:1fr;height:auto}.hyp-list-pane{position:static;width:auto;max-height:16rem;transform:none!important;opacity:1!important}.hyp-detail-pane{grid-column:auto}.hyp-sidebar-toggle{display:none}.hyp-master-detail.sidebar-collapsed .hyp-list-pane{pointer-events:auto}}
 .callout{padding:.6rem .8rem;border-radius:var(--radius);margin:.75rem 0;font-size:.78rem;line-height:1.45}
 .callout-info{background:var(--rv-tint);border:none}
 .callout-warn{background:var(--rv-amber-bg);border:none;color:var(--orange)}
@@ -684,6 +700,53 @@ let revelioStage2Classify = [];
 let revelioHypothesisStages = [];
 let selectedHypothesisKey = null;
 let currentHypGateCtx = null; // {row, c, s3, keySlug} for the currently-open hypothesis detail's gate accordion
+let hypSidebarCollapsed = false;
+let pocSidebarCollapsed = false;
+
+function toggleSidebarCollapse(masterDetailId, kind) {
+  const el = document.getElementById(masterDetailId);
+  if (!el) return;
+  const collapsed = !el.classList.contains('sidebar-collapsed');
+  el.classList.toggle('sidebar-collapsed', collapsed);
+  const btn = el.querySelector('.hyp-sidebar-toggle');
+  if (btn) {
+    btn.textContent = collapsed ? '›' : '‹';
+    btn.title = `${collapsed ? 'Expand' : 'Collapse'} sidebar`;
+  }
+  if (kind === 'hyp') hypSidebarCollapsed = collapsed;
+  if (kind === 'poc') pocSidebarCollapsed = collapsed;
+  positionSidebarToggle(masterDetailId);
+}
+
+// The toggle button straddles the boundary between the sidebar and detail
+// pane (half over each), like Reddit's collapse control — since the
+// sidebar's width is fluid (minmax), its left offset is measured and
+// applied directly rather than expressed in CSS.
+function positionSidebarToggle(masterDetailId, instant) {
+  const el = document.getElementById(masterDetailId);
+  if (!el) return;
+  const btn = el.querySelector('.hyp-sidebar-toggle');
+  const list = el.querySelector('.hyp-list-pane');
+  if (!btn || !list) return;
+  const collapsed = el.classList.contains('sidebar-collapsed');
+  // Always straddles the boundary (half over the sidebar/rail, half over the
+  // detail pane) — the tab panel's own left padding gives it room to hang
+  // half off past x=0 without being clipped by overflow-x:hidden.
+  const left = (collapsed ? 0 : list.getBoundingClientRect().width) + 'px';
+  if (instant) {
+    // The button has no inline `left` yet on a fresh render, so the very
+    // first positioning call would otherwise animate in from 0 via the
+    // `left` transition — same look as an actual collapse. Snap it into
+    // place with no transition on that first call; toggling still animates.
+    const prevTransition = btn.style.transition;
+    btn.style.transition = 'none';
+    btn.style.left = left;
+    btn.offsetHeight;
+    btn.style.transition = prevTransition;
+  } else {
+    btn.style.left = left;
+  }
+}
 let hypothesisListFilter = { mode: 'all', file: '' };
 let selectedPocKey = null;
 let pocListFilter = { mode: 'all' };
@@ -735,6 +798,12 @@ window.addEventListener('resize', () => {
     }
     if (currentHypTraceBodyId) applyTraceMinHeight(currentHypTraceBodyId);
     if (currentPocTraceBodyId) applyTraceMinHeight(currentPocTraceBodyId);
+    positionSidebarToggle('revelio-hyp-tab', true);
+    positionSidebarToggle('revelio-poc-tab', true);
+    // The Runs/Vulnerabilities page sizes are fit to the viewport height, so
+    // a resize can change how many rows fit above the pager.
+    if (currentView === 'list') renderRunsList();
+    if (currentView === 'vulnerabilities') renderVulnerabilitiesList();
   }, 150);
 });
 
@@ -847,9 +916,69 @@ function batchLabel(bt) {
 // Current filter/sort state
 let listFilters = { search: '', status: '', model: '' };
 let listSort = { field: 'date', dir: 'desc' };
+let listPage = 0;
 let vulnerabilitiesData = [];
 let vulnFilters = { search: '', severity: '', type: '', repo: '' };
 let vulnSort = { field: 'date', dir: 'desc' };
+let vulnPage = 0;
+const CARDS_PER_PAGE_FALLBACK = 10;
+const PAGER_RESERVE_PX = 64; // Prev/Next pager height + its margins, kept below the fold budget
+
+// Slices `rows` to the current page (clamping it in range first) — shared by
+// the Runs and Vulnerabilities lists.
+function paginateRows(rows, page, setPage, pageSize) {
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  let p = Math.min(Math.max(0, page), totalPages - 1);
+  if (p !== page) setPage(p);
+  const start = p * pageSize;
+  return { pageRows: rows.slice(start, start + pageSize), page: p, totalPages };
+}
+
+// Rather than a hardcoded card count, fit as many rows as the viewport can
+// show without scrolling to see the Prev/Next pager — renders a sample
+// batch, measures where rows actually land, and counts how many fit above
+// the reserved pager strip at the bottom of the screen.
+function fitListPageSize(rows, prefixHtml, headerHtml, rowHtmlFn) {
+  if (!rows.length) return CARDS_PER_PAGE_FALLBACK;
+  const app = document.getElementById('app');
+  const sample = rows.slice(0, Math.min(rows.length, 40));
+  app.innerHTML = prefixHtml + `<div class="run-list">${headerHtml}${sample.map(rowHtmlFn).join('')}</div>`;
+  const list = document.querySelector('.run-list');
+  if (!list) return CARDS_PER_PAGE_FALLBACK;
+  const rowEls = Array.from(list.querySelectorAll('.run-row'));
+  const bottomLimit = window.innerHeight - PAGER_RESERVE_PX;
+  let count = 0;
+  for (const el of rowEls) {
+    if (el.getBoundingClientRect().bottom > bottomLimit) break;
+    count++;
+  }
+  return Math.max(1, count);
+}
+
+// A partial last page (e.g. 1 row instead of a full page) would otherwise
+// leave the pager sitting right under that one row instead of in a constant
+// spot. Reserving a fixed row count worth of empty filler space doesn't work
+// because real rows vary in height (wrapped summary/target text), so an
+// empty filler row is shorter than an average real one — instead, remember
+// how tall an actual full page rendered and pin every page to that height.
+const listMinHeightCache = {};
+function syncListMinHeight(cacheKey, isFullPage) {
+  const list = document.querySelector('.run-list');
+  if (!list) return;
+  list.style.minHeight = '';
+  if (isFullPage) listMinHeightCache[cacheKey] = list.getBoundingClientRect().height;
+  if (listMinHeightCache[cacheKey]) list.style.minHeight = listMinHeightCache[cacheKey] + 'px';
+}
+
+function renderCardsPagerHtml(page, totalPages, prevClick, nextClick, count, label) {
+  if (totalPages <= 1) return '';
+  const info = `Page ${page + 1} of ${totalPages} · ${count} ${label}`;
+  return `<div class="pipeline-pager">`
+    + `<button type="button" ${page <= 0 ? 'disabled' : ''} onclick="${prevClick}">← Prev</button>`
+    + `<span class="pipeline-pager-info">${esc(info)}</span>`
+    + `<button type="button" ${page >= totalPages - 1 ? 'disabled' : ''} onclick="${nextClick}">Next →</button>`
+    + `</div>`;
+}
 let pendingPocNav = null; // {runId, hid} — jump to a PoC after loadRunDetail resolves
 
 // ── Custom scrollable dropdown ───────────────────────────────────
@@ -972,6 +1101,7 @@ function toggleRunSort(field) {
   const defaults = { name: 'asc', status: 'desc', model: 'asc', cost: 'desc', cost_scan: 'desc', cost_poc: 'desc', date: 'desc', confirmed: 'desc' };
   if (listSort.field === field) listSort.dir = listSort.dir === 'asc' ? 'desc' : 'asc';
   else listSort = { field, dir: defaults[field] || 'asc' };
+  listPage = 0;
   renderRunsList();
 }
 
@@ -1020,8 +1150,8 @@ function renderRunsList() {
   filtered = sortRunRows(filtered);
 
   // Build filter bar
-  customSelectOnChange['filter-status'] = (v) => { listFilters.status = v; renderRunsList(); };
-  customSelectOnChange['filter-model'] = (v) => { listFilters.model = v; renderRunsList(); };
+  customSelectOnChange['filter-status'] = (v) => { listFilters.status = v; listPage = 0; renderRunsList(); };
+  customSelectOnChange['filter-model'] = (v) => { listFilters.model = v; listPage = 0; renderRunsList(); };
   let html = `<div class="filter-bar">
     <input type="text" id="run-search" placeholder="Search CVE ID, target, model..." value="${esc(listFilters.search || '')}" onkeydown="if(event.key==='Enter')applyFilters()" oninput="applyFilters()">
     ${customSelectHtml('filter-status', 'All Statuses', [...statuses].sort().map(s => ({ value: s, label: runStatusLabel(s) })), listFilters.status)}
@@ -1038,8 +1168,7 @@ function renderRunsList() {
     return;
   }
 
-  html += `<div class="run-list">
-    <div class="runs-grid-row runs-grid-header">
+  const headerHtml = `<div class="runs-grid-row runs-grid-header">
       ${runSortHeader('Run', 'name', false)}
       <div class="runs-meta-group">
         ${runSortHeader('Status', 'status', false)}
@@ -1049,9 +1178,9 @@ function renderRunsList() {
         ${runSortHeader('Confirmed', 'confirmed', true)}
       </div>
     </div>`;
-  for (const r of filtered) {
+  const rowHtmlFn = (r) => {
     const { cveId } = parseRunId(r.run_id);
-    html += `
+    return `
     <div class="runs-grid-row run-row" onclick="navigate('${encUri(r.run_id)}')">
       <div class="run-col-run">
         <div class="run-name">${esc(cveId)}</div>
@@ -1065,9 +1194,20 @@ function renderRunsList() {
       <div class="run-col-confirmed">${runConfirmedCell(r)}</div>
       </div>
     </div>`;
-  }
-  html += '</div>';
+  };
+
+  const pageSize = fitListPageSize(filtered, html, headerHtml, rowHtmlFn);
+  const { pageRows, page, totalPages } = paginateRows(filtered, listPage, p => { listPage = p; }, pageSize);
+
+  html += `<div class="run-list">${headerHtml}${pageRows.map(rowHtmlFn).join('')}</div>`;
+  html += renderCardsPagerHtml(page, totalPages, 'runsListPageGo(-1)', 'runsListPageGo(1)', filtered.length, `run${filtered.length === 1 ? '' : 's'}`);
   app.innerHTML = html;
+  if (totalPages > 1) syncListMinHeight(`runs:${pageSize}`, pageRows.length === pageSize);
+}
+
+function runsListPageGo(delta) {
+  listPage += delta;
+  renderRunsList();
 }
 
 function applyFilters() {
@@ -1075,6 +1215,7 @@ function applyFilters() {
   const isRunSearch = active && active.id === 'run-search';
   const cursor = isRunSearch ? active.selectionStart : null;
   listFilters.search = (document.getElementById('run-search') || {}).value || '';
+  listPage = 0;
   renderRunsList();
   if (isRunSearch) {
     const input = document.getElementById('run-search');
@@ -1088,6 +1229,7 @@ function applyFilters() {
 function resetFilters() {
   listFilters = { search: '', status: '', model: '' };
   listSort = { field: 'date', dir: 'desc' };
+  listPage = 0;
   renderRunsList();
 }
 
@@ -1143,6 +1285,7 @@ function toggleVulnSort(field) {
   const defaults = { type: 'asc', repo: 'asc', severity: 'desc', date: 'desc' };
   if (vulnSort.field === field) vulnSort.dir = vulnSort.dir === 'asc' ? 'desc' : 'asc';
   else vulnSort = { field, dir: defaults[field] || 'asc' };
+  vulnPage = 0;
   renderVulnerabilitiesList();
 }
 
@@ -1195,9 +1338,9 @@ function renderVulnerabilitiesList() {
   });
   filtered = sortVulnRows(filtered);
 
-  customSelectOnChange['filter-type'] = (v) => { vulnFilters.type = v; renderVulnerabilitiesList(); };
-  customSelectOnChange['filter-repo'] = (v) => { vulnFilters.repo = v; renderVulnerabilitiesList(); };
-  customSelectOnChange['filter-severity'] = (v) => { vulnFilters.severity = v; renderVulnerabilitiesList(); };
+  customSelectOnChange['filter-type'] = (v) => { vulnFilters.type = v; vulnPage = 0; renderVulnerabilitiesList(); };
+  customSelectOnChange['filter-repo'] = (v) => { vulnFilters.repo = v; vulnPage = 0; renderVulnerabilitiesList(); };
+  customSelectOnChange['filter-severity'] = (v) => { vulnFilters.severity = v; vulnPage = 0; renderVulnerabilitiesList(); };
 
   let html = `<div class="filter-bar">
     <input type="text" id="vuln-search" placeholder="Search finding, type, repo..." value="${esc(vulnFilters.search || '')}" onkeydown="if(event.key==='Enter')applyVulnFilters()" oninput="applyVulnFilters()">
@@ -1216,8 +1359,7 @@ function renderVulnerabilitiesList() {
     return;
   }
 
-  html += `<div class="run-list">
-    <div class="runs-grid-row runs-grid-header">
+  const headerHtml = `<div class="runs-grid-row runs-grid-header">
       <div>Finding</div>
       <div class="vuln-meta-group">
         ${vulnSortHeader('Type', 'type', false)}
@@ -1226,8 +1368,7 @@ function renderVulnerabilitiesList() {
         ${vulnSortHeader('Date found', 'date', true)}
       </div>
     </div>`;
-  for (const v of filtered) {
-    html += `
+  const rowHtmlFn = (v) => `
     <div class="runs-grid-row run-row" onclick="goToVulnRow('${jsStr(v.run_id)}','${jsStr(v.hid)}')">
       <div class="vuln-col-finding">
         <div class="vuln-summary">${esc(v.summary || v.hid || '—')}</div>
@@ -1240,9 +1381,19 @@ function renderVulnerabilitiesList() {
         <div class="vuln-col-date">${esc(vulnDateDisplay(v))}</div>
       </div>
     </div>`;
-  }
-  html += '</div>';
+
+  const pageSize = fitListPageSize(filtered, html, headerHtml, rowHtmlFn);
+  const { pageRows, page, totalPages } = paginateRows(filtered, vulnPage, p => { vulnPage = p; }, pageSize);
+
+  html += `<div class="run-list">${headerHtml}${pageRows.map(rowHtmlFn).join('')}</div>`;
+  html += renderCardsPagerHtml(page, totalPages, 'vulnListPageGo(-1)', 'vulnListPageGo(1)', filtered.length, `finding${filtered.length === 1 ? '' : 's'}`);
   app.innerHTML = html;
+  if (totalPages > 1) syncListMinHeight(`vulns:${pageSize}`, pageRows.length === pageSize);
+}
+
+function vulnListPageGo(delta) {
+  vulnPage += delta;
+  renderVulnerabilitiesList();
 }
 
 function applyVulnFilters() {
@@ -1250,6 +1401,7 @@ function applyVulnFilters() {
   const isVulnSearch = active && active.id === 'vuln-search';
   const cursor = isVulnSearch ? active.selectionStart : null;
   vulnFilters.search = (document.getElementById('vuln-search') || {}).value || '';
+  vulnPage = 0;
   renderVulnerabilitiesList();
   if (isVulnSearch) {
     const input = document.getElementById('vuln-search');
@@ -1263,6 +1415,7 @@ function applyVulnFilters() {
 function resetVulnFilters() {
   vulnFilters = { search: '', severity: '', type: '', repo: '' };
   vulnSort = { field: 'date', dir: 'desc' };
+  vulnPage = 0;
   renderVulnerabilitiesList();
 }
 
@@ -1915,7 +2068,8 @@ function renderHypothesisTabShell(pipeline) {
   pipeline = pipeline || [];
   const files = hypothesisFiles(pipeline);
   const fileCounts = fileHypothesisCounts(pipeline);
-  let html = '<div class="hyp-master-detail" id="revelio-hyp-tab">';
+  let html = `<div class="hyp-master-detail${hypSidebarCollapsed ? ' sidebar-collapsed' : ''}" id="revelio-hyp-tab">`;
+  html += `<button type="button" class="hyp-sidebar-toggle" title="${hypSidebarCollapsed ? 'Expand' : 'Collapse'} sidebar" onclick="toggleSidebarCollapse('revelio-hyp-tab','hyp')">${hypSidebarCollapsed ? '›' : '‹'}</button>`;
   html += '<aside class="hyp-list-pane" id="revelio-hyp-list">';
   html += '<div class="hyp-list-toolbar">';
   if (files.length > 1) {
@@ -2383,7 +2537,8 @@ function renderPocTabShell(stages) {
   stages = stages || [];
   const failed = stages.filter(s => !isPocConfirmed(s)).length;
   const confirmed = stages.filter(isPocConfirmed).length;
-  let html = '<div class="hyp-master-detail" id="revelio-poc-tab">';
+  let html = `<div class="hyp-master-detail${pocSidebarCollapsed ? ' sidebar-collapsed' : ''}" id="revelio-poc-tab">`;
+  html += `<button type="button" class="hyp-sidebar-toggle" title="${pocSidebarCollapsed ? 'Expand' : 'Collapse'} sidebar" onclick="toggleSidebarCollapse('revelio-poc-tab','poc')">${pocSidebarCollapsed ? '›' : '‹'}</button>`;
   html += '<aside class="hyp-list-pane" id="revelio-poc-list">';
   html += '<div class="hyp-list-toolbar">';
   html += '<div class="pipeline-filter-btns" id="poc-list-filters">';
@@ -3042,6 +3197,8 @@ function renderRevelioDetail(d, m) {
   document.getElementById('app').innerHTML = html;
   if (pipeline.length) refreshHypothesisTab();
   if (pocBuilders.length) refreshPocTab();
+  positionSidebarToggle('revelio-hyp-tab', true);
+  positionSidebarToggle('revelio-poc-tab', true);
   initConfirmedPocPanel();
   applyLogSearch();
   document.removeEventListener('keydown', revelioKeyHandler);
@@ -3171,7 +3328,7 @@ function renderRevelioPocArtifacts(s, idKey, opts) {
   if (includeTrace) sub.push('PoC Builder Trace');
   if (sub.length) {
     const stId = `${idKey}-art`;
-    html += `<div class="tabs" id="${stId}" style="margin-top:.6rem">`;
+    html += `<div class="tabs" id="${stId}" style="margin-top:.6rem;margin-bottom:.6rem;gap:.5rem">`;
     sub.forEach((t, i) => {
       html += `<div class="tab ${i === 0 ? 'active' : ''}" onclick="switchTab(${i},'${stId}')">${esc(t)}</div>`;
     });
@@ -3196,7 +3353,7 @@ function renderRevelioPocArtifacts(s, idKey, opts) {
     if (val) {
       const data = val.data || val;
       html += `<div class="tab-panel ${si === 0 ? 'active' : ''}" id="${stId}-tab-${si}">`;
-      html += `<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.4rem">`;
+      html += `<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem;margin-bottom:.4rem">`;
       html += `<span class="badge ${data.crash_detected ? 'badge-green' : 'badge-red'}">${data.crash_detected ? 'CRASH' : 'NO CRASH'}</span>`;
       if (data.returncode != null) html += `<span class="badge badge-cyan">exit ${data.returncode}</span>`;
       for (const ind of (data.indicators || [])) html += `<span class="badge badge-orange">${esc(ind)}</span>`;
@@ -3210,18 +3367,18 @@ function renderRevelioPocArtifacts(s, idKey, opts) {
       const data = rep.data || rep;
       html += `<div class="tab-panel ${si === 0 ? 'active' : ''}" id="${stId}-tab-${si}">`;
       if (typeof data === 'string') {
-        html += `<div class="md-render">${renderMarkdown(data)}</div>`;
+        html += `<div class="md-render" style="margin-top:.4rem">${renderMarkdown(data)}</div>`;
       } else if (data.markdown || data.report_md) {
-        html += `<div class="md-render">${renderMarkdown(data.markdown || data.report_md)}</div>`;
+        html += `<div class="md-render" style="margin-top:.4rem">${renderMarkdown(data.markdown || data.report_md)}</div>`;
       } else {
-        html += `<pre>${esc(JSON.stringify(data, null, 2))}</pre>`;
+        html += `<pre style="margin-top:.4rem">${esc(JSON.stringify(data, null, 2))}</pre>`;
       }
       html += `</div>`;
       si++;
     }
     if (includeTrace) {
       html += `<div class="tab-panel ${si === 0 ? 'active' : ''}" id="${stId}-tab-${si}">`;
-      html += `<div class="stage-collapse-body open" id="${esc(opts.traceBodyId)}" data-stage-key="${esc(s.stage_key)}" data-body-id="${esc(opts.traceBodyId)}"></div>`;
+      html += `<div class="stage-collapse-body open" id="${esc(opts.traceBodyId)}" data-stage-key="${esc(s.stage_key)}" data-body-id="${esc(opts.traceBodyId)}" style="margin-top:.4rem"></div>`;
       html += `</div>`;
       si++;
     }
@@ -3569,8 +3726,12 @@ function switchTab(idx, prefix) {
     if (prefix === 'detail' && idx === 1) {
       if (currentHypGateCtx) equalizeHypGatePanelHeight(currentHypGateCtx);
       applyTraceMinHeight(currentHypTraceBodyId);
+      positionSidebarToggle('revelio-hyp-tab', true);
     }
-    if (prefix === 'detail' && idx === 2) applyTraceMinHeight(currentPocTraceBodyId);
+    if (prefix === 'detail' && idx === 2) {
+      applyTraceMinHeight(currentPocTraceBodyId);
+      positionSidebarToggle('revelio-poc-tab', true);
+    }
   }
 }
 
