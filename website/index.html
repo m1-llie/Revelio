@@ -11,10 +11,18 @@
 <style>
 /* ── Reset & Base ─────────────────────────────────────────────── */
 *{margin:0;padding:0;box-sizing:border-box}
+/* Applied for a brief window by toggleTheme() so switching between dark and
+   light fades colors smoothly instead of snapping instantly — easier on the
+   eyes. Scoped to a temporary class rather than a permanent global rule so
+   it doesn't add transition overhead (or fight existing hover transitions)
+   during normal use. */
+.theme-transitioning, .theme-transitioning *{
+  transition: background-color .35s ease, color .35s ease, border-color .35s ease, box-shadow .35s ease !important;
+}
 :root{
-  --rv-bg:        #0F1229;
-  --rv-panel:     #1B1F3B;
-  --rv-panel-2:   #20254A;
+  --rv-bg:        #0B0C14;
+  --rv-panel:     #15161F;
+  --rv-panel-2:   #1A1C28;
   --rv-border:    transparent;
   --rv-divider:   rgba(232,230,240,0.12);
   --rv-text:      #E8E6F0;
@@ -24,11 +32,11 @@
   --rv-gold-hover:#D6AD42;
   --rv-gold-bg:   rgba(233,192,82,0.14);
   --rv-brand:     #E9C052;
-  --rv-inset:     #161A35;
+  --rv-inset:     #101119;
   --rv-tint:      rgba(232,230,240,0.055);
   --rv-tint-strong:rgba(232,230,240,0.085);
-  --rv-code-bg:   #12162E;
-  --rv-code-bg-2: #0E1128;
+  --rv-code-bg:   #1A1C27;
+  --rv-code-bg-2: #12131B;
   --rv-border-hover:transparent;
   --rv-green:     #5DCAA5;
   --rv-green-bg:  rgba(93,202,165,0.15);
@@ -43,12 +51,14 @@
   --rv-timeline-start:#5B8DEF;
   --rv-asan-bg:   #1A0F14;
   --rv-asan-border:rgba(226,75,74,0.25);
-  --rv-msg-system-bg:#161A35;
+  --rv-msg-system-bg:#17181F;
   --rv-msg-system-border:rgba(232,230,240,0.08);
-  --rv-msg-user-bg:#161E3B;
+  --rv-msg-user-bg:#181A22;
   --rv-msg-user-border:rgba(91,141,239,0.2);
-  --rv-msg-assistant-bg:#162A24;
+  --rv-msg-assistant-bg:#14201C;
   --rv-msg-assistant-border:rgba(93,202,165,0.2);
+  --rv-sidebar-active-bg:  var(--rv-text);
+  --rv-sidebar-active-text:var(--rv-bg);
   --bg:           var(--rv-bg);
   --bg-card:      var(--rv-panel);
   --bg-hover:     var(--rv-panel-2);
@@ -69,6 +79,54 @@
   --sans:         'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   --mono:         'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
 }
+/* Light theme: silvery-white surfaces, a paler/more muted gold accent so it
+   doesn't glare on white the way the dark theme's bright gold would. Every
+   other rule in this file reads colors through the --rv- prefixed (and
+   aliased) variables above, so redefining just these under the
+   data-theme="light" attribute (set on <html> by toggleTheme()) re-themes
+   the whole page with no other selector changes needed. */
+:root[data-theme="light"]{
+  --rv-bg:        #F4F5F9;
+  --rv-panel:     #FFFFFF;
+  --rv-panel-2:   #ECEDF4;
+  --rv-divider:   rgba(20,22,45,0.12);
+  --rv-text:      #1B1F3B;
+  --rv-text-dim:  #5B5D75;
+  --rv-text-faint:#8A8CA3;
+  --rv-gold:      #B08A2E;
+  --rv-gold-hover:#96741F;
+  --rv-gold-bg:   rgba(176,138,46,0.13);
+  --rv-brand:     #B08A2E;
+  --rv-inset:     #EEEFF6;
+  --rv-tint:      rgba(27,31,59,0.045);
+  --rv-tint-strong:rgba(27,31,59,0.08);
+  --rv-code-bg:   #EEEFF5;
+  --rv-code-bg-2: #E4E5EE;
+  --rv-green:     #2A9D7C;
+  --rv-green-bg:  rgba(42,157,124,0.14);
+  --rv-green-bg-soft:rgba(42,157,124,0.08);
+  --rv-red:       #C13D3D;
+  --rv-red-soft:  #A23434;
+  --rv-red-bg:    rgba(193,61,61,0.1)  ;
+  --rv-amber:     #B8790F;
+  --rv-amber-bg:  rgba(184,121,15,0.1);
+  --rv-teal:      #2A9D7C;
+  --rv-teal-bg:   rgba(42,157,124,0.12);
+  --rv-timeline-start:#3B6FD9;
+  --rv-asan-bg:   #FBEFEF;
+  --rv-asan-border:rgba(193,61,61,0.25);
+  --rv-msg-system-bg:#EEEFF6;
+  --rv-msg-system-border:rgba(27,31,59,0.08);
+  --rv-msg-user-bg:#E9EEFB;
+  --rv-msg-user-border:rgba(59,111,217,0.2);
+  --rv-msg-assistant-bg:#E9F6F0;
+  --rv-msg-assistant-border:rgba(42,157,124,0.2);
+  /* A solid dark-navy fill (the dark theme's --rv-text) reads as harsh/heavy
+     against the light theme's white surfaces, so the active sidebar item
+     gets its own softer treatment here instead of a solid inverted fill. */
+  --rv-sidebar-active-bg:  #DFE0E9;
+  --rv-sidebar-active-text:var(--rv-text);
+}
 html{font-size:15px;scrollbar-gutter:stable}
 body{background:var(--rv-bg);color:var(--rv-text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;scrollbar-gutter:stable}
 a{color:var(--rv-text-dim);text-decoration:none}
@@ -77,25 +135,32 @@ code,pre{font-family:var(--mono);font-size:.85rem}
 pre{background:var(--rv-code-bg);border:none;border-radius:var(--radius);padding:1rem;overflow-x:auto;white-space:pre-wrap;word-break:break-word;line-height:1.5;color:var(--rv-text-dim)}
 
 /* ── Layout ───────────────────────────────────────────────────── */
-nav{background:var(--rv-bg);border-bottom:1px solid var(--rv-divider);padding:.8rem 1.5rem;position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:1.2rem;min-height:24px}
+nav{background:var(--rv-bg);border-bottom:1px solid var(--rv-divider);padding:.8rem 1.5rem;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;gap:1.2rem;min-height:24px}
+.theme-toggle{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:var(--rv-tint);border:none;color:var(--rv-text-dim);cursor:pointer;transition:background .15s,color .15s;flex-shrink:0}
+.theme-toggle:hover{background:var(--rv-tint-strong);color:var(--rv-text)}
+.theme-toggle i{font-size:16px;line-height:1}
+.theme-toggle .ti-moon{display:none}
+:root[data-theme="light"] .theme-toggle .ti-sun{display:none}
+:root[data-theme="light"] .theme-toggle .ti-moon{display:block}
 nav .breadcrumb{color:var(--rv-text-dim);font-size:.85rem;display:flex;align-items:center;gap:.4rem}
 nav .breadcrumb span{cursor:pointer;color:var(--rv-text-dim)}
 nav .breadcrumb span:hover{color:var(--rv-text)}
 nav .breadcrumb .sep{color:var(--rv-text-faint)}
 
 .layout{display:flex;align-items:flex-start;width:100%}
-.sidebar{flex:0 0 260px;position:sticky;top:40px;align-self:flex-start;height:calc(100vh - 40px);padding:1.1rem 1.25rem;display:flex;flex-direction:column;gap:.1rem;border-right:1px solid var(--rv-divider);box-sizing:border-box}
+.sidebar{flex:0 0 260px;position:sticky;top:55px;align-self:flex-start;height:calc(100vh - 55px);padding:1.1rem 1.25rem;display:flex;flex-direction:column;gap:.1rem;border-right:1px solid var(--rv-divider);box-sizing:border-box}
 .sidebar-brand{display:flex;align-items:center;gap:.65rem;cursor:pointer;padding:.4rem .35rem .9rem}
-.sidebar-brand-icon{width:34px;height:34px;border-radius:9px;background:var(--rv-gold-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sidebar-brand-icon{width:49px;height:49px;border-radius:13px;background:var(--rv-gold-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;box-shadow:0 0 0 2px var(--rv-gold)}
 .sidebar-brand-icon i{font-size:18px;color:var(--rv-gold);line-height:1}
-.sidebar-brand-title{font-size:1.05rem;font-weight:800;color:var(--rv-text)}
+.sidebar-brand-icon img{width:100%;height:100%;object-fit:cover}
+.sidebar-brand-title{font-size:1.21rem;font-weight:800;color:var(--rv-text)}
 .sidebar-brand-sub{font-size:.62rem;font-weight:600;letter-spacing:.06em;color:var(--rv-text-faint);margin-top:1px}
 .sidebar-section-label{font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--rv-text-faint);padding:.5rem .7rem .4rem}
 .sidebar-item{display:flex;align-items:center;gap:.65rem;padding:.6rem .9rem;border-radius:8px;font-size:.86rem;font-weight:500;color:var(--rv-text-dim);cursor:pointer;transition:background .15s,color .15s}
 .sidebar-item i{font-size:16px;width:16px;text-align:center}
 .sidebar-item:hover{background:var(--rv-tint);color:var(--rv-text)}
-.sidebar-item.active{background:var(--rv-text);color:var(--rv-bg);font-weight:700}
-.sidebar-item.active i{color:var(--rv-bg)}
+.sidebar-item.active{background:var(--rv-sidebar-active-bg);color:var(--rv-sidebar-active-text);font-weight:700}
+.sidebar-item.active i{color:var(--rv-sidebar-active-text)}
 .container{flex:1;min-width:0;max-width:1200px;margin:0 auto;padding:2rem 1.5rem;overflow-x:hidden}
 #app{overflow-x:hidden;width:100%}
 
@@ -113,7 +178,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .runs-meta-group{overflow:visible}
 .runs-meta-group>*{min-width:0;overflow:visible}
 .run-col-run{flex:0 0 38%;min-width:10rem;max-width:32rem}
-.runs-meta-group{flex:1;display:grid;grid-template-columns:9.25rem 9rem 4.5rem 9.25rem 6rem;justify-content:end;gap:0 .75rem;align-items:center;min-width:0}
+.runs-meta-group{flex:1;display:grid;grid-template-columns:8.5rem 8.5rem 8.5rem 9.25rem 6rem;justify-content:end;gap:0 .75rem;align-items:center;min-width:0}
 .runs-sort-btn{display:inline-flex;align-items:center;gap:.25rem;background:none;border:none;padding:0;font:inherit;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--rv-text-faint);cursor:pointer;user-select:none;white-space:nowrap;max-width:100%}
 .runs-sort-btn.runs-col-num{justify-content:flex-end;width:100%}
 .runs-sort-btn:hover{color:var(--rv-text-dim)}
@@ -130,9 +195,9 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .run-col-run .run-name{font-size:14px;font-weight:500;color:var(--rv-text);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .run-col-run .run-target{font-size:12px;color:var(--rv-text-dim);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
 .run-col-status{min-width:0;padding-right:.35rem}
-.run-col-model{font-size:12px;color:var(--rv-text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;padding-left:.5rem}
-.run-col-cost{font-size:13px;color:var(--rv-text);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:.75rem}
-.runs-grid-header .runs-meta-group>:nth-child(3){padding-right:.75rem}
+.run-col-stage{display:flex;flex-direction:column;align-items:flex-end;line-height:1.35;min-width:0;max-width:100%}
+.run-col-stage .stage-model{font-size:12px;color:var(--rv-text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.run-col-stage .stage-cost{font-size:12px;color:var(--rv-text);font-variant-numeric:tabular-nums;white-space:nowrap;margin-top:1px}
 .run-col-started{font-size:12px;color:var(--rv-text-dim);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;min-width:0}
 .run-col-confirmed{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .runs-col-num{text-align:right}
@@ -182,7 +247,8 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 
 /* ── Overview grid ────────────────────────────────────────────── */
 .overview-grid{display:flex;flex-wrap:nowrap;background:var(--rv-tint);border:none;border-radius:var(--radius);margin-bottom:1rem;overflow:hidden}
-.stat-card{flex:1 1 0;min-width:0;background:transparent;border:none;border-radius:0;padding:.75rem 1.1rem;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:.2rem}
+.stat-card{flex:1 1 0;min-width:0;background:transparent;border:none;border-radius:0;padding:.75rem 1.1rem;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;text-align:center;gap:.2rem}
+.stat-card-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:.2rem}
 .stat-card+.stat-card{border-left:1px solid var(--rv-divider)}
 .stat-card .lbl{font-size:.72rem;color:var(--text-dim);line-height:1.2;width:100%;padding:0 .35rem;box-sizing:border-box}
 .stat-card .val{font-size:1.05rem;font-weight:800;color:var(--rv-text);line-height:1.35;width:100%;max-width:100%;padding:0 .35rem;box-sizing:border-box;word-break:break-word;overflow-wrap:anywhere}
@@ -241,7 +307,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .agent-row .detail{font-size:.78rem;color:var(--text-dim);text-align:right}
 
 /* ── Log viewer ───────────────────────────────────────────────── */
-.log-tab-panel.active{display:flex;flex-direction:column;height:calc(100vh - 11.5rem);margin-bottom:0;padding-bottom:2rem;box-sizing:border-box}
+.log-tab-panel.active{display:flex;flex-direction:column;height:calc(100vh - 13.5rem);margin-bottom:0;padding-bottom:1rem;box-sizing:border-box}
 .log-tab-header{flex-shrink:0}
 .log-tab-panel .filter-bar{flex-shrink:0;margin-bottom:.35rem}
 .log-panel{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
@@ -326,8 +392,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .funnel-subtitle{font-size:.68rem;color:var(--text-dim);text-align:center;margin:-.25rem 0 .45rem;width:100%}
 .funnel-separator{color:var(--rv-text-faint);font-size:.85rem;padding:0 .15rem;user-select:none}
 #revelio-hyp-list,#revelio-poc-list,#confirmed-poc-panel{scroll-margin-top:4.5rem}
-.hypothesis-tab-panel,.poc-tab-panel{padding-bottom:2.5rem}
-.hyp-master-detail{display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:1rem;height:calc(100vh - 13rem);min-height:24rem}
+.hyp-master-detail{display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:1rem;height:calc(100vh - 16rem);min-height:24rem}
 .hyp-list-pane{display:flex;flex-direction:column;border:none;border-radius:var(--radius);background:var(--bg-card);overflow:hidden;min-height:0}
 .hyp-list-toolbar{padding:.65rem;border-bottom:1px solid var(--rv-divider);flex-shrink:0;display:flex;flex-direction:column;gap:.5rem}
 .hyp-file-select{width:100%;background:var(--rv-tint);border:none;color:var(--text);padding:.35rem .5rem;border-radius:4px;font-size:.76rem}
@@ -376,11 +441,23 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .hyp-s1-trace-body{margin-top:.5rem;padding-top:.5rem;border-top:1px solid var(--rv-divider)}
 .hyp-s1-trace-body.open{max-height:30rem;overflow-y:auto;overflow-x:hidden;padding-top:0;scrollbar-gutter:stable}
 .hyp-s1-trace-body:has(.step-view){padding-top:0}
-.hyp-stepper{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin:0 0 1.25rem;padding:.65rem .75rem;background:var(--rv-tint);border:none;border-radius:8px}
-.hyp-stepper-step{display:flex;flex-direction:column;align-items:center;gap:.2rem;font-size:.66rem;min-width:3.25rem}
+.hyp-funnel-card{background:var(--rv-tint);border-radius:8px;padding:.65rem .75rem;margin:0 0 1.25rem}
+.hyp-funnel-divider{border-top:1px solid var(--rv-divider);margin:.75rem 0}
+.hyp-stepper{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin:0;padding:0;background:transparent;border:none;border-radius:8px}
+.hyp-stepper-step{display:flex;flex-direction:column;align-items:center;gap:.2rem;font-size:.66rem;min-width:3.25rem;padding:.3rem .4rem;border-radius:6px}
 .hyp-stepper-step .lbl{color:var(--text-dim)}
 .hyp-stepper-step.not-reached .lbl{color:var(--rv-text-faint);opacity:.8}
+.hyp-stepper-step.clickable{cursor:pointer;transition:background .15s}
+.hyp-stepper-step.clickable:hover{background:var(--rv-tint-strong)}
+.hyp-stepper-step.gate-active{background:var(--rv-gold-bg);box-shadow:0 0 0 1px var(--rv-gold) inset}
+/* font-weight (not just color) intentionally left alone here — a bolder
+   label is very slightly wider, which can tip the funnel row onto a second
+   line only for whichever gate happens to be active, making the card
+   change height depending on selection. Color + ring alone are enough
+   signal without touching layout-affecting text weight. */
+.hyp-stepper-step.gate-active .lbl{color:var(--rv-gold)}
 .hyp-stepper-arrow{color:var(--rv-text-faint);font-size:.72rem;line-height:1;padding:0 .1rem}
+.hyp-gate-panel{margin-top:0;padding-left:.4rem;display:flex;flex-direction:column;justify-content:center}
 .hyp-detail-section{margin-top:1.5rem}
 .hyp-detail-section:first-of-type{margin-top:1rem}
 .hyp-detail-section .hyp-section-title{font-size:.78rem;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem}
@@ -423,7 +500,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .pipeline-pager{display:flex;align-items:center;justify-content:center;gap:.75rem;min-height:2.25rem;margin-top:.5rem;flex-shrink:0;font-size:.76rem;color:var(--text-dim)}
 .pipeline-pager-info{min-width:11rem;text-align:center}
 .pipeline-pager button{background:var(--rv-tint);border:none;color:var(--text);padding:.25rem .55rem;border-radius:4px;font-size:.74rem;cursor:pointer;min-width:4.75rem}
-.pipeline-pager button:hover:not(:disabled){background:var(--rv-tint-strong)}
+.pipeline-pager button:hover:not(:disabled){background:var(--rv-panel-2)}
 .pipeline-pager button:disabled{opacity:.35;cursor:default}
 .pipeline-reason{font-size:.74rem;color:var(--text-dim);margin-top:.2rem;line-height:1.4}
 .pipeline-filter-btns{display:flex;gap:.35rem;margin-bottom:.65rem;flex-wrap:wrap}
@@ -439,13 +516,36 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .card.revelio-stage-card{background:transparent;padding:1rem 0}
 .stage-collapse-body{display:none;padding-top:.8rem}
 .stage-collapse-body.open{display:block;max-height:40rem;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
-.stage-collapse-body.open:has(.step-view){padding-top:0}
+/* A step-view trace has its own sticky nav + is always the only thing in its
+   tab, so it doesn't need a second nested scrollbar on top of the page's —
+   let it grow naturally and scroll with the rest of the panel. */
+.stage-collapse-body.open:has(.step-view){padding-top:0;max-height:none;overflow-y:visible}
 .step-view{border:none;border-radius:8px;background:var(--rv-tint)}
 .step-nav{display:flex;align-items:center;gap:.6rem;margin:0;padding:.45rem .65rem;background:var(--rv-panel-2);border-bottom:1px solid var(--rv-divider);font-size:.78rem;flex-wrap:wrap;position:sticky;top:0;z-index:2}
 .step-content{padding:.65rem .75rem}
 .step-nav button{background:var(--rv-panel);border:none;color:var(--text);padding:.25rem .6rem;border-radius:4px;cursor:pointer;font-size:.75rem}
 .step-nav button:hover{background:var(--rv-inset)}
 .step-nav button:disabled{opacity:.4;cursor:default}
+.step-progress{display:flex;align-items:center;gap:3px;flex-wrap:wrap;max-width:100%}
+.step-progress .dot{width:6px;height:6px;border-radius:50%;background:var(--rv-text-faint);opacity:.5;cursor:pointer;flex-shrink:0;padding:0;border:none}
+.step-progress .dot:hover{opacity:.9;background:var(--rv-text-faint)}
+.step-progress .dot.current{background:var(--rv-gold);opacity:1;width:8px;height:8px}
+.step-progress .dot.current:hover{background:var(--rv-gold)}
+/* Inside a stepped trace, only .cmd-output (raw shell/tool output, which can
+   be genuinely huge) keeps its own scrollbox — ordinary message text just
+   flows with the page so there's one scroll to reason about, not three. */
+.traj-step-msgs .traj-msg .content{max-height:none;overflow:visible}
+/* Tool output can be huge (build logs etc.), but within a stepped trace it
+   should never get its own inner scrollbar — click the role header to
+   reveal it in full instead of scrolling a nested box. */
+.traj-step-msgs .cmd-block .cmd-output{max-height:none!important;overflow:visible!important}
+.traj-step-msgs .traj-msg.collapsible .role{cursor:pointer;user-select:none}
+.traj-step-msgs .traj-msg.collapsible .role::before{content:'▶';display:inline-block;font-size:.6em;margin-right:.4em;transition:transform .12s}
+.traj-step-msgs .traj-msg.collapsible.expanded .role::before{transform:rotate(90deg)}
+.traj-step-msgs .traj-msg.collapsible .msg-body{display:none}
+.traj-step-msgs .traj-msg.collapsible.expanded .msg-body{display:block;margin-top:.5rem}
+.traj-step-msgs .traj-msg.collapsible .role::after{content:'— click to expand';font-weight:400;text-transform:none;color:var(--rv-text-faint);letter-spacing:normal;margin-left:.3rem}
+.traj-step-msgs .traj-msg.collapsible.expanded .role::after{content:'— click to collapse'}
 .search-hit{background:rgba(239,159,39,.25);border-radius:2px}
 .action-link,.hyp-detail-pane a{user-select:none;text-decoration:none}
 .action-link:hover{color:var(--rv-text)}
@@ -463,7 +563,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .cmd-block .cmd-header .cmd-rc.rc-ok{color:var(--green)}
 .cmd-block .cmd-header .cmd-rc.rc-fail{color:var(--red)}
 .cmd-block .cmd-cmd{background:var(--rv-code-bg);padding:.5rem .8rem;font-family:var(--mono);font-size:.78rem;color:var(--cyan);white-space:pre-wrap;word-break:break-all;border-bottom:1px solid var(--rv-divider)}
-.cmd-block .cmd-output{background:var(--rv-code-bg-2);padding:.5rem .8rem;font-family:var(--mono);font-size:.75rem;color:var(--text);white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto;line-height:1.5}
+.cmd-block .cmd-output{background:var(--rv-code-bg-2);padding:.5rem .8rem;font-family:var(--mono);font-size:.75rem;color:var(--text);white-space:pre-wrap;word-break:break-word;max-height:600px;overflow-y:auto;line-height:1.5}
 .cmd-block .cmd-output.collapsed{max-height:120px;overflow:hidden;position:relative}
 .cmd-block .cmd-output.collapsed::after{content:'';position:absolute;bottom:0;left:0;right:0;height:40px;background:var(--rv-code-bg-2);opacity:.92}
 
@@ -525,15 +625,29 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 </style>
 </head>
 <body>
+<script>
+// Applied synchronously before nav/sidebar markup renders, so a saved "light"
+// preference takes effect immediately instead of flashing dark-then-light.
+(function () {
+  try {
+    var saved = localStorage.getItem('revelio-theme');
+    if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  } catch (e) {}
+})();
+</script>
 
 <nav>
   <div class="breadcrumb" id="breadcrumb"></div>
+  <button type="button" class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Switch theme" aria-label="Switch theme">
+    <i class="ti ti-sun"></i>
+    <i class="ti ti-moon"></i>
+  </button>
 </nav>
 
 <div class="layout">
   <aside class="sidebar">
     <div class="sidebar-brand" onclick="navigate('')">
-      <div class="sidebar-brand-icon"><i class="ti ti-sparkles"></i></div>
+      <div class="sidebar-brand-icon"><img src="revelio-logo.jpg" alt="Revelio"></div>
       <div>
         <div class="sidebar-brand-title">Revelio</div>
         <div class="sidebar-brand-sub">VULNERABILITY AGENT</div>
@@ -569,6 +683,7 @@ let revelioPocStages = [];
 let revelioStage2Classify = [];
 let revelioHypothesisStages = [];
 let selectedHypothesisKey = null;
+let currentHypGateCtx = null; // {row, c, s3, keySlug} for the currently-open hypothesis detail's gate accordion
 let hypothesisListFilter = { mode: 'all', file: '' };
 let selectedPocKey = null;
 let pocListFilter = { mode: 'all' };
@@ -584,12 +699,60 @@ async function api(path) {
   return ct.includes('json') ? r.json() : r.text();
 }
 
+// ── Theme ──────────────────────────────────────────────────────
+function toggleTheme() {
+  const root = document.documentElement;
+  root.classList.add('theme-transitioning');
+  const isLight = root.getAttribute('data-theme') === 'light';
+  if (isLight) {
+    root.removeAttribute('data-theme');
+    try { localStorage.setItem('revelio-theme', 'dark'); } catch (e) {}
+  } else {
+    root.setAttribute('data-theme', 'light');
+    try { localStorage.setItem('revelio-theme', 'light'); } catch (e) {}
+  }
+  setTimeout(() => root.classList.remove('theme-transitioning'), 400);
+}
+
 // ── Router ─────────────────────────────────────────────────────
 function navigate(hash) {
   window.location.hash = hash;
 }
 
 window.addEventListener('hashchange', route);
+// The funnel card's reserved height is measured at the current window
+// width; resizing the window (or toggling devtools, zooming, etc.) can
+// change how gate content wraps, so what was the tallest gate at the old
+// width may no longer be at the new one — re-measure so it stays constant
+// at any width, not just the one it happened to be computed at.
+let hypGateResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(hypGateResizeTimer);
+  hypGateResizeTimer = setTimeout(() => {
+    if (currentHypGateCtx && document.getElementById('hyp-gate-panel')) {
+      hypGateGlobalMaxHeight = null;
+      equalizeHypGatePanelHeight(currentHypGateCtx);
+    }
+    if (currentHypTraceBodyId) applyTraceMinHeight(currentHypTraceBodyId);
+    if (currentPocTraceBodyId) applyTraceMinHeight(currentPocTraceBodyId);
+  }, 150);
+});
+
+// Reserves as much height for a trace body as the sidebar list next to it
+// takes up, so a short trace (few steps) doesn't leave the right column
+// looking stubby next to a tall hypothesis/PoC list on the left.
+let currentHypTraceBodyId = null;
+let currentPocTraceBodyId = null;
+function applyTraceMinHeight(id) {
+  if (!id) return;
+  const body = document.getElementById(id);
+  if (!body) return;
+  const masterDetail = body.closest('.hyp-master-detail');
+  const listPane = masterDetail && masterDetail.querySelector('.hyp-list-pane');
+  if (!listPane) return;
+  const h = listPane.getBoundingClientRect().height;
+  if (h > 0) body.style.minHeight = h + 'px';
+}
 // Not gated on window 'load': #app already exists by the time this inline
 // script runs, and route() only needs the DOM + its own fetch() calls —
 // waiting for 'load' means waiting on unrelated slow subresources (e.g. the
@@ -756,6 +919,15 @@ function runCostDisplay(r) {
   return r.total_cost ? '$' + r.total_cost.toFixed(2) : '—';
 }
 
+function runStageCell(model, cost) {
+  const modelLabel = model ? shortModel(model) : '—';
+  const costLabel = cost ? '$' + cost.toFixed(2) : '—';
+  return `<div class="run-col-stage" title="${esc(model || '')}">
+    <div class="stage-model">${esc(modelLabel)}</div>
+    <div class="stage-cost">${esc(costLabel)}</div>
+  </div>`;
+}
+
 function runConfirmedCell(r) {
   const sc = r.score;
   if (sc) {
@@ -775,6 +947,8 @@ function runSortValue(r, field) {
   if (field === 'name') return (cveId || r.run_id || '').toLowerCase();
   if (field === 'status') return r.status === 'success' ? 1 : 0;
   if (field === 'cost') return r.total_cost || 0;
+  if (field === 'cost_scan') return r.scan_cost || 0;
+  if (field === 'cost_poc') return r.poc_cost || 0;
   if (field === 'date') return r.created_at || '';
   if (field === 'model') return (r.model_name ? r.model_name.split('/').pop() : '').toLowerCase();
   if (field === 'confirmed') return r.hypotheses_confirmed || 0;
@@ -795,7 +969,7 @@ function runSortHeader(label, field, numeric) {
 }
 
 function toggleRunSort(field) {
-  const defaults = { name: 'asc', status: 'desc', model: 'asc', cost: 'desc', date: 'desc', confirmed: 'desc' };
+  const defaults = { name: 'asc', status: 'desc', model: 'asc', cost: 'desc', cost_scan: 'desc', cost_poc: 'desc', date: 'desc', confirmed: 'desc' };
   if (listSort.field === field) listSort.dir = listSort.dir === 'asc' ? 'desc' : 'asc';
   else listSort = { field, dir: defaults[field] || 'asc' };
   renderRunsList();
@@ -869,8 +1043,8 @@ function renderRunsList() {
       ${runSortHeader('Run', 'name', false)}
       <div class="runs-meta-group">
         ${runSortHeader('Status', 'status', false)}
-        ${runSortHeader('Model', 'model', false)}
-        ${runSortHeader('Cost', 'cost', true)}
+        ${runSortHeader('Hypothesis Model', 'cost_scan', true)}
+        ${runSortHeader('PoC Model', 'cost_poc', true)}
         ${runSortHeader('Started', 'date', true)}
         ${runSortHeader('Confirmed', 'confirmed', true)}
       </div>
@@ -885,8 +1059,8 @@ function renderRunsList() {
       </div>
       <div class="runs-meta-group">
       <div class="run-col-status">${runStatusPill(r.status)}</div>
-      <div class="run-col-model" title="${runModelDisplay(r)}">${runModelDisplay(r)}</div>
-      <div class="run-col-cost">${runCostDisplay(r)}</div>
+      ${runStageCell(r.model_name, r.scan_cost)}
+      ${runStageCell(r.poc_model || r.model_name, r.poc_cost)}
       <div class="run-col-started">${esc(runStartedDisplay(r))}</div>
       <div class="run-col-confirmed">${runConfirmedCell(r)}</div>
       </div>
@@ -1048,7 +1222,7 @@ function renderVulnerabilitiesList() {
       <div class="vuln-meta-group">
         ${vulnSortHeader('Type', 'type', false)}
         ${vulnSortHeader('Repository', 'repo', false)}
-        ${vulnSortHeader('Severity', 'severity', true)}
+        ${vulnSortHeader('CVSS Severity', 'severity', true)}
         ${vulnSortHeader('Date found', 'date', true)}
       </div>
     </div>`;
@@ -1845,33 +2019,189 @@ function selectHypothesis(key, scrollList) {
     return;
   }
   detail.innerHTML = renderHypothesisDetail(row);
+  if (currentHypGateCtx) {
+    loadAlwaysOpenGateTrace(currentHypGateCtx);
+    equalizeHypGatePanelHeight(currentHypGateCtx);
+    currentHypTraceBodyId = currentHypGateCtx.s3 ? `hyp-s3-${currentHypGateCtx.keySlug}-0-body` : null;
+    applyTraceMinHeight(currentHypTraceBodyId);
+    // Re-measure one frame later — the very first measurement can race the
+    // browser's own layout pass (freshly inserted DOM, fallback-font metrics
+    // before a webfont swap), which is what made the reserved height
+    // intermittently wrong instead of consistently wrong.
+    requestAnimationFrame(() => {
+      if (currentHypGateCtx) equalizeHypGatePanelHeight(currentHypGateCtx);
+      applyTraceMinHeight(currentHypTraceBodyId);
+    });
+    if (document.fonts && document.fonts.status !== 'loaded') {
+      document.fonts.ready.then(() => {
+        hypGateGlobalMaxHeight = null;
+        if (currentHypGateCtx) equalizeHypGatePanelHeight(currentHypGateCtx);
+        applyTraceMinHeight(currentHypTraceBodyId);
+      });
+    }
+  }
   if (scrollList) {
     const active = document.querySelector('.hyp-list-item.active');
     if (active) active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 }
 
-function renderHypothesisStepper(row) {
-  const steps = [
-    { label: 'Raw', badge: '<span class="pipeline-badge kept">IN</span>', notReached: false },
-    { label: 'In-scope', badge: pipelineStatusBadge(row.classify), notReached: gateNotReached(row.classify) },
-    { label: 'Merged', badge: pipelineStatusBadge(row.dedup), notReached: gateNotReached(row.dedup) },
-    { label: 'Static filter', badge: pipelineStatusBadge(row.filter), notReached: gateNotReached(row.filter) },
-    { label: 'PoC', badge: renderPocStatusBadge(row.poc), notReached: pocNotReached(row.poc) },
-    { label: 'Final', badge: pipelineFinalBadge(row), notReached: !row.final?.confirmed && !row.final?.survived && !row.dropped_at },
+function hypGateDefs(row) {
+  return [
+    { key: 'raw', label: 'Raw', badge: '<span class="pipeline-badge kept">IN</span>', notReached: false, hasPanel: false },
+    { key: 'inscope', label: 'In-scope', badge: pipelineStatusBadge(row.classify), notReached: gateNotReached(row.classify), hasPanel: true },
+    { key: 'merged', label: 'Merged', badge: pipelineStatusBadge(row.dedup), notReached: gateNotReached(row.dedup), hasPanel: true },
+    { key: 'filter', label: 'Static filter', badge: pipelineStatusBadge(row.filter), notReached: gateNotReached(row.filter), hasPanel: true },
+    { key: 'poc', label: 'PoC', badge: renderPocStatusBadge(row.poc), notReached: pocNotReached(row.poc), hasPanel: true },
+    { key: 'final', label: 'Final', badge: pipelineFinalBadge(row), notReached: !row.final?.confirmed && !row.final?.survived && !row.dropped_at, hasPanel: true },
   ];
+}
+
+// Opens on whichever gate is most relevant: the furthest-reached one, so a
+// confirmed hypothesis lands on "Final" and a dropped one lands on wherever
+// it was dropped, instead of always forcing a click to see what matters.
+function pickDefaultHypGate(gates, row) {
+  // If it was dropped somewhere before PoC, jump straight to that gate —
+  // "Final" technically isn't marked not-reached for dropped rows (it's
+  // just "not confirmed"), so without this a dropped-at-triage hypothesis
+  // would default to the least useful, empty-looking "Final" panel.
+  const dropGate = { classify: 'inscope', dedup: 'merged', filter: 'filter' }[row?.dropped_at];
+  if (dropGate) return dropGate;
+  const order = ['final', 'poc', 'filter', 'merged', 'inscope'];
+  for (const key of order) {
+    const g = gates.find(x => x.key === key);
+    if (g && g.hasPanel && !g.notReached) return key;
+  }
+  return 'inscope';
+}
+
+function renderHypothesisStepper(row, activeKey) {
+  const gates = hypGateDefs(row);
   let html = '<div class="hyp-stepper">';
-  steps.forEach((st, i) => {
+  gates.forEach((st, i) => {
     if (i) html += '<span class="hyp-stepper-arrow">→</span>';
-    html += `<div class="hyp-stepper-step${st.notReached ? ' not-reached' : ''}">${st.badge}<span class="lbl">${esc(st.label)}</span></div>`;
+    const cls = ['hyp-stepper-step'];
+    if (st.notReached) cls.push('not-reached');
+    if (st.hasPanel) cls.push('clickable');
+    if (st.key === activeKey) cls.push('gate-active');
+    const onclick = st.hasPanel ? ` onclick="selectHypGate('${jsStr(st.key)}')"` : '';
+    html += `<div class="${cls.join(' ')}" data-gate="${st.key}"${onclick}>${st.badge}<span class="lbl">${esc(st.label)}</span></div>`;
   });
   return html + '</div>';
 }
 
+function renderHypGatePanelContent(ctx, key) {
+  const { row, c, s3, keySlug } = ctx;
+  if (key === 'inscope') {
+    const verdict = c.verdict_label || (row.classify && row.classify.verdict_label) || '?';
+    let html = '<div class="hyp-detail-meta">';
+    html += '<div class="hyp-badge-group"><span class="hyp-group-label">Finding</span>';
+    html += `<span class="badge ${verdict === 'NOT' ? 'badge-orange' : 'badge-green'}">${esc(verdict)}</span>`;
+    if (c.severity) html += `<span class="badge badge-purple">${esc(c.severity)}</span>`;
+    html += '</div>';
+    html += '<div class="hyp-badge-group hyp-badge-group-gates"><span class="hyp-group-label">Gate</span>';
+    html += pipelineStatusBadge(row.classify);
+    html += '</div></div>';
+    const classifyReason = c.reason || (row.classify && row.classify.reason) || '';
+    if (classifyReason) html += `<p class="hyp-detail-body">${esc(classifyReason)}</p>`;
+    else if (row.classify && row.classify.status === 'kept') html += '<p class="hyp-detail-body">Kept in scope after triage.</p>';
+    return html;
+  }
+  if (key === 'merged') {
+    let html = `<div class="hyp-detail-meta">${pipelineStatusBadge(row.dedup)}</div>`;
+    if (row.dedup && row.dedup.reason) html += `<p class="hyp-detail-body">${esc(row.dedup.reason)}</p>`;
+    else if (row.dedup && row.dedup.status === 'skipped') html += '<p class="hyp-detail-body">Dedup skipped — dropped at triage.</p>';
+    else html += '<p class="hyp-detail-body">Kept through dedup — no similar hypothesis found.</p>';
+    return html;
+  }
+  if (key === 'filter') {
+    if (!row.filter || row.filter.status === 'skipped') return stageNotReachedNotice('Did not reach static filtering.');
+    let html = `<div class="hyp-detail-meta">${pipelineStatusBadge(row.filter)}</div>`;
+    // The trace below (always visible, independent of which gate is
+    // selected) shows the full reasoning inline, so this is just a short
+    // pointer to it rather than repeating the whole thing twice.
+    html += `<p class="hyp-detail-body">${row.filter.reason ? esc(row.filter.reason) : 'Reviewed independently by a static-analysis sub-agent — see its reasoning and full trace below.'}</p>`;
+    return html;
+  }
+  if (key === 'poc' || key === 'final') {
+    const hid = pipelineHid(row);
+    let html = `<div class="hyp-detail-meta">${renderPocStatusBadge(row.poc)} ${pipelineFinalBadge(row)}</div>`;
+    if (hid && findPocStageByHid(hid)) html += `<div class="hyp-detail-actions">${viewPocButton(hid)}</div>`;
+    else if (hid) html += stageNotReachedNotice('PoC not run.');
+    if (row.dropped_at) html += `<p class="hyp-detail-body">Dropped at ${esc(pipelineDropStageLabel(row.dropped_at))}.</p>`;
+    return html;
+  }
+  return '';
+}
+
+function selectHypGate(key) {
+  if (!currentHypGateCtx) return;
+  document.querySelectorAll('.hyp-stepper-step[data-gate]').forEach(el => {
+    el.classList.toggle('gate-active', el.dataset.gate === key);
+  });
+  const panel = document.getElementById('hyp-gate-panel');
+  if (panel) panel.innerHTML = renderHypGatePanelContent(currentHypGateCtx, key);
+}
+
+// The reserved height used to be measured per-hypothesis (max across that
+// row's own gates), which meant the card visibly resized every time you
+// clicked to a *different* hypothesis in the list, not just when switching
+// gates within one — from the user's seat that read as "still not
+// constant". Measured across every hypothesis in the run instead, cached
+// until the pipeline or viewport width changes, so the card is one fixed
+// height no matter which hypothesis or gate is showing.
+let hypGateGlobalMaxHeight = null;
+let hypGateGlobalMaxForPipeline = null;
+
+function computeHypGateGlobalMaxHeight(panel) {
+  const originalHTML = panel.innerHTML;
+  panel.style.minHeight = '';
+  let max = 0;
+  for (const row of (revelioPipeline || [])) {
+    const ctx = { row, c: findClassification(row.file, row.index) || {}, s3: null, keySlug: '' };
+    for (const g of hypGateDefs(row)) {
+      if (!g.hasPanel) continue;
+      panel.innerHTML = renderHypGatePanelContent(ctx, g.key);
+      max = Math.max(max, panel.scrollHeight);
+    }
+  }
+  panel.innerHTML = originalHTML;
+  return max;
+}
+
+function equalizeHypGatePanelHeight(ctx) {
+  const panel = document.getElementById('hyp-gate-panel');
+  if (!panel) return;
+  if (hypGateGlobalMaxForPipeline !== revelioPipeline || !hypGateGlobalMaxHeight) {
+    const measured = computeHypGateGlobalMaxHeight(panel);
+    // A 0 means this measurement ran while the Hypothesis tab (or the whole
+    // page) wasn't actually visible yet (e.g. Overview is still the active
+    // tab), so every scrollHeight read as 0 — don't lock that in as "the"
+    // height, leave the cache empty so the next real measurement can fill it.
+    if (measured > 0) {
+      hypGateGlobalMaxHeight = measured;
+      hypGateGlobalMaxForPipeline = revelioPipeline;
+    }
+  }
+  if (hypGateGlobalMaxHeight) panel.style.minHeight = hypGateGlobalMaxHeight + 'px';
+}
+
+// The static-filter trace is always visible (not tied to which gate is
+// selected above), and is no longer a click-to-expand accordion either — so
+// its data has to be fetched as soon as it's in the DOM instead of waiting
+// for a toggle click.
+function loadAlwaysOpenGateTrace(ctx) {
+  if (!ctx.s3) return;
+  const idKey = `hyp-s3-${ctx.keySlug}-0`;
+  const stageKey = ctx.s3.stage_key || idKey;
+  initPocTraceBody(stageKey, `${idKey}-body`);
+}
+
 function renderPocStatusBadge(poc) {
+  // "CONFIRMED" is reserved for the Final gate — the PoC gate only ever
+  // reports whether a PoC attempt ran, not the overall verdict.
   if (pocNotReached(poc)) return pipelineNotReachedBadge('Not run');
-  if (poc.status === 'confirmed') return '<span class="pipeline-badge survived">CONFIRMED</span>';
-  if (poc.status === 'attempted') return '<span class="pipeline-badge kept">TRIED</span>';
+  if (poc.status === 'confirmed' || poc.status === 'attempted') return '<span class="pipeline-badge kept">TRIED</span>';
   return pipelineNotReachedBadge('Not run');
 }
 
@@ -1955,7 +2285,6 @@ function renderHypothesisDetail(row) {
   const s3 = findStage3TraceForRow(row);
   const s1Stages = findStage1ForFile(row.file);
   const keySlug = hypothesisKey(row).replace(/[^a-zA-Z0-9_-]/g, '_');
-  const verdict = c.verdict_label || (row.classify && row.classify.verdict_label) || '?';
   let html = '<div class="hyp-detail-header">';
   html += '<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.35rem">';
   html += `<span style="font-size:.74rem;color:var(--text-dim)">#${row.index != null ? row.index + 1 : '—'}</span>`;
@@ -1972,50 +2301,25 @@ function renderHypothesisDetail(row) {
   }
   html += '</div>';
 
-  html += renderHypothesisStepper(row);
-
-  html += '<div class="hyp-detail-section">';
-  html += '<div class="section-title hyp-section-title">Sanitizer-aware triage</div>';
-  html += '<div class="hyp-detail-meta">';
-  html += '<div class="hyp-badge-group"><span class="hyp-group-label">Finding</span>';
-  html += `<span class="badge ${verdict === 'NOT' ? 'badge-orange' : 'badge-green'}">${esc(verdict)}</span>`;
-  if (c.severity) html += `<span class="badge badge-purple">${esc(c.severity)}</span>`;
-  html += '</div>';
-  html += '<div class="hyp-badge-group hyp-badge-group-gates"><span class="hyp-group-label">Gate</span>';
-  html += pipelineStatusBadge(row.classify);
-  html += '</div></div>';
-  const classifyReason = c.reason || (row.classify && row.classify.reason) || '';
-  if (classifyReason) html += `<p class="hyp-detail-body">${esc(classifyReason)}</p>`;
-  else if (row.classify && row.classify.status === 'kept') html += '<p class="hyp-detail-body">Kept in scope after triage.</p>';
+  // Gate accordion: one stepper, click a gate to see its reasoning/trace
+  // below — replaces four always-open sections that repeated the same
+  // badges/text at different levels of detail.
+  const gates = hypGateDefs(row);
+  const defaultGate = pickDefaultHypGate(gates, row);
+  currentHypGateCtx = { row, c, s3, keySlug };
+  html += '<div class="hyp-funnel-card">';
+  html += renderHypothesisStepper(row, defaultGate);
+  html += '<div class="hyp-funnel-divider"></div>';
+  html += `<div class="hyp-gate-panel" id="hyp-gate-panel">${renderHypGatePanelContent(currentHypGateCtx, defaultGate)}</div>`;
   html += '</div>';
 
-  html += '<div class="hyp-detail-section">';
-  html += '<div class="section-title hyp-section-title">Deduplicate root causes</div>';
-  html += `<div class="hyp-detail-meta">${pipelineStatusBadge(row.dedup)}</div>`;
-  if (row.dedup && row.dedup.reason) html += `<p class="hyp-detail-body">${esc(row.dedup.reason)}</p>`;
-  else if (row.dedup && row.dedup.status === 'skipped') html += '<p class="hyp-detail-body">Dedup skipped — dropped at triage.</p>';
-  else if (row.dedup && row.dedup.status === 'kept') html += '<p class="hyp-detail-body">Kept through dedup.</p>';
-  html += '</div>';
-
-  html += '<div class="hyp-detail-section">';
-  html += '<div class="section-title hyp-section-title">Independent static filtering</div>';
-  if (row.filter && row.filter.status !== 'skipped') {
-    html += `<div class="hyp-detail-meta">${pipelineStatusBadge(row.filter)}</div>`;
-    if (row.filter.reason) html += `<p class="hyp-detail-body">${esc(row.filter.reason)}</p>`;
-    if (s3) html += renderRevelioCollapsibleStageList([s3], `hyp-s3-${keySlug}`, revelioPocStages, { rowHid: pipelineHid(row) });
-  } else {
-    html += stageNotReachedNotice('Did not reach static filtering.');
+  // Static-filter trace: always shown, independent of which gate is
+  // selected above — it's the one part of this view that shouldn't
+  // disappear when you click around the accordion.
+  if (s3) {
+    html += '<div class="section-title hyp-section-title" style="margin-bottom:.35rem">Hypothesis Builder Trace</div>';
+    html += renderRevelioCollapsibleStageList([s3], `hyp-s3-${keySlug}`, revelioPocStages, { rowHid: pipelineHid(row), alwaysOpen: true, hideSummary: true });
   }
-  html += '</div>';
-
-  html += '<div class="hyp-detail-section">';
-  html += '<div class="section-title hyp-section-title">Outcome</div>';
-  html += `<div class="hyp-detail-meta">${pipelineFinalBadge(row)} ${renderPocStatusBadge(row.poc)}</div>`;
-  const hid = pipelineHid(row);
-  if (hid && findPocStageByHid(hid)) html += `<div class="hyp-detail-actions">${viewPocButton(hid)}</div>`;
-  else if (hid) html += stageNotReachedNotice('PoC not run.');
-  if (row.dropped_at) html += `<p class="hyp-detail-body">Dropped at ${esc(pipelineDropStageLabel(row.dropped_at))}.</p>`;
-  html += '</div>';
 
   return html;
 }
@@ -2165,17 +2469,13 @@ function renderPocDetail(stage) {
   if (h.file_path) html += `<div class="hyp-detail-file">${esc(h.file_path)}</div>`;
   html += '</div>';
 
-  if (stage.hypothesis || stage.poc || stage.validation || stage.report) {
+  if (stage.hypothesis || stage.poc || stage.validation || stage.report || stage.stage_key) {
     html += '<div class="hyp-detail-section">';
     html += '<div class="section-title hyp-section-title">Artifacts</div>';
-    html += renderRevelioPocArtifacts(stage, `poc-detail-${keySlug}`);
+    html += renderRevelioPocArtifacts(stage, `poc-detail-${keySlug}`, { traceBodyId: bodyId });
     html += '</div>';
   }
 
-  html += '<div class="hyp-detail-section">';
-  html += '<div class="section-title hyp-section-title">PoC Builder trace</div>';
-  html += `<div class="stage-collapse-body open" id="${bodyId}" data-stage-key="${esc(stage.stage_key)}" data-body-id="${esc(bodyId)}"></div>`;
-  html += '</div>';
   return html;
 }
 
@@ -2212,6 +2512,9 @@ function selectPoc(stageKey, scrollList) {
   detail.innerHTML = renderPocDetail(stage);
   const bodyId = `poc-trace-${stageKey.replace(/[^a-zA-Z0-9_-]/g, '_')}-body`;
   initPocTraceBody(stageKey, bodyId);
+  currentPocTraceBodyId = bodyId;
+  applyTraceMinHeight(bodyId);
+  requestAnimationFrame(() => applyTraceMinHeight(bodyId));
   if (scrollList) {
     document.querySelectorAll('.hyp-list-item[data-poc-key]').forEach(el => {
       if (el.dataset.pocKey === stageKey) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -2524,9 +2827,9 @@ function renderRevelioOverview(d, m) {
   let html = '<div class="overview-panel">';
   html += '<div class="overview-grid">';
   html += statCardTarget(m.target_ref);
-  html += statCardModels(m);
+  html += statCardStage('Hypothesis Model', m.model_name, sm.cost_scan);
+  html += statCardStage('PoC Model', m.poc_model || m.model_name, sm.cost_poc);
   html += statCard(sm.duration_seconds != null ? fmtDuration(sm.duration_seconds) : '—', 'Duration');
-  html += statCard('$' + (sm.cost_total || 0).toFixed(4), 'Cost');
   html += statCard(funnel.confirmed || 0, 'Confirmed');
   html += '</div>';
 
@@ -2595,6 +2898,18 @@ function revelioStepNav(stageKey, bodyId, delta) {
   renderRevelioStageBody(stageKey, bodyId);
 }
 
+function revelioStepJump(stageKey, bodyId, index) {
+  const msgs = revelioStageCache[stageKey] || [];
+  const steps = messagesToSteps(msgs);
+  if (!steps.length) return;
+  revelioStepState[stageKey] = Math.max(0, Math.min(index, steps.length - 1));
+  renderRevelioStageBody(stageKey, bodyId);
+}
+
+function toggleTrajMsg(el) {
+  el.classList.toggle('expanded');
+}
+
 function renderRevelioStageBody(stageKey, bodyId) {
   const body = document.getElementById(bodyId);
   const msgs = revelioStageCache[stageKey] || [];
@@ -2605,8 +2920,20 @@ function renderRevelioStageBody(stageKey, bodyId) {
   if (steps.length > 1) {
     html += `<div class="step-view"><div class="step-nav">`;
     html += `<button ${stepIdx <= 0 ? 'disabled' : ''} onclick="revelioStepNav('${jsStr(stageKey)}','${jsStr(bodyId)}',-1)">← Prev</button>`;
-    html += `<span>Step <strong>${stepIdx + 1}</strong> / ${steps.length}</span>`;
+    const stepDigits = String(steps.length).length;
+    html += `<span>Step <strong style="display:inline-block;min-width:${stepDigits}ch;text-align:right">${stepIdx + 1}</strong> / ${steps.length}</span>`;
     html += `<button ${stepIdx >= steps.length - 1 ? 'disabled' : ''} onclick="revelioStepNav('${jsStr(stageKey)}','${jsStr(bodyId)}',1)">Next →</button>`;
+    // A long trace (20-200+ steps) is tedious to click through one at a
+    // time to reach the end, where the interesting result (finish/crash
+    // confirmation) usually is — a direct jump beats N clicks of Next.
+    html += `<button ${stepIdx >= steps.length - 1 ? 'disabled' : ''} onclick="revelioStepJump('${jsStr(stageKey)}','${jsStr(bodyId)}',${steps.length - 1})">Jump to last →|</button>`;
+    if (steps.length <= 60) {
+      html += '<div class="step-progress">';
+      steps.forEach((_, i) => {
+        html += `<button type="button" class="dot${i === stepIdx ? ' current' : ''}" title="Step ${i + 1}" onclick="revelioStepJump('${jsStr(stageKey)}','${jsStr(bodyId)}',${i})"></button>`;
+      });
+      html += '</div>';
+    }
     html += `<span style="color:var(--text-dim);font-size:.72rem;margin-left:auto">j ← · k →</span>`;
     html += '</div>';
     html += `<div class="step-content">${renderRevelioStepMessages(steps[stepIdx] || msgs, `${bodyId}-step`, query)}</div></div>`;
@@ -2619,13 +2946,24 @@ function renderRevelioStageBody(stageKey, bodyId) {
 }
 
 function renderRevelioStepMessages(messages, idPrefix, query) {
-  let html = '';
+  const toolMsgCount = messages.filter(m => m.command != null).length;
+  let html = '<div class="traj-step-msgs">';
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     const role = msg.role || 'unknown';
     const hasCmd = msg.command != null;
-    html += `<div class="traj-msg ${role}">`;
-    html += `<div class="role">${role}</div>`;
+    // Both the system prompt and any long tool output are collapsed by
+    // default behind a click on their role header — no separate "Show
+    // more" link, no inner scrollbar, just click to reveal the full thing.
+    // Short output that would never have needed scrolling anyway is left
+    // fully visible with no collapse affordance at all.
+    const longOutput = hasCmd && (msg.command_output || '').length > 800;
+    const isCollapsible = role === 'system' || longOutput;
+    // A lone tool section has nothing else competing for space, so open it by default.
+    const autoExpand = longOutput && toolMsgCount === 1;
+    html += `<div class="traj-msg ${role}${isCollapsible ? ' collapsible' : ''}${autoExpand ? ' expanded' : ''}">`;
+    html += `<div class="role"${isCollapsible ? ' onclick="toggleTrajMsg(this.closest(\'.traj-msg\'))"' : ''}>${role}</div>`;
+    html += '<div class="msg-body">';
     if (hasCmd) {
       const rc = msg.command_returncode;
       const rcCls = rc === 0 ? 'rc-ok' : 'rc-fail';
@@ -2636,8 +2974,9 @@ function renderRevelioStepMessages(messages, idPrefix, query) {
     } else if ((msg.content || '').trim()) {
       html += formatAssistantContent(msg.content, query);
     }
-    html += '</div>';
+    html += '</div></div>';
   }
+  html += '</div>';
   return html;
 }
 
@@ -2716,7 +3055,10 @@ function renderRevelioDetail(d, m) {
 
 function revelioKeyHandler(e) {
   if (!runDetail || !runDetail.revelio) return;
-  const open = document.querySelector('.stage-collapse-body.open');
+  // Multiple stage-collapse-bodies can be "open" at once (e.g. the always-open
+  // hypothesis trace card stays .open even while its tab is hidden) — only the
+  // one actually visible on screen should receive the shortcut.
+  const open = Array.from(document.querySelectorAll('.stage-collapse-body.open')).find(el => el.offsetParent !== null);
   if (!open) return;
   const stageKey = open.dataset.stageKey;
   const bodyId = open.dataset.bodyId;
@@ -2764,24 +3106,31 @@ function renderRevelioCollapsibleStageList(stages, idPrefix, pStages, opts) {
     const searchText = [s.label, info.summary, info.reason, info.verdict, s.hid].join(' ');
     const anchorId = s.stage === 'stage3.filter' && s.hid ? `hyp-${s.hid}` : (opts.showArtifacts ? `poc-${stageKey}` : idKey);
     html += `<div class="card revelio-stage-card" id="${anchorId}" data-search="${esc(searchText)}" style="margin-bottom:1rem">`;
-    html += `<div class="stage-collapse-header" id="${idKey}-hdr" onclick="toggleRevelioStage('${jsStr(stageKey)}','${idKey}-body','${idKey}-hdr')">`;
-    html += `<span class="chevron chevron-right"></span>`;
-    const displayHid = opts.rowHid || s.hid;
-    if (displayHid) html += `<span class="badge badge-cyan">${esc(displayHid)}</span>`;
-    html += `<span>${esc(cleanStageLabel(s.label || s.agent || '—'))}</span>`;
-    if (info.verdict) {
-      const cls = info.verdict === 'VALID' ? 'badge-green' : info.verdict === 'INVALID' ? 'badge-red' : 'badge-orange';
-      html += `<span class="badge ${cls}">${esc(info.verdict)}</span>`;
+    // The always-open hypothesis-trace card sits directly under a header
+    // that already shows the hid/verdict/summary, so repeating them here
+    // (hid badge, verdict badge, reason text) is pure duplication.
+    if (!opts.hideSummary) {
+      const headerClick = opts.alwaysOpen ? '' : ` onclick="toggleRevelioStage('${jsStr(stageKey)}','${idKey}-body','${idKey}-hdr')"`;
+      const headerStyle = opts.alwaysOpen ? ' style="cursor:default"' : '';
+      html += `<div class="stage-collapse-header" id="${idKey}-hdr"${headerClick}${headerStyle}>`;
+      if (!opts.alwaysOpen) html += `<span class="chevron chevron-right"></span>`;
+      const displayHid = opts.rowHid || s.hid;
+      if (displayHid) html += `<span class="badge badge-cyan">${esc(displayHid)}</span>`;
+      html += `<span>${esc(cleanStageLabel(s.label || s.agent || '—'))}</span>`;
+      if (info.verdict) {
+        const cls = info.verdict === 'VALID' ? 'badge-green' : info.verdict === 'INVALID' ? 'badge-red' : 'badge-orange';
+        html += `<span class="badge ${cls}">${esc(info.verdict)}</span>`;
+      }
+      html += `<span style="font-size:.74rem;color:var(--text-dim);margin-left:auto">${s.message_count || s.raw_count || 0} msgs</span>`;
+      if (opts.showPocLink && opts.pocHid) html += revelioPocLink(opts.pocHid, pStages);
+      html += '</div>';
+      if (info.summary && !info.verdict) html += `<p style="font-size:.78rem;color:var(--text-dim);margin:.3rem 0 0 1.2rem">${esc(info.summary)}</p>`;
+      if (info.reason && info.verdict) html += `<p style="font-size:.76rem;color:var(--text-dim);margin:.3rem 0 .75rem 1.2rem"><em>${esc(info.reason)}</em></p>`;
     }
-    html += `<span style="font-size:.74rem;color:var(--text-dim);margin-left:auto">${s.message_count || s.raw_count || 0} msgs</span>`;
-    if (opts.showPocLink && opts.pocHid) html += revelioPocLink(opts.pocHid, pStages);
-    html += '</div>';
-    if (info.summary && !info.verdict) html += `<p style="font-size:.78rem;color:var(--text-dim);margin:.3rem 0 0 1.2rem">${esc(info.summary)}</p>`;
-    if (info.reason && info.verdict) html += `<p style="font-size:.76rem;color:var(--text-dim);margin:.3rem 0 0 1.2rem"><em>${esc(info.reason)}</em></p>`;
     if (opts.showArtifacts && (s.hypothesis || s.poc || s.validation || s.report)) {
       html += renderRevelioPocArtifacts(s, idKey);
     }
-    html += `<div class="stage-collapse-body" id="${idKey}-body" data-stage-key="${esc(stageKey)}"></div>`;
+    html += `<div class="stage-collapse-body${opts.alwaysOpen ? ' open' : ''}" id="${idKey}-body" data-stage-key="${esc(stageKey)}" data-body-id="${esc(idKey)}-body"></div>`;
     html += '</div>';
   });
   return html;
@@ -2795,13 +3144,15 @@ function renderRevelioStage(s, idKey, opts) {
   return renderRevelioCollapsibleStageList([s], idKey, [], opts);
 }
 
-function renderRevelioPocArtifacts(s, idKey) {
+function renderRevelioPocArtifacts(s, idKey, opts) {
+  opts = opts || {};
   const h = s.hypothesis || null;
   const poc = s.poc || null;
   const val = s.validation || null;
   const rep = s.report || null;
+  const includeTrace = !!(opts.traceBodyId && s.stage_key);
 
-  let html = `<div style="margin:.6rem 0;padding:.6rem .8rem;background:var(--rv-tint);border-radius:6px">`;
+  let html = `<div style="margin:.6rem 0">`;
 
   if (h) {
     html += `<div style="font-size:.82rem;margin-bottom:.4rem"><strong style="color:var(--text-bright)">Hypothesis:</strong> ${esc(h.title || h.description || '')}</div>`;
@@ -2817,6 +3168,7 @@ function renderRevelioPocArtifacts(s, idKey) {
   if (poc) sub.push('PoC Recipe');
   if (val) sub.push('Validation');
   if (rep) sub.push('Report');
+  if (includeTrace) sub.push('PoC Builder Trace');
   if (sub.length) {
     const stId = `${idKey}-art`;
     html += `<div class="tabs" id="${stId}" style="margin-top:.6rem">`;
@@ -2864,6 +3216,12 @@ function renderRevelioPocArtifacts(s, idKey) {
       } else {
         html += `<pre>${esc(JSON.stringify(data, null, 2))}</pre>`;
       }
+      html += `</div>`;
+      si++;
+    }
+    if (includeTrace) {
+      html += `<div class="tab-panel ${si === 0 ? 'active' : ''}" id="${stId}-tab-${si}">`;
+      html += `<div class="stage-collapse-body open" id="${esc(opts.traceBodyId)}" data-stage-key="${esc(s.stage_key)}" data-body-id="${esc(opts.traceBodyId)}"></div>`;
       html += `</div>`;
       si++;
     }
@@ -3205,6 +3563,14 @@ function switchTab(idx, prefix) {
       document.querySelector('#revelio-poc-tab .hyp-list-scroll')?.scrollTo(0, 0);
       document.getElementById('revelio-poc-detail')?.scrollTo(0, 0);
     }
+    // Trace min-height sizing can run while the Hypothesis/PoC tab is still
+    // hidden (display:none), which measures the sidebar at 0px — re-sync
+    // once the tab is actually the one being shown.
+    if (prefix === 'detail' && idx === 1) {
+      if (currentHypGateCtx) equalizeHypGatePanelHeight(currentHypGateCtx);
+      applyTraceMinHeight(currentHypTraceBodyId);
+    }
+    if (prefix === 'detail' && idx === 2) applyTraceMinHeight(currentPocTraceBodyId);
   }
 }
 
@@ -3487,14 +3853,14 @@ function encUri(s) { return encodeURIComponent(s); }
 
 function statCard(val, label, hero) {
   const cls = hero ? 'stat-card stat-hero' : 'stat-card';
-  return `<div class="${cls}"><div class="lbl">${esc(label)}</div><div class="val">${esc(String(val))}</div></div>`;
+  return `<div class="${cls}"><div class="lbl">${esc(label)}</div><div class="stat-card-body"><div class="val">${esc(String(val))}</div></div></div>`;
 }
 
 function statCardTarget(ref) {
   const full = ref || '—';
   const short = full.includes('/') ? full.split('/').pop() : full;
   const title = full !== short ? ` title="${esc(full)}"` : '';
-  return `<div class="stat-card"${title}><div class="lbl">Target</div><div class="val">${esc(short || full)}</div></div>`;
+  return `<div class="stat-card"${title}><div class="lbl">Target</div><div class="stat-card-body"><div class="val">${esc(short || full)}</div></div></div>`;
 }
 
 function shortModel(name) {
@@ -3521,7 +3887,19 @@ function statCardModels(m) {
   const val = roles.map(({ role, model }) =>
     `<span class="model-role"><span class="model-role-lbl">${esc(role)}</span>${esc(shortModel(model))}</span>`
   ).join('');
-  return `<div class="stat-card stat-card-models"><div class="lbl">Models</div><div class="val">${val}</div></div>`;
+  return `<div class="stat-card stat-card-models"><div class="lbl">Models</div><div class="stat-card-body"><div class="val">${val}</div></div></div>`;
+}
+
+function statCardStage(label, model, cost) {
+  const modelLabel = model ? shortModel(model) : '—';
+  const costLabel = cost != null ? '$' + cost.toFixed(4) : '—';
+  return `<div class="stat-card" title="${esc(model || '')}">
+    <div class="lbl">${esc(label)}</div>
+    <div class="stat-card-body">
+      <div class="val" style="font-size:.95rem">${esc(modelLabel)}</div>
+      <div style="font-size:.78rem;color:var(--text-dim);font-variant-numeric:tabular-nums">${esc(costLabel)}</div>
+    </div>
+  </div>`;
 }
 
 function runModelTags(r) {

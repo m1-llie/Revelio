@@ -113,6 +113,32 @@ def _sum_log_poc_cost(log_text):
     return total
 
 
+def _poc_model_from_trajectory(run_dir):
+    """Best-effort real PoC-stage model, read from trajectory.json.
+
+    manifest.json's "poc_model" is absent on older runs (the field was added
+    later), so callers must not assume it reflects the actual model used —
+    the true value is recorded per-agent in trajectory.json regardless of
+    manifest schema version.
+    """
+    traj_path = run_dir / "trajectory.json"
+    if not traj_path.exists():
+        return None
+    try:
+        traj = _read_json(traj_path)
+        agents = traj.get("agents", {}) if isinstance(traj, dict) else {}
+        for agent_name, agent_data in agents.items():
+            if "PoCBuilder" not in agent_name or not isinstance(agent_data, dict):
+                continue
+            info = agent_data.get("info") or {}
+            model_name = ((info.get("config") or {}).get("model") or {}).get("model_name")
+            if model_name:
+                return model_name
+    except Exception:
+        pass
+    return None
+
+
 def _detect_traj_format(run_dir):
     """Return one of: 'manifest', 'revelio_traj', 'cc_traj_jsonl',
     'cc_messages', 'codex_messages', 'kiss_yaml', or None."""
@@ -1155,7 +1181,11 @@ def _compute_revelio_cost(*, stage2_classify, hypothesis_stages, poc_stages, eve
             stats = info.get("model_stats") or {}
             if stats.get("instance_cost"):
                 poc_cost += float(stats["instance_cost"])
-    return round(scan_cost + poc_cost, 4)
+    return {
+        "scan": round(scan_cost, 4),
+        "poc": round(poc_cost, 4),
+        "total": round(scan_cost + poc_cost, 4),
+    }
 
 
 def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
@@ -1236,6 +1266,14 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
                 poc_idx += 1
         except Exception:
             pass
+
+    if not manifest.get("poc_model"):
+        for ps in poc_stages:
+            info = ps.get("info") or {}
+            model_name = ((info.get("config") or {}).get("model") or {}).get("model_name")
+            if model_name:
+                manifest = {**manifest, "poc_model": model_name}
+                break
 
     # Hypothesis-stage trajectories live under traces/{stage1,stage2,stage3_filter}.
     hypothesis_stages = []
@@ -1417,7 +1455,7 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
     # upstream API auth failure) looks identical to a legitimate "everything
     # was reviewed and rejected" outcome unless we flag it explicitly.
     funnel["filter_stage_failed"] = stage3_total_files > 0 and stage3_error_count == stage3_total_files
-    cost_total = _compute_revelio_cost(
+    cost = _compute_revelio_cost(
         stage2_classify=stage2_classify,
         hypothesis_stages=hypothesis_stages,
         poc_stages=poc_stages,
@@ -1466,7 +1504,9 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
             "poc_steps": len(poc_stages),
             "hypothesis_msgs": hyp_msg_total,
             "poc_msgs": poc_msg_total,
-            "cost_total": cost_total,
+            "cost_total": cost["total"],
+            "cost_scan": cost["scan"],
+            "cost_poc": cost["poc"],
             "duration_seconds": duration_seconds,
             "funnel": funnel,
             "poc_status": poc_status,
@@ -2372,10 +2412,11 @@ def make_handler(output_dirs):
                         counters = idx.get("counters", {})
                     # parse log for PoC-builder cost (every attempt, including retries)
                     log_path = run_dir / "log.txt"
-                    total_cost = _sum_log_poc_cost(log_path.read_text(errors="replace")) if log_path.exists() else 0.0
-                    # check success from events; scan_filter_end also carries the
+                    poc_cost = _sum_log_poc_cost(log_path.read_text(errors="replace")) if log_path.exists() else 0.0
+                    # check success from events; scan_filter_end carries the
                     # hypothesis-generation phase's cost, which log.txt's "cost=$"
                     # lines don't include (that summary line uses "cost: $", no "=").
+                    scan_cost = 0.0
                     events_path = run_dir / "events.jsonl"
                     status = "unknown"
                     hypotheses_confirmed = 0
@@ -2386,7 +2427,7 @@ def make_handler(output_dirs):
                                 status = "success"
                                 hypotheses_confirmed = ev.get("payload", {}).get("count", 0)
                             elif ev.get("event") == "scan_filter_end" and (ev.get("payload") or {}).get("total_cost"):
-                                total_cost += float(ev["payload"]["total_cost"])
+                                scan_cost += float(ev["payload"]["total_cost"])
                         if status == "unknown":
                             for ev in events:
                                 if ev.get("event") == "run_success":
@@ -2398,11 +2439,13 @@ def make_handler(output_dirs):
                         "target_type": manifest.get("target_type"),
                         "model_name": manifest.get("model_name"),
                         "filter_model": manifest.get("filter_model"),
-                        "poc_model": manifest.get("poc_model"),
+                        "poc_model": manifest.get("poc_model") or _poc_model_from_trajectory(run_dir),
                         "pipeline": manifest.get("pipeline"),
                         "created_at": manifest.get("created_at_utc"),
                         "counters": counters,
-                        "total_cost": round(total_cost, 4),
+                        "total_cost": round(scan_cost + poc_cost, 4),
+                        "scan_cost": round(scan_cost, 4),
+                        "poc_cost": round(poc_cost, 4),
                         "status": status,
                         "hypotheses_confirmed": hypotheses_confirmed,
                         "source_dir": str(out_dir.name),
