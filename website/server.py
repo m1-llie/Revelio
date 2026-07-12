@@ -1425,9 +1425,13 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
         ps["validation"] = val_by_hid.get(hid) if hid else None
         ps["report"] = rep_by_hid.get(hid) if hid else None
 
-    # Confirmed count derived from validation/report artifacts.
+    # Confirmed count derived from validation/report artifacts. Hids folded
+    # into a canonical duplicate by the post-PoC findings dedup pass are
+    # excluded so the same real bug isn't counted once per duplicate hid.
     confirmed = 0
     for hid in hyp_by_hid:
+        if hid in duplicate_of:
+            continue
         # val_by_hid/rep_by_hid store the raw handoff wrapper — unwrap "data".
         v = (val_by_hid.get(hid) or {}).get("data") or {}
         r = (rep_by_hid.get(hid) or {}).get("data") or {}
@@ -2433,6 +2437,17 @@ def make_handler(output_dirs):
                                 if ev.get("event") == "run_success":
                                     status = "partial"
                                     hypotheses_confirmed += 1
+                        # run_success_all's count is emitted before the post-PoC
+                        # findings dedup runs, so it can count the same real bug
+                        # once per duplicate hid — subtract those out here.
+                        dedup_path = run_dir / "artifacts" / "handoffs" / "dedup_findings.json"
+                        if dedup_path.exists():
+                            try:
+                                dedup_wrapper = _read_json(dedup_path)
+                            except Exception:
+                                dedup_wrapper = None
+                            dup_count = len(((dedup_wrapper or {}).get("data") or {}).get("duplicate_of") or {})
+                            hypotheses_confirmed = max(0, hypotheses_confirmed - dup_count)
                     runs.append({
                         "run_id": run_id,
                         "target_ref": manifest.get("target_ref"),
@@ -2483,7 +2498,7 @@ def make_handler(output_dirs):
                 manifest = detail.get("manifest") or {}
                 for row in detail.get("revelio_hypothesis_pipeline") or []:
                     final = row.get("final") or {}
-                    if not final.get("confirmed"):
+                    if not final.get("confirmed") or final.get("duplicate_of"):
                         continue
                     classify = row.get("classify") or {}
                     vulns.append({

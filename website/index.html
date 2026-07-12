@@ -28,10 +28,10 @@
   --rv-text:      #E8E6F0;
   --rv-text-dim:  #A8A6B8;
   --rv-text-faint:#6E6D80;
-  --rv-gold:      #E9C052;
-  --rv-gold-hover:#D6AD42;
-  --rv-gold-bg:   rgba(233,192,82,0.14);
-  --rv-brand:     #E9C052;
+  --rv-gold:      #EFC64A;
+  --rv-gold-hover:#D6AE30;
+  --rv-gold-bg:   rgba(239,198,74,0.16);
+  --rv-brand:     #EFC64A;
   --rv-inset:     #101119;
   --rv-tint:      rgba(232,230,240,0.055);
   --rv-tint-strong:rgba(232,230,240,0.085);
@@ -93,10 +93,10 @@
   --rv-text:      #1B1F3B;
   --rv-text-dim:  #5B5D75;
   --rv-text-faint:#8A8CA3;
-  --rv-gold:      #B08A2E;
-  --rv-gold-hover:#96741F;
-  --rv-gold-bg:   rgba(176,138,46,0.13);
-  --rv-brand:     #B08A2E;
+  --rv-gold:      #d5ac09;
+  --rv-gold-hover:#aa8a07;
+  --rv-gold-bg:   rgba(213,172,9,0.14);
+  --rv-brand:     #d5ac09;
   --rv-inset:     #EEEFF6;
   --rv-tint:      rgba(27,31,59,0.045);
   --rv-tint-strong:rgba(27,31,59,0.08);
@@ -246,7 +246,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .tab-panel.active{display:block}
 
 /* ── Overview grid ────────────────────────────────────────────── */
-.overview-grid{display:flex;flex-wrap:nowrap;background:var(--rv-tint);border:none;border-radius:var(--radius);margin-bottom:1rem;overflow:hidden}
+.overview-grid{display:flex;flex-wrap:nowrap;background:var(--rv-panel-2);border:none;border-radius:var(--radius);margin-bottom:1rem;overflow:hidden}
 .stat-card{flex:1 1 0;min-width:0;background:transparent;border:none;border-radius:0;padding:.75rem 1.1rem;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;text-align:center;gap:.2rem}
 .stat-card-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:.2rem}
 .stat-card+.stat-card{border-left:1px solid var(--rv-divider)}
@@ -387,7 +387,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .funnel-wrap{display:flex;align-items:center;margin:0 0 1rem}
 .funnel-title{margin-bottom:.5rem;text-align:center;width:100%;justify-content:center}
 .funnel-bar{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;justify-content:center;padding:.1rem 0}
-.funnel-step{background:var(--rv-tint);border:none;border-radius:8px;padding:.5rem .75rem;font-size:.72rem;text-align:center}
+.funnel-step{background:var(--rv-panel-2);border:none;border-radius:8px;padding:.5rem .75rem;font-size:.72rem;text-align:center}
 .funnel-step .num{font-weight:800;color:var(--rv-text);font-size:.9rem}
 .funnel-step .lbl{color:var(--text-dim);font-size:.66rem;display:block;margin-top:.05rem}
 .funnel-step-failed{cursor:help}
@@ -496,7 +496,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
 .confirmed-poc-panel{margin:.5rem 0 1.25rem;width:100%}
 .confirmed-poc-wrap{height:36rem;overflow:hidden;border:none;border-radius:var(--radius);background:transparent;padding:.85rem 0}
 .confirmed-poc-wrap .confirmed-poc-card:last-child{margin-bottom:0;border-bottom:none}
-.confirmed-poc-card{background:var(--rv-tint);border:none;border-bottom:1px solid var(--rv-divider);border-radius:0;margin-bottom:0;padding:1rem 1.15rem}
+.confirmed-poc-card{background:var(--rv-panel-2);border:none;border-bottom:1px solid var(--rv-divider);border-radius:0;margin-bottom:0;padding:1rem 1.15rem}
 .confirmed-poc-card.asan,.confirmed-poc-card.not{border-left:none}
 .confirmed-poc-card.clickable{cursor:pointer;transition:background-color .12s}
 .confirmed-poc-card.clickable:hover{background:var(--rv-tint-strong)}
@@ -1697,7 +1697,7 @@ function renderRevelioFunnel(funnel) {
     if (i) bar += '<span class="funnel-arrow">→</span>';
     renderStep(st);
   });
-  bar += '<span class="funnel-separator">·</span>';
+  bar += '<span class="funnel-arrow">→</span>';
   pocSteps.forEach((st, i) => {
     if (i) bar += '<span class="funnel-arrow">→</span>';
     renderStep(st);

@@ -38,7 +38,17 @@ def compute_dedup_report(handoffs_dir: Path) -> DedupReport:
     groups: dict[tuple[str, str], list[str]] = {}
     for data in confirmed:
         token = data.get("dedup_token")
-        key = ("dedup_token", token) if token else ("fallback", data.get("fallback_signature") or "unknown")
+        fallback = data.get("fallback_signature")
+        if token:
+            key = ("dedup_token", token)
+        elif fallback and fallback != "unknown":
+            key = ("fallback", fallback)
+        else:
+            # No real signature could be extracted — each such finding is its
+            # own singleton group rather than being lumped together under a
+            # shared "unknown" bucket, which would falsely merge unrelated
+            # crashes that merely share a lack of signature data.
+            key = ("unresolved", data["hypothesis_id"])
         groups.setdefault(key, []).append(data["hypothesis_id"])
 
     report = DedupReport()
