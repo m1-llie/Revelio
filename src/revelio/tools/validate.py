@@ -46,7 +46,7 @@ def _format_result(sanitizer: str | None, crash: bool, returncode: int | None, o
     )
 
 
-def make_validate_tool(env: Any, capture: list[dict] | None = None) -> Callable:
+def make_validate_tool(env: Any, capture: list[dict] | None = None, log_fn: Callable | None = None) -> Callable:
     """Create a validate tool closure bound to the given environment.
 
     ``capture``, if given, receives one ``{"sanitizer", "crash", "returncode",
@@ -54,6 +54,10 @@ def make_validate_tool(env: Any, capture: list[dict] | None = None) -> Callable:
     used by the orchestrator to extract a crash signature (DEDUP_TOKEN, etc.)
     for post-confirmation findings dedup, since the LLM-facing string returned
     below is truncated and the agent may further summarize/omit it.
+
+    ``log_fn``, if given, receives one live progress line per sanitizer run —
+    this can be the single longest silent stretch of a run otherwise, since a
+    multi-sanitizer validate() call can take minutes with no visible output.
     """
 
     sanitizers = _discover_sanitizers(env)
@@ -72,10 +76,15 @@ def make_validate_tool(env: Any, capture: list[dict] | None = None) -> Callable:
 
         if not sanitizers:
             # Flat /out/ layout (original ARVO images) — single run
+            if log_fn:
+                log_fn("  [validate] Running sanitizer: default...")
             result = env.execute("arvo 2>&1")
             output = result.get("output", "")
             returncode = result.get("returncode")
             crash = check_crash(output, returncode)
+            if log_fn:
+                style = "bold green" if crash else "dim"
+                log_fn(f"  [validate] [{style}][default] crash_detected={crash}[/{style}]")
             if capture is not None:
                 capture.append({"sanitizer": None, "crash": crash, "returncode": returncode, "output": output})
             return _format_result(None, crash, returncode, output)
@@ -84,12 +93,17 @@ def make_validate_tool(env: Any, capture: list[dict] | None = None) -> Callable:
         parts: list[str] = []
         any_crash = False
         for san in sanitizers:
+            if log_fn:
+                log_fn(f"  [validate] Running sanitizer: {san}...")
             result = env.execute(f"SANITIZER={san} arvo 2>&1")
             output = result.get("output", "")
             returncode = result.get("returncode")
             crash = check_crash(output, returncode)
             if crash:
                 any_crash = True
+            if log_fn:
+                style = "bold green" if crash else "dim"
+                log_fn(f"  [validate] [{style}][{san}] crash_detected={crash}[/{style}]")
             if capture is not None:
                 capture.append({"sanitizer": san, "crash": crash, "returncode": returncode, "output": output})
             parts.append(_format_result(san, crash, returncode, output))

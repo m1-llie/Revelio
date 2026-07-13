@@ -136,15 +136,32 @@ class DockerEnvironment:
             cmd.extend(["-e", f"{key}={value}"])
         cmd.extend([self.container_id, "bash", "-lc", command])
 
-        result = subprocess.run(
-            cmd,
-            text=True,
-            timeout=timeout or self.config.timeout,
-            encoding="utf-8",
-            errors="replace",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
+        effective_timeout = timeout or self.config.timeout
+        try:
+            result = subprocess.run(
+                cmd,
+                text=True,
+                timeout=effective_timeout,
+                encoding="utf-8",
+                errors="replace",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+        except subprocess.TimeoutExpired as e:
+            # Report the timeout as a normal observation rather than letting it
+            # propagate — an agent tool call (e.g. validate()) hanging past the
+            # timeout shouldn't crash the whole run; the agent should be able to
+            # see "this command timed out" and react (smaller input, different
+            # target, give up on this hypothesis), the same way other non-fatal
+            # tool errors are surfaced.
+            partial = _MESG_TTYNAME_RE.sub("", e.stdout or "")
+            message = f"[Command timed out after {effective_timeout}s and was killed: {command!r}]"
+            return {
+                "output": f"{partial}\n{message}" if partial else message,
+                "returncode": None,
+                "exception_info": message,
+            }
+
         # bash -l emits "mesg: ttyname failed: ..." on its own startup (before our
         # command even runs) when there's no controlling terminal; `mesg n` can't
         # suppress it since it fires during login-shell init, not from our command.

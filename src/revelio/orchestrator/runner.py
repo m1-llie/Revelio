@@ -38,7 +38,7 @@ from revelio.run.crash_signals import (
     extract_dedup_token,
 )
 from revelio.tools.validate import make_validate_tool
-from revelio.orchestrator.types import AgentRunResult, AgentSpec, OrchestratorResult
+from revelio.orchestrator.types import AgentRunResult, AgentSpec, OrchestratorResult, extract_tool_name
 
 
 def _class_path(obj: Any) -> str:
@@ -101,6 +101,7 @@ class AgentRunner:
         env: Any,
         store: ArtifactStore,
         log_fn: Any | None = None,
+        step_log_fn: Any | None = None,
         checkpoint_every: int = 5,
         global_model_config: dict[str, Any] | None = None,
     ):
@@ -108,6 +109,10 @@ class AgentRunner:
         self.env = env
         self.store = store
         self.log_fn = log_fn
+        # High-frequency per-step lines go to a separate (usually quieter, e.g.
+        # log-file-only) sink so they don't duplicate the live spinner in the
+        # terminal; falls back to log_fn if the caller doesn't distinguish.
+        self.step_log_fn = step_log_fn or log_fn
         self.checkpoint_every = checkpoint_every
         self.global_model_config = global_model_config or {}
 
@@ -136,13 +141,14 @@ class AgentRunner:
         agent = DefaultAgent(model, self.env, tools=tools, **agent_config)
 
         step_counter = {"n": 0}
-        real_step = agent.step
 
         def step_with_progress():
             step_counter["n"] += 1
-            if self.log_fn:
-                self.log_fn(f"{spec.name}: step {step_counter['n']} running...")
-            result = real_step()
+            response = agent.query()
+            if self.step_log_fn:
+                tool_name = extract_tool_name(response)
+                self.step_log_fn(f"{spec.name}: step {step_counter['n']} running ({tool_name})...")
+            result = agent.get_observation(response)
             if self.checkpoint_every > 0 and step_counter["n"] % self.checkpoint_every == 0:
                 self._checkpoint(spec.name, agent, step_counter["n"])
             return result
@@ -233,6 +239,7 @@ class MultiAgentOrchestrator:
         top_n: int = 10,
         max_poc_attempts: int = 2,
         log_fn: Any | None = None,
+        step_log_fn: Any | None = None,
         on_success: Any | None = None,
         max_workers: int = 4,
         api_keys: list[str] | None = None,
@@ -251,6 +258,7 @@ class MultiAgentOrchestrator:
         self._context_builder = ContextPacketBuilder()
         self._artifacts: dict[str, Any] = {}
         self._log_fn = log_fn
+        self._step_log_fn = step_log_fn or log_fn
         self._on_success = on_success
         self.max_workers = max_workers
         self.api_keys = api_keys
@@ -348,13 +356,14 @@ class MultiAgentOrchestrator:
             env=self.env,
             store=self.store,
             log_fn=self._log_fn,
+            step_log_fn=self._step_log_fn,
             global_model_config=self.model_config,
         )
         # Captures raw (untruncated) sanitizer output per validate() call, across
         # all hypotheses, for post-confirmation crash-signature extraction —
         # see the loop below and compute_dedup_report() after it.
         validate_capture: list[dict] = []
-        validate_tool = make_validate_tool(self.env, capture=validate_capture)
+        validate_tool = make_validate_tool(self.env, capture=validate_capture, log_fn=self._step_log_fn)
 
         self.store.append_event("run_start", {"arvo_mode": self.arvo_mode})
         common_vars = {"project_path": self.project_path, "arvo_mode": self.arvo_mode, "top_n": self.top_n}
@@ -370,6 +379,7 @@ class MultiAgentOrchestrator:
                 model_name=self.model_name,
                 store=self.store,
                 log_fn=self._log_fn,
+                step_log_fn=self._step_log_fn,
                 api_keys=self.api_keys,
                 file_extensions=self.file_extensions,
                 max_workers=self.max_workers,

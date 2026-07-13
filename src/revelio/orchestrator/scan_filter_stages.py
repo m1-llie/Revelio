@@ -1527,13 +1527,21 @@ Rules:
 """
 
 
-def _run_agent_with_warning(agent: Any, step_limit: int, warn_at: int = 3, **kwargs) -> tuple[str, str]:
+def _run_agent_with_warning(
+    agent: Any,
+    step_limit: int,
+    warn_at: int = 3,
+    log_fn: Any | None = None,
+    log_prefix: str = "",
+    **kwargs,
+) -> tuple[str, str]:
     """Run the agent loop with a wrap-up warning injected when `warn_at` steps remain.
 
     Replicates DefaultAgent.run() but injects a user-role warning message
     when the remaining step budget hits `warn_at`.
     """
     from revelio.agents.default import NonTerminatingException, Submitted, TerminatingException
+    from revelio.orchestrator.types import extract_tool_name
 
     agent.extra_template_vars |= kwargs
     agent.messages = []
@@ -1554,7 +1562,11 @@ def _run_agent_with_warning(agent: Any, step_limit: int, warn_at: int = 3, **kwa
             )
 
         try:
-            agent.step()
+            response = agent.query()
+            if log_fn:
+                tool_name = extract_tool_name(response)
+                log_fn(f"{log_prefix}sub-agent step {steps_used + 1} ({tool_name})...")
+            agent.get_observation(response)
             steps_used += 1
         except NonTerminatingException as e:
             agent.add_message("user", str(e))
@@ -1574,6 +1586,8 @@ def run_filter_agent(
     agent_step_limit: int = 20,
     agent_cost_limit: float = 2.0,
     check_results: list[dict] | None = None,
+    log_fn: Any | None = None,
+    log_prefix: str = "",
 ) -> dict:
     """Independent static filtering (Figure 3, refinement band): a real coding agent
     (``DefaultAgent``) with an unrestricted ``bash`` tool, run in the same shared
@@ -1628,6 +1642,8 @@ def run_filter_agent(
             agent,
             step_limit=agent_step_limit,
             warn_at=3,
+            log_fn=log_fn,
+            log_prefix=log_prefix,
             task="Verify the vulnerability hypothesis",
             project_path=project_path,
             target_file=target_file,

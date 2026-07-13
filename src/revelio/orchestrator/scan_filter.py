@@ -110,6 +110,7 @@ class ScanFilterOrchestrator:
         model_config: dict[str, Any] | None = None,
         store: ArtifactStore,
         log_fn: Any | None = None,
+        step_log_fn: Any | None = None,
         file_extensions: list[str] | None = None,
         max_workers: int = 4,
         filter_model: str | None = None,
@@ -125,6 +126,7 @@ class ScanFilterOrchestrator:
         self.model_config = model_config or {}
         self.store = store
         self.log_fn = log_fn
+        self.step_log_fn = step_log_fn or log_fn
         self.file_extensions = file_extensions or DEFAULT_FILE_EXTENSIONS
         self.max_workers = max_workers
         self.filter_model = filter_model or model_name
@@ -747,6 +749,8 @@ class ScanFilterOrchestrator:
                     self.filter_model, self.filter_model_config,
                     self.agent_step_limit, self.agent_cost_limit,
                     check_results=check_results,
+                    log_fn=self.step_log_fn,
+                    log_prefix=f"  [scan_filter] [{i+1}/{len(kept)}] ",
                 )
                 v = filter_results[i]
                 if cost_tracker is not None:

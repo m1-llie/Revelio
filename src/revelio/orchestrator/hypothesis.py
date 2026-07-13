@@ -16,6 +16,11 @@ from revelio.orchestrator.types import AgentRunResult
 
 DEFAULT_FILE_EXTENSIONS = [".c", ".cpp", ".cc", ".cxx"]
 
+# Cycled per concurrently-scanned file so interleaved log lines from
+# ThreadPoolExecutor workers are visually distinguishable. Reuses colors
+# already used elsewhere in this codebase's rich markup conventions.
+FILE_LOG_COLORS = ["cyan", "yellow", "green", "magenta"]
+
 EXCLUDED_DIRS = {
     "afl", "aflplusplus", "honggfuzz", "libfuzzer", "fuzzer-test-suite",
     "DictFuzzer", "centipede", "fuzztest",
@@ -36,6 +41,7 @@ class HypothesisOrchestrator:
         model_config: dict[str, Any] | None = None,
         store: ArtifactStore,
         log_fn: Any | None = None,
+        step_log_fn: Any | None = None,
         api_keys: list[str] | None = None,
         file_extensions: list[str] | None = None,
         max_workers: int = 4,
@@ -45,6 +51,7 @@ class HypothesisOrchestrator:
         self.model_config = model_config or {}
         self.store = store
         self.log_fn = log_fn
+        self.step_log_fn = step_log_fn or log_fn
         self.file_extensions = file_extensions or DEFAULT_FILE_EXTENSIONS
         self.max_workers = max_workers
         self.api_keys = api_keys or get_api_keys_pool()
@@ -164,13 +171,16 @@ class HypothesisOrchestrator:
     ) -> tuple[str, AgentRunResult | None, VulnHypotheses | None]:
         """Run hypothesis generation for a single file."""
         api_key = self._get_next_api_key()
+        color = FILE_LOG_COLORS[hash(file_path) % len(FILE_LOG_COLORS)]
         runner = FileHypothesisRunner(
             env=self.env,
             model_name=self.model_name,
             model_config=self.model_config,
             store=self.store,
             log_fn=self.log_fn,
+            step_log_fn=self.step_log_fn,
             api_key=api_key,
+            color=color,
         )
 
         run_result = runner.run(
@@ -240,6 +250,11 @@ class HypothesisOrchestrator:
                     all_trajectories[key] = run_result.trajectory
                     total_cost += run_result.model_cost
                     total_calls += run_result.model_calls
+
+                self._log(
+                    f"HypothesisOrchestrator: {files_completed}/{len(files)} files scanned "
+                    f"(cost so far: ${total_cost:.4f})"
+                )
 
                 if hypotheses and hypotheses.hypotheses:
                     all_hypotheses.extend(hypotheses.hypotheses)

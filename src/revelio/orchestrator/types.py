@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -42,3 +43,25 @@ class OrchestratorResult:
 
 
 Parser = Callable[[str], Any]
+
+
+_TEXT_TOOL_CALL_RE = re.compile(r"Tool:\s*(\w+)\s*,\s*Arguments:")
+
+
+def extract_tool_name(response: dict) -> str:
+    """Best-effort tool name about to be executed for a query response.
+
+    Used only to annotate live progress lines (e.g. "step 3 running (bash)...")
+    so a stalled step is distinguishable from one that's just slow. Display-only —
+    mirrors (but doesn't replace) the real parsing in DefaultAgent.get_observation.
+    """
+    tool_calls = response.get("tool_calls")
+    if tool_calls:
+        return tool_calls[0].get("name") or "tool"
+    content = response.get("content") or ""
+    m = _TEXT_TOOL_CALL_RE.search(content)
+    if m:
+        return m.group(1)
+    if "```bash" in content:
+        return "bash"
+    return "tool"

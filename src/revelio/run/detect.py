@@ -19,12 +19,17 @@ import json
 import os
 import re
 import subprocess
+import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 import typer
 from rich.console import Console
+from rich.live import Live
+from rich.spinner import Spinner
 
 from revelio.artifacts.schema import CodeReference, VulnHypotheses, VulnHypothesis
 from revelio.artifacts.store import ArtifactStore
@@ -36,6 +41,10 @@ console = Console()
 app = typer.Typer(rich_markup_mode="rich")
 
 
+_MARKUP_RE = re.compile(r"\[/?[^\]]+\]")
+_STEP_INFO_RE = re.compile(r"step (\d+) running \(([^)]+)\)")
+
+
 class LoggingConsole:
     """Wrapper that logs console output to both terminal and file."""
 
@@ -43,6 +52,8 @@ class LoggingConsole:
         self.console = console
         self.log_file: Path | None = None
         self._file_handle = None
+        self._last_message: str | None = None
+        self._last_message_lock = threading.Lock()
         if log_path:
             self.set_log_file(log_path)
 
@@ -53,16 +64,93 @@ class LoggingConsole:
 
     def print(self, message: str, **kwargs) -> None:
         self.console.print(message, **kwargs)
+        self._record(message)
+
+    def log_only(self, message: str) -> None:
+        """Write a message to log.txt (and update the spinner's last-activity
+        state) without printing it to the terminal.
+
+        Used for high-frequency per-step progress lines (agent step loop,
+        per-sanitizer validate lines): the full history still belongs in
+        log.txt, but echoing every one to the terminal just duplicates what
+        the live spinner already shows and clutters scrollback. Milestone
+        lines (started/finished/crash confirmed) still go through print().
+        """
+        self._record(message)
+
+    def _record(self, message: str) -> None:
+        with self._last_message_lock:
+            self._last_message = message
         if self._file_handle:
-            clean_msg = re.sub(r"\[/?[^\]]+\]", "", message)
+            clean_msg = _MARKUP_RE.sub("", message)
             ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
             self._file_handle.write(f"{ts} | {clean_msg}\n")
             self._file_handle.flush()
+
+    def last_activity_text(self, max_len: int = 70) -> str | None:
+        """Best-effort description of the most recent log line, for annotating
+        the live spinner. Prefers the "step N (tool)" shape used by the agent
+        step loop (runner.py/file_hypothesis.py/scan_filter_stages.py); many
+        lines (e.g. Stage 1's direct-litellm-call phase messages, which never
+        go through DefaultAgent.step()) don't match that shape, so this falls
+        back to the raw last line, truncated, rather than showing nothing.
+
+        During parallel file scanning this reflects whichever worker logged
+        most recently, not necessarily "the" step, since many files step
+        concurrently there.
+        """
+        with self._last_message_lock:
+            message = self._last_message
+        if not message:
+            return None
+        clean = _MARKUP_RE.sub("", message).strip()
+        m = _STEP_INFO_RE.search(clean)
+        if m:
+            return f"step {m.group(1)} ({m.group(2)})"
+        if len(clean) > max_len:
+            clean = clean[: max_len - 1] + "…"
+        return clean
 
     def close(self) -> None:
         if self._file_handle:
             self._file_handle.close()
             self._file_handle = None
+
+
+@contextmanager
+def heartbeat(log_console: "LoggingConsole", stage: str):
+    """Show a live, in-place-updating spinner + elapsed time while a stage runs.
+
+    A run can go silent for minutes at a time between per-step log lines
+    (e.g. a slow model call or Docker exec); this makes "slow but fine"
+    distinguishable from "hung" without needing to thread cost/progress
+    state through every orchestrator constructor. Rendered directly through
+    the raw rich Console (not log_console.print), so it never writes to
+    log.txt — only the real discrete log lines do.
+    """
+    started_at = time.monotonic()
+    spinner = Spinner("dots", text=f"stage={stage}, elapsed=0s")
+    stop = threading.Event()
+
+    def _tick():
+        while not stop.wait(1):
+            elapsed = int(time.monotonic() - started_at)
+            mins, secs = divmod(elapsed, 60)
+            activity = log_console.last_activity_text()
+            if activity:
+                text = f"stage={stage}, {activity}, elapsed={mins}m{secs:02d}s"
+            else:
+                text = f"stage={stage}, elapsed={mins}m{secs:02d}s"
+            spinner.update(text=text)
+
+    thread = threading.Thread(target=_tick, daemon=True)
+    thread.start()
+    with Live(spinner, console=log_console.console, refresh_per_second=8, transient=True):
+        try:
+            yield
+        finally:
+            stop.set()
+            thread.join(timeout=1)
 
 
 WORKSPACE_ROOT = Path("/")
@@ -192,6 +280,12 @@ def main(
         "--keep-container",
         help="Do not auto-remove container on exit (useful for debugging).",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show DEBUG-level logs (raw Docker commands, per-file cleanup steps, etc.).",
+    ),
     target_file: Optional[str] = typer.Option(
         None,
         "--target-file",
@@ -269,6 +363,10 @@ def main(
 
     Use --arvo for ARVO targets or --project for custom local projects.
     """
+    from revelio.utils.log import set_verbose
+
+    set_verbose(verbose)
+
     if arvo and project_path:
         console.print("[bold red]Cannot specify both --arvo and --project.[/bold red]")
         raise typer.Exit(1)
@@ -384,6 +482,7 @@ def main(
                 model_name=model_name,
                 store=store,
                 log_fn=log_console.print,
+                step_log_fn=log_console.log_only,
                 max_workers=max_workers,
                 filter_model=filter_model,
                 filter_workers=filter_workers,
@@ -395,11 +494,12 @@ def main(
 
             log_console.print(f"[bold green]Starting scan_filter...[/bold green]\n")
             started_at = datetime.now(timezone.utc)
-            hypotheses = scan_orch.run(
-                project_path=str(workspace_project),
-                arvo_mode=arvo_mode,
-                target_file=target_file,
-            )
+            with heartbeat(log_console, "scan_filter"):
+                hypotheses = scan_orch.run(
+                    project_path=str(workspace_project),
+                    arvo_mode=arvo_mode,
+                    target_file=target_file,
+                )
             elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
             log_console.print(
                 f"[bold cyan]Scan-filter complete:[/bold cyan] "
@@ -449,15 +549,17 @@ def main(
                 top_n=top_n,
                 max_poc_attempts=max_poc_attempts,
                 log_fn=log_console.print,
+                step_log_fn=log_console.log_only,
                 on_success=copy_on_success,
                 max_workers=max_workers,
                 hypotheses_override=hypotheses,
                 model_config=model_config,
             )
-            result = orchestrator.run(
-                poc_builder=specs["poc_builder"],
-                reporter=specs["reporter"],
-            )
+            with heartbeat(log_console, "poc_build"):
+                result = orchestrator.run(
+                    poc_builder=specs["poc_builder"],
+                    reporter=specs["reporter"],
+                )
             log_console.print(f"[bold cyan]Run status:[/bold cyan] {result.status}")
             log_console.print(f"\n[bold green]Trajectory saved to:[/bold green] {store.aggregated_trajectory_path}")
 

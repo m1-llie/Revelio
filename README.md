@@ -184,6 +184,7 @@ python -m revelio.run.detect \
 | `--top-n` | `10` | Number of top hypotheses to pursue |
 | `--max-poc-attempts` | `3` | Max validation attempts per hypothesis (PoCBuilder's `validate` tool calls) |
 | `--keep-container` | `false` | Keep Docker container after run (for debugging) |
+| `--verbose`, `-v` | `false` | Show DEBUG-level logs (raw Docker commands, per-file cleanup steps, etc.) |
 | `--agents-config-dir` | built-in | Custom directory for per-agent YAML configs |
 | `--filter-model` | Sonnet 4.6 | Model for the independent static filtering sub-agent |
 | `--filter-workers` | `4` | Parallel workers for sub-agent filtering |

@@ -13,7 +13,7 @@ from revelio.agents.default import DefaultAgent
 from revelio.artifacts.store import ArtifactStore
 from revelio.config import get_config_path
 from revelio.models import get_model
-from revelio.orchestrator.types import AgentRunResult
+from revelio.orchestrator.types import AgentRunResult, extract_tool_name
 
 DEFAULT_CONFIG = "agents/file_hypothesis.yaml"
 
@@ -41,18 +41,26 @@ class FileHypothesisRunner:
         model_config: dict[str, Any] | None = None,
         store: ArtifactStore,
         log_fn: Any | None = None,
+        step_log_fn: Any | None = None,
         api_key: str | None = None,
+        color: str | None = None,
     ):
         self.env = env
         self.model_name = model_name
         self.model_config = model_config or {}
         self.store = store
         self.log_fn = log_fn
+        self.step_log_fn = step_log_fn or log_fn
         self.api_key = api_key
+        self.color = color
 
     def _log(self, message: str) -> None:
         if self.log_fn:
             self.log_fn(message)
+
+    def _log_step(self, message: str) -> None:
+        if self.step_log_fn:
+            self.step_log_fn(message)
 
     def run(
         self,
@@ -85,20 +93,22 @@ class FileHypothesisRunner:
         agent = DefaultAgent(model, self.env, **agent_config)
 
         agent_name = f"FileHypothesisAgent[{file_path}]"
+        agent_label = f"[{self.color}]{agent_name}[/{self.color}]" if self.color else agent_name
         task = f"Analyze the file '{file_path}' for security vulnerabilities."
 
         step_counter = {"n": 0}
-        real_step = agent.step
 
         def step_with_progress():
             step_counter["n"] += 1
-            self._log(f"{agent_name}: step {step_counter['n']}...")
-            return real_step()
+            response = agent.query()
+            tool_name = extract_tool_name(response)
+            self._log_step(f"{agent_label}: step {step_counter['n']} running ({tool_name})...")
+            return agent.get_observation(response)
 
         agent.step = step_with_progress
 
         self.store.append_event("agent_start", {"agent": agent_name, "file_path": file_path})
-        self._log(f"{agent_name}: started")
+        self._log(f"{agent_label}: started")
 
         exit_status, result = agent.run(
             task,
@@ -114,7 +124,7 @@ class FileHypothesisRunner:
             "exit_status": exit_status,
         })
         self._log(
-            f"{agent_name}: finished with {exit_status} "
+            f"{agent_label}: finished with {exit_status} "
             f"(steps={step_counter['n']}, calls={agent.model.n_calls}, cost=${agent.model.cost:.4f})"
         )
 
