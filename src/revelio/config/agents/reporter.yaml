@@ -33,7 +33,7 @@ agent:
 
     The context packet above contains structured evidence you MUST use:
     - `sections.hypothesis`: file_path, function, title, description, trigger, preconditions, expected_crash, references
-    - `sections.poc`: script_path, input_path, reproduction_command
+    - `sections.pov`: script_path, input_path, reproduction_command
     - `sections.validation`: crash_detected, output_excerpt, indicators, reproduction_command
     Extract concrete values from these fields to fill the report. Do NOT make up information.
 
@@ -61,16 +61,16 @@ agent:
     File: hypothesis.file_path
     Function: hypothesis.function
     (Use the actual values from the context packet, e.g., "File: src/api.cc", "Function: parse_input")
-    ### PoC File
-    Path: poc.input_path
-    Description: explain what the PoC data contains and why it triggers the vulnerability.
+    ### PoV File
+    Path: pov.input_path
+    Description: explain what the PoV data contains and why it triggers the vulnerability.
     ### Build Instructions
     Provide the exact build command with sanitizer flags. Inspect the project build system if needed.
     ### Test Command
     {% if arvo_mode %}
-    Use poc.reproduction_command or validation.reproduction_command (e.g., `arvo` or `./harness poc`).
+    Use pov.reproduction_command or validation.reproduction_command (e.g., `arvo` or `./harness pov`).
     {% else %}
-    Use poc.reproduction_command or validation.reproduction_command (e.g., `./harness poc`).
+    Use pov.reproduction_command or validation.reproduction_command (e.g., `./harness pov`).
     {% endif %}
     ### Test Report
     Paste the actual sanitizer/crash output from validation.output_excerpt.

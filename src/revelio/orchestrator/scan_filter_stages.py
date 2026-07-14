@@ -1041,7 +1041,7 @@ def _reachable_rank(value: Any) -> int:
 
 
 def hypothesis_priority_key(hyp: Any) -> tuple[int, int, float]:
-    """Composite sort key used to rank for PoC confirmation (Figure 3, refinement
+    """Composite sort key used to rank for PoV confirmation (Figure 3, refinement
     band) — deterministic, no LLM call. See ``ScanFilterOrchestrator._rank_for_confirmation``.
 
     Works with both ``VulnHypothesis`` dataclass instances and plain dicts.
@@ -1158,7 +1158,7 @@ def classify_hypothesis(
         "`int-overflow` | `uninit` | `deref` | `none`.\n"
         "   Prefer the strongest primitive an attacker can obtain. Pure NULL-deref of "
         "an out-of-contract API parameter is `deref` (and `attacker_controls=api`).\n"
-        "5. Which code sanitizer(s) would catch a correct PoC?\n"
+        "5. Which code sanitizer(s) would catch a correct PoV?\n"
         "   - `asan`  (AddressSanitizer): heap/stack/global OOB, UAF, double-free, "
         "alloc-dealloc mismatch, stack-overflow, container-overflow.\n"
         "   - `ubsan` (UndefinedBehaviorSanitizer): signed integer overflow, shift "

@@ -2,7 +2,7 @@
 
 Integrates the scan_and_filter pipeline into the main detect.py workflow.
 Reads source files from the Docker container and produces VulnHypotheses
-compatible with the downstream PoC/validate/report stages.
+compatible with the downstream PoV/validate/report stages.
 """
 
 from __future__ import annotations
@@ -404,7 +404,7 @@ class ScanFilterOrchestrator:
         source = cat.get("output") or ""
 
         # Recompute rel_path relative to project_root so downstream artefacts
-        # point at the real location the model/PoC stages will see.
+        # point at the real location the model/PoV stages will see.
         new_rel = resolved[len(project_root) + 1:] if resolved.startswith(project_root + "/") else rel_path
         return source, new_rel
 
@@ -794,7 +794,7 @@ class ScanFilterOrchestrator:
         return final_hypotheses, filter_results
 
     def _rank_for_confirmation(self, all_vuln_hypotheses: list[VulnHypothesis]) -> None:
-        """Ranked Hypothesis Queue via rank for PoC confirmation (Figure 3,
+        """Ranked Hypothesis Queue via rank for PoV confirmation (Figure 3,
         refinement band) — deterministic, no LLM call. Sorts in-place by
         (reachable, severity, confidence) — descending — so that
         reachable-from-fuzzer, higher-severity, higher-confidence hypotheses
@@ -804,7 +804,7 @@ class ScanFilterOrchestrator:
         all_vuln_hypotheses.sort(key=hypothesis_priority_key, reverse=True)
         for idx, h in enumerate(all_vuln_hypotheses, start=1):
             h.hypothesis_id = f"SF{idx:02d}"
-        self._log(f"[scan_filter] Ranked {len(all_vuln_hypotheses)} hypotheses for PoC confirmation")
+        self._log(f"[scan_filter] Ranked {len(all_vuln_hypotheses)} hypotheses for PoV confirmation")
 
     def run(
         self,

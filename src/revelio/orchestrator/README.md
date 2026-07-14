@@ -23,9 +23,9 @@ Pipeline stages (detect mode):
 2. **Target matching** - For each hypothesis, `_discover_fuzz_targets()` runs
    `arvo targets <function>` (nm-based binary symbol lookup) to find which fuzz
    targets can reach the hypothesized function. Zero LLM cost.
-3. **PoC building + validation** - For each matched target, `PoCBuilderAgent`
-   builds a PoC and validates it via the `validate` tool. The validate tool
-   automatically tests the PoC against all available sanitizers (asan, ubsan, msan).
+3. **PoV building + validation** - For each matched target, `PoVBuilderAgent`
+   builds a PoV and validates it via the `validate` tool. The validate tool
+   automatically tests the PoV against all available sanitizers (asan, ubsan, msan).
    Stops on first confirmed crash.
 4. **Reporting** - `ReporterAgent` writes a bug report for confirmed crashes.
 
@@ -50,6 +50,6 @@ Pipeline stages (`scan_filter_detect` — the only pipeline `detect.py` runs tod
    (advisory ranking signal only, never filters), then a real coding agent
    (`DefaultAgent` + unrestricted `bash` tool, full container/repo scope — not a
    single LLM call, not restricted to one file) that returns a VALID/INVALID verdict.
-7. **Ranked Hypothesis Queue** via rank for PoC confirmation - deterministic sort by
+7. **Ranked Hypothesis Queue** via rank for PoV confirmation - deterministic sort by
    (reachable, severity, confidence), no LLM call.
-8. Continues to `MultiAgentOrchestrator` for PoC building + validation + reporting.
+8. Continues to `MultiAgentOrchestrator` for PoV building + validation + reporting.

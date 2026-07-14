@@ -302,13 +302,14 @@ def main(
         "--agents-config-dir",
         help="Directory containing per-agent YAML configs (default: config/agents).",
     ),
-    max_poc_attempts: int = typer.Option(
-        3,
-        "--max-poc-attempts",
-        help="Max PoC attempts per hypothesis in multi-agent mode.",
+    max_pov_attempts: int = typer.Option(
+        5,
+        "--max-pov-attempts",
+        "--max-poc-attempts",  # back-compat alias
+        help="Max PoV attempts per hypothesis in multi-agent mode.",
     ),
     top_n: int = typer.Option(
-        10,
+        5,
         "--top-n",
         help="Number of hypotheses to generate in the first (hypothesis) stage of multi-agent mode.",
     ),
@@ -348,15 +349,16 @@ def main(
         envvar="MODEL_API_KEY",
         help="API key for LLM calls (used by scan_filter modes).",
     ),
-    poc_model: Optional[str] = typer.Option(
+    pov_model: Optional[str] = typer.Option(
         None,
-        "--poc-model",
-        help="Model for PoC/validator/reporter agents (default: same as --model).",
+        "--pov-model",
+        "--poc-model",  # back-compat alias
+        help="Model for PoV/validator/reporter agents (default: same as --model).",
     ),
     hypotheses_file: Optional[Path] = typer.Option(
         None,
         "--hypotheses-file",
-        help="Load pre-generated hypotheses from JSON file (skip scan_filter, go straight to PoC).",
+        help="Load pre-generated hypotheses from JSON file (skip scan_filter, go straight to PoV).",
     ),
 ) -> None:
     """Analyze a target for software vulnerabilities inside Docker.
@@ -442,7 +444,7 @@ def main(
         docker_env.config.env.update(DEFAULT_DOCKER_ENV)
 
         effective_filter_model = filter_model or model_name
-        effective_poc_model = poc_model or model_name
+        effective_pov_model = pov_model or model_name
         store.save_manifest(
             {
                 "run_id": store.run_id,
@@ -451,7 +453,7 @@ def main(
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
                 "model_name": model_name,
                 "filter_model": effective_filter_model,
-                "poc_model": effective_poc_model,
+                "pov_model": effective_pov_model,
                 "pipeline": "scan_filter_detect",
                 "top_n": top_n,
                 "target_file": target_file if target_file else None,
@@ -519,12 +521,12 @@ def main(
             agents_dir = agents_config_dir or DEFAULT_AGENTS_DIR
             specs = default_agent_specs(agents_dir)
 
-            def copy_on_success(*, hypothesis_id: str, report_path: str, poc_path: str, script_path: str) -> None:
+            def copy_on_success(*, hypothesis_id: str, report_path: str, pov_path: str, script_path: str) -> None:
                 dest_dir = store.layout.deliverables_dir
                 for path, atype in [
                     (report_path, "BugReportFile"),
-                    (poc_path, "PoCInput"),
-                    (script_path, "PoCGenerator"),
+                    (pov_path, "PoVInput"),
+                    (script_path, "PoVGenerator"),
                 ]:
                     if not path:
                         continue
@@ -543,11 +545,11 @@ def main(
             orchestrator = MultiAgentOrchestrator(
                 store=store,
                 env=docker_env,
-                model_name=poc_model or model_name,
+                model_name=pov_model or model_name,
                 project_path=str(workspace_project),
                 arvo_mode=arvo_mode,
                 top_n=top_n,
-                max_poc_attempts=max_poc_attempts,
+                max_pov_attempts=max_pov_attempts,
                 log_fn=log_console.print,
                 step_log_fn=log_console.log_only,
                 on_success=copy_on_success,
@@ -555,9 +557,9 @@ def main(
                 hypotheses_override=hypotheses,
                 model_config=model_config,
             )
-            with heartbeat(log_console, "poc_build"):
+            with heartbeat(log_console, "pov_build"):
                 result = orchestrator.run(
-                    poc_builder=specs["poc_builder"],
+                    pov_builder=specs["pov_builder"],
                     reporter=specs["reporter"],
                 )
             log_console.print(f"[bold cyan]Run status:[/bold cyan] {result.status}")

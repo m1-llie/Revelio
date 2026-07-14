@@ -11,7 +11,7 @@ from revelio.artifacts.schema import (
     BugReport,
     CodeReference,
     CodeReviewNotes,
-    PoCRecipe,
+    PoVRecipe,
     ValidationResult,
     VulnHypothesis,
     VulnHypotheses,
@@ -117,19 +117,21 @@ def parse_hypotheses(result: str) -> VulnHypotheses:
     return VulnHypotheses(hypotheses=hypotheses, generation_notes=data.get("analysis"))
 
 
-def parse_poc_recipe(result: str) -> PoCRecipe:
+def parse_pov_recipe(result: str) -> PoVRecipe:
     data = _unwrap_payload(_load_structured(result))
-    section = data.get("poc") if isinstance(data, dict) else {}
+    # Accept the current "pov"/"pov_recipe" keys as well as the legacy
+    # "poc"/"poc_recipe" keys emitted by older agent configs.
+    section = data.get("pov") or data.get("poc") if isinstance(data, dict) else {}
     if not section:
-        section = data.get("poc_recipe") if isinstance(data, dict) else {}
+        section = (data.get("pov_recipe") or data.get("poc_recipe")) if isinstance(data, dict) else {}
     if not isinstance(section, dict):
         section = {}
     hypothesis_id = str(section.get("hypothesis_id") or data.get("hypothesis_id") or "unknown")
     script_path = section.get("script_path") or section.get("result_script") or "result_script.py"
-    input_path = section.get("input_path") or section.get("poc") or "poc"
+    input_path = section.get("input_path") or section.get("pov") or section.get("poc") or "pov"
     if not script_path or not input_path:
-        raise ValueError("PoC recipe missing script_path or input_path.")
-    return PoCRecipe(
+        raise ValueError("PoV recipe missing script_path or input_path.")
+    return PoVRecipe(
         hypothesis_id=hypothesis_id,
         script_path=str(script_path),
         input_path=str(input_path),

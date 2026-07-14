@@ -14,7 +14,7 @@ from revelio.agents.default import DefaultAgent
 from revelio.artifacts.schema import (
     ArtifactMeta,
     BugReport,
-    PoCRecipe,
+    PoVRecipe,
     ValidationResult,
     VulnHypotheses,
 )
@@ -26,7 +26,7 @@ from revelio.orchestrator.parsers import (
     _load_structured,
     parse_bug_report,
     parse_hypotheses,
-    parse_poc_recipe,
+    parse_pov_recipe,
     parse_validation_result,
 )
 from revelio.orchestrator.dedup import compute_dedup_report
@@ -237,7 +237,7 @@ class MultiAgentOrchestrator:
         project_path: str,
         arvo_mode: bool,
         top_n: int = 10,
-        max_poc_attempts: int = 2,
+        max_pov_attempts: int = 2,
         log_fn: Any | None = None,
         step_log_fn: Any | None = None,
         on_success: Any | None = None,
@@ -253,7 +253,7 @@ class MultiAgentOrchestrator:
         self.project_path = project_path
         self.arvo_mode = arvo_mode
         self.top_n = int(top_n)
-        self.max_poc_attempts = max_poc_attempts
+        self.max_pov_attempts = max_pov_attempts
         self._aggregate_trajectories: dict[str, Any] = {"agents": {}}
         self._context_builder = ContextPacketBuilder()
         self._artifacts: dict[str, Any] = {}
@@ -299,7 +299,7 @@ class MultiAgentOrchestrator:
 
     @staticmethod
     def _is_rejected(result_text: str) -> bool:
-        """Check if the PoC agent rejected the hypothesis as invalid."""
+        """Check if the PoV agent rejected the hypothesis as invalid."""
         try:
             import yaml
             parsed = yaml.safe_load(result_text)
@@ -330,7 +330,7 @@ class MultiAgentOrchestrator:
                     return str(parsed["analysis"])[:200]
         except Exception:
             pass
-        return "hypothesis rejected by PoC agent"
+        return "hypothesis rejected by PoV agent"
 
     def _check_run_status(self, run_result: AgentRunResult, stage: str) -> OrchestratorResult | None:
         if run_result.exit_status != "Submitted":
@@ -348,7 +348,7 @@ class MultiAgentOrchestrator:
     def run(
         self,
         *,
-        poc_builder: AgentSpec,
+        pov_builder: AgentSpec,
         reporter: AgentSpec,
     ) -> OrchestratorResult:
         runner = AgentRunner(
@@ -398,7 +398,7 @@ class MultiAgentOrchestrator:
             )
 
         # Rank by (reachable, severity, confidence) before truncating to
-        # top_n so the downstream PoC budget is spent on reachable,
+        # top_n so the downstream PoV budget is spent on reachable,
         # higher-severity hypotheses first. When loaded via
         # --hypotheses-file, the input order may be arbitrary, so we always
         # sort here as a safety net.
@@ -416,16 +416,16 @@ class MultiAgentOrchestrator:
             f"(top {self.top_n}); priority head: {top_preview}"
         )
 
-        # Stages 2-3: PoC building + validation (per hypothesis)
+        # Stages 2-3: PoV building + validation (per hypothesis)
         report_files: list[str] = []
-        poc_files: list[str] = []
+        pov_files: list[str] = []
         script_files: list[str] = []
         success_count = 0
 
         for item in hypotheses.hypotheses:
             hypothesis_dict = item.to_dict()
-            self._log(f"Running PoCBuilder for {item.hypothesis_id} ({item.title})...")
-            self.store.append_event("poc_start", {"hypothesis_id": item.hypothesis_id})
+            self._log(f"Running PoVBuilder for {item.hypothesis_id} ({item.title})...")
+            self.store.append_event("pov_start", {"hypothesis_id": item.hypothesis_id})
 
             # Discover which fuzz targets can reach the hypothesis function.
             # For multi-target images we iterate targets; for single-target
@@ -451,8 +451,8 @@ class MultiAgentOrchestrator:
             # Stop on first crash.
             target_attempts = matched_targets or [None]
             crash_detected = False
-            poc_recipe = None
-            poc_section: dict = {}
+            pov_recipe = None
+            pov_section: dict = {}
             env_vars = getattr(getattr(self.env, "config", None), "env", None)
             default_fuzzer_sentinel = object()
             previous_default_fuzzer = (
@@ -474,8 +474,8 @@ class MultiAgentOrchestrator:
                     if fuzz_target:
                         self._log(f"  Trying target: {fuzz_target}")
 
-                    poc_context = self._context_builder.build(
-                        poc_builder.name,
+                    pov_context = self._context_builder.build(
+                        pov_builder.name,
                         run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
                         hypothesis=hypothesis_dict,
                     )
@@ -484,36 +484,36 @@ class MultiAgentOrchestrator:
                         "hypothesis_id": item.hypothesis_id,
                         "hypothesis_title": item.title,
                         "hypothesis_description": item.description,
-                        "context_packet": render_context_packet(poc_context),
-                        "max_validate_attempts": self.max_poc_attempts,
+                        "context_packet": render_context_packet(pov_context),
+                        "max_validate_attempts": self.max_pov_attempts,
                         "fuzz_target": fuzz_target or "",
                     }
 
-                    poc_run = runner.run(
-                        poc_builder, extra_vars=extra_vars, tools=[validate_tool],
+                    pov_run = runner.run(
+                        pov_builder, extra_vars=extra_vars, tools=[validate_tool],
                     )
-                    self._record_trajectory(poc_run, hypothesis_id=item.hypothesis_id)
+                    self._record_trajectory(pov_run, hypothesis_id=item.hypothesis_id)
 
-                    if self._check_run_status(poc_run, "poc_builder"):
-                        self._log(f"  PoCBuilder failed for target {fuzz_target or 'default'}")
+                    if self._check_run_status(pov_run, "pov_builder"):
+                        self._log(f"  PoVBuilder failed for target {fuzz_target or 'default'}")
                         continue
 
-                    poc_recipe = parse_poc_recipe(poc_run.result)
-                    self._artifacts["poc"] = poc_recipe
-                    self.store.write_handoff("poc_recipe", poc_recipe, hypothesis_id=item.hypothesis_id)
-                    if poc_recipe.input_path:
-                        poc_files.append(poc_recipe.input_path)
-                    if poc_recipe.script_path:
-                        script_files.append(poc_recipe.script_path)
+                    pov_recipe = parse_pov_recipe(pov_run.result)
+                    self._artifacts["pov"] = pov_recipe
+                    self.store.write_handoff("pov_recipe", pov_recipe, hypothesis_id=item.hypothesis_id)
+                    if pov_recipe.input_path:
+                        pov_files.append(pov_recipe.input_path)
+                    if pov_recipe.script_path:
+                        script_files.append(pov_recipe.script_path)
 
-                    poc_data = _load_structured(poc_run.result)
-                    payload = poc_data.get("payload", {})
+                    pov_data = _load_structured(pov_run.result)
+                    payload = pov_data.get("payload", {})
                     if isinstance(payload, str):
                         payload = _load_structured(payload)
-                    poc_section = payload.get("poc", payload)
-                    if not isinstance(poc_section, dict):
-                        poc_section = {}
-                    crash_detected = bool(poc_section.get("crash_detected", False))
+                    pov_section = payload.get("pov", payload)
+                    if not isinstance(pov_section, dict):
+                        pov_section = {}
+                    crash_detected = bool(pov_section.get("crash_detected", False))
 
                     if crash_detected:
                         break  # found a crash, no need to try more targets
@@ -527,7 +527,7 @@ class MultiAgentOrchestrator:
             if not crash_detected:
                 self.store.append_event(
                     "hypothesis_exhausted",
-                    {"hypothesis_id": item.hypothesis_id, "stage": "poc_builder", "reason": "no_crash_detected"},
+                    {"hypothesis_id": item.hypothesis_id, "stage": "pov_builder", "reason": "no_crash_detected"},
                 )
                 self._log(f"No crash detected for {item.hypothesis_id}, moving to next hypothesis.")
                 continue
@@ -536,7 +536,7 @@ class MultiAgentOrchestrator:
             self._log(f"Crash confirmed for {item.hypothesis_id}. Generating report...")
             # Crash signature for post-confirmation dedup, extracted from the raw
             # (untruncated) output of the validate() call that actually crashed —
-            # not poc_section's LLM-reported output_excerpt, which can be
+            # not pov_section's LLM-reported output_excerpt, which can be
             # truncated/paraphrased away by the agent.
             raw_crash_output = next(
                 (rec["output"] for rec in reversed(validate_capture) if rec["crash"]), None,
@@ -544,10 +544,10 @@ class MultiAgentOrchestrator:
             validation = ValidationResult(
                 hypothesis_id=item.hypothesis_id,
                 crash_detected=True,
-                returncode=poc_section.get("returncode"),
-                output_excerpt=poc_section.get("output_excerpt", ""),
-                indicators=list(poc_section.get("indicators") or []),
-                reproduction_command=poc_section.get("reproduction_command"),
+                returncode=pov_section.get("returncode"),
+                output_excerpt=pov_section.get("output_excerpt", ""),
+                indicators=list(pov_section.get("indicators") or []),
+                reproduction_command=pov_section.get("reproduction_command"),
                 dedup_token=extract_dedup_token(raw_crash_output),
                 crash_summary=extract_crash_summary(raw_crash_output),
                 fallback_signature=(
@@ -565,7 +565,7 @@ class MultiAgentOrchestrator:
                     reporter.name,
                     run_manifest={"project_path": self.project_path, "arvo_mode": self.arvo_mode},
                     hypothesis=hypothesis_dict,
-                    poc=poc_recipe,
+                    pov=pov_recipe,
                     validation=validation,
                 )
                 reporter_run = runner.run(
@@ -622,13 +622,13 @@ class MultiAgentOrchestrator:
                 self._on_success(
                     hypothesis_id=item.hypothesis_id,
                     report_path=(report.report_path if report else ""),
-                    poc_path=(poc_recipe.input_path if poc_recipe else ""),
-                    script_path=(poc_recipe.script_path if poc_recipe else ""),
+                    pov_path=(pov_recipe.input_path if pov_recipe else ""),
+                    script_path=(pov_recipe.script_path if pov_recipe else ""),
                 )
             success_count += 1
 
         report_files = list(dict.fromkeys(report_files))
-        poc_files = list(dict.fromkeys(poc_files))
+        pov_files = list(dict.fromkeys(pov_files))
         script_files = list(dict.fromkeys(script_files))
 
         if success_count > 0:
@@ -651,7 +651,7 @@ class MultiAgentOrchestrator:
                 summary=f"Confirmed {success_count} vulnerabilities.",
                 run_dir=self.store.run_dir,
                 report_paths=report_files,
-                poc_paths=poc_files,
+                pov_paths=pov_files,
                 script_paths=script_files,
                 duplicate_of=dedup_report.duplicate_of,
             )
@@ -662,6 +662,6 @@ class MultiAgentOrchestrator:
             summary="No hypothesis yielded a confirmed crash.",
             run_dir=self.store.run_dir,
             report_paths=report_files,
-            poc_paths=poc_files,
+            pov_paths=pov_files,
             script_paths=script_files,
         )

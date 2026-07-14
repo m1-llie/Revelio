@@ -7,7 +7,7 @@ def finish(
     status: str,
     analysis: str = "",
     result_script: str = "none",
-    poc: str = "none",
+    pov: str = "none",
     report: str = "none",
     payload: dict | None = None,
 ) -> str:
@@ -21,8 +21,8 @@ def finish(
     Args:
         status: Task completion status — 'success' (work done) or 'failure' (could not finish)
         analysis: Brief analysis of what was done and the result
-        result_script: Filename of the PoC generator script, or 'none'
-        poc: Filename of the PoC input file, or 'none'
+        result_script: Filename of the PoV generator script, or 'none'
+        pov: Filename of the PoV input file, or 'none'
         report: Filename of the vulnerability report, or 'none'
         payload: Structured payload with domain-specific results
 
@@ -35,7 +35,7 @@ def finish(
         "status": status,
         "analysis": analysis,
         "result_script": result_script,
-        "poc": poc,
+        "pov": pov,
         "report": report,
     }
     if payload is not None:

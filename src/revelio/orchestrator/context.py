@@ -88,7 +88,7 @@ class ContextPacketBuilder:
         run_manifest: dict[str, Any] | None = None,
         hypotheses: Any | None = None,
         hypothesis: Any | None = None,
-        poc: Any | None = None,
+        pov: Any | None = None,
         validation: Any | None = None,
         report: Any | None = None,
     ) -> ContextPacket:
@@ -97,7 +97,7 @@ class ContextPacketBuilder:
 
         hypotheses_dict = _maybe_dict(hypotheses)
         hypothesis_dict = _maybe_dict(hypothesis)
-        poc_dict = _maybe_dict(poc)
+        pov_dict = _maybe_dict(pov)
         validation_dict = _maybe_dict(validation)
         report_dict = _maybe_dict(report)
 
@@ -109,19 +109,19 @@ class ContextPacketBuilder:
 
         if role == "HypothesisAgent":
             sections["run"] = self._compact_section(run)
-        elif role == "PoCBuilderAgent":
+        elif role == "PoVBuilderAgent":
             sections["hypothesis"] = self._compact_section(hypothesis_dict)
         elif role == "ReporterAgent":
             sections["hypothesis"] = self._compact_section(hypothesis_dict)
-            sections["poc"] = self._compact_section(poc_dict)
+            sections["pov"] = self._compact_section(pov_dict)
             sections["validation"] = self._compact_section(validation_dict)
         else:
             if hypotheses_dict:
                 sections["hypotheses"] = self._compact_section(hypotheses_dict)
             if hypothesis_dict:
                 sections["hypothesis"] = self._compact_section(hypothesis_dict)
-            if poc_dict:
-                sections["poc"] = self._compact_section(poc_dict)
+            if pov_dict:
+                sections["pov"] = self._compact_section(pov_dict)
             if validation_dict:
                 sections["validation"] = self._compact_section(validation_dict)
             if report_dict:

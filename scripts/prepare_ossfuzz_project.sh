@@ -154,7 +154,7 @@ for PROJECT in "${PROJECTS[@]}"; do
 
     # ── Step 3: Clean for zero-day detection (same as clean_arvo.py) ─────
 
-    echo "--- Cleaning image (removing seeds, crashers, PoCs, .git) ---"
+    echo "--- Cleaning image (removing seeds, crashers, PoVs, .git) ---"
     docker exec "$CONTAINER" bash -c 'rm -f /tmp/poc' || true
     docker exec "$CONTAINER" bash -c 'find /out -maxdepth 2 -type f -name "*seed_corpus*.zip" -delete 2>/dev/null' || true
     docker exec "$CONTAINER" bash -c 'find /src -type f -name "*seed_corpus*" -delete 2>/dev/null' || true

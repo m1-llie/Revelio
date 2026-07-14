@@ -78,8 +78,8 @@ def _category_for_trajectory_agent(key: str, agent: dict[str, Any]) -> str:
     info = agent.get("info", {}) if isinstance(agent, dict) else {}
     agent_name = str(info.get("agent_name") or key).lower()
     text = f"{key} {agent_name}".lower()
-    if "poc" in text:
-        return "poc_generation"
+    if "pov" in text:
+        return "pov_generation"
     if "report" in text:
         return "report"
     if "validat" in text:

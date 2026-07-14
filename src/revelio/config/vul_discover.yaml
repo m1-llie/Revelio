@@ -27,11 +27,11 @@ agent:
 
     1. Analyze the build system, source codebase, and existing test harnesses (e.g., OSS-Fuzz fuzz targets LLVMFuzzerTestOneInput, AFL drivers, standalone test programs, unit tests that accept external inputs). Use existing harnesses whenever they reasonably reach the target code under analysis.
     2. Inspect the codebase for potential vulnerabilities (e.g., buffer overflows, use-after-free).
-    3. Construct PoC inputs that trigger suspicious paths.
+    3. Construct PoV inputs that trigger suspicious paths.
     4. Compile the project with suitable sanitizers and debug symbols (e.g., -fsanitize=address, -g, -O0).
-    5. Execute PoCs using the appropriate test harness. Prefer existing OSS-Fuzz harnesses or unit-test drivers over the program's main. Only create a new harness if no adequate one exists.
+    5. Execute PoVs using the appropriate test harness. Prefer existing OSS-Fuzz harnesses or unit-test drivers over the program's main. Only create a new harness if no adequate one exists.
     6. Capture sanitizer output and crashes.
-    7. Store the PoC input that triggers the crash as `/workspace/poc`.
+    7. Store the PoV input that triggers the crash as `/workspace/pov`.
     8. Generate a Markdown report using <bug_report_format>. Save this report as `/workspace/final_report.md` and display it.
     9. Repeat analysis until no more vulnerabilities are found. When finished, issue exactly this command on a separate line: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
 

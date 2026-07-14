@@ -215,7 +215,7 @@ project  file  run_id  status  hypothesis_count  elapsed_s  log_path
 `status` values:
 `OK | FAIL:quota | FAIL:auth | FAIL:transient | FAIL:rc_<n> | KEY_DEAD | MISSING_KEY`
 
-The actual pipeline artifacts (hypothesis JSON, PoCs, etc.) are written
+The actual pipeline artifacts (hypothesis JSON, PoVs, etc.) are written
 by `detect.py` into the usual `output/<image>_<model>_<timestamp>/`
 tree, not under `$BATCH_DIR`. The batch ledger's `log_path` column
 points to the runner's log which itself records the run directory.

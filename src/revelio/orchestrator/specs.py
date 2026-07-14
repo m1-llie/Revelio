@@ -13,10 +13,10 @@ def default_agent_specs(config_dir: Path) -> dict[str, AgentSpec]:
     Note: The hypothesis stage is now handled by HypothesisOrchestrator (parallel file-level scanning), not a single LLM agent.
     """
     return {
-        "poc_builder": AgentSpec(
-            name="PoCBuilderAgent",
-            config_path=config_dir / "poc_builder.yaml",
-            task="Build and validate a PoC for the assigned hypothesis.",
+        "pov_builder": AgentSpec(
+            name="PoVBuilderAgent",
+            config_path=config_dir / "pov_builder.yaml",
+            task="Build and validate a PoV for the assigned hypothesis.",
         ),
         "reporter": AgentSpec(
             name="ReporterAgent",
