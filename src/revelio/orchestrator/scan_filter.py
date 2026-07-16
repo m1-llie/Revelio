@@ -157,9 +157,22 @@ class ScanFilterOrchestrator:
         # first probe fails or returns an error, stop issuing further lookups.
         self._arvo_targets_available: bool | None = None
 
-    def _log(self, message: str) -> None:
-        if self.log_fn:
-            self.log_fn(message)
+    def _log(self, message: str, *, sub: bool = False) -> None:
+        """Log a message.
+
+        ``sub=True`` marks a line as a sub-step of the most recently logged
+        top-level phase (e.g. "Summarizing..." under "Initial Hypothesis
+        Proposal for X") — it's indented and dimmed so phase headers stand
+        out from their detail lines when scanning the console.
+        """
+        if not self.log_fn:
+            return
+        leading_blank = ""
+        if message.startswith("\n"):
+            leading_blank, message = "\n", message[1:]
+        self.log_fn(
+            f"{leading_blank}  [dim]{message}[/dim]" if sub else f"{leading_blank}[cyan]▸[/cyan] {message}"
+        )
 
     def _lookup_fuzz_targets(self, function: str | None) -> list[str] | None:
         """Return fuzzer binaries whose symbol table contains ``function``.
@@ -186,7 +199,7 @@ class ScanFilterOrchestrator:
                 f"arvo targets {function} 2>/dev/null; echo __rc=$?"
             )
         except Exception as e:
-            self._log(f"[scan_filter] reachability probe failed: {e}")
+            self._log(f"reachability probe failed: {e}")
             self._arvo_targets_available = False
             self._reachability_cache[function] = None
             return None
@@ -239,7 +252,7 @@ class ScanFilterOrchestrator:
             )
             self.store.write_handoff("file_hypothesis", per_file, hypothesis_id=slug)
         except Exception as exc:  # noqa: BLE001
-            self._log(f"[scan_filter] failed to save per-file handoff for {file_path}: {exc}")
+            self._log(f"failed to save per-file handoff for {file_path}: {exc}")
 
         try:
             partial = VulnHypotheses(
@@ -251,7 +264,7 @@ class ScanFilterOrchestrator:
             )
             self.store.write_handoff("hypotheses_partial", partial)
         except Exception as exc:  # noqa: BLE001
-            self._log(f"[scan_filter] failed to save partial aggregate: {exc}")
+            self._log(f"failed to save partial aggregate: {exc}")
 
         self.store.append_event(
             "file_hypothesis_completed",
@@ -302,7 +315,7 @@ class ScanFilterOrchestrator:
             )
         except Exception as exc:  # noqa: BLE001
             self._log(
-                f"[scan_filter] failed to save stage3 trace for hyp {index} "
+                f"failed to save stage3 trace for hyp {index} "
                 f"in {rel_path}: {exc}"
             )
             return
@@ -321,7 +334,7 @@ class ScanFilterOrchestrator:
             )
         except Exception as exc:  # noqa: BLE001
             self._log(
-                f"[scan_filter] failed to append filter_agent_completed event "
+                f"failed to append filter_agent_completed event "
                 f"for hyp {index} in {rel_path}: {exc}"
             )
 
@@ -389,13 +402,13 @@ class ScanFilterOrchestrator:
             if candidate:
                 resolved = candidate
                 self._log(
-                    f"[scan_filter] target-file {rel_path!r} not at {direct!r}; "
+                    f"target-file {rel_path!r} not at {direct!r}; "
                     f"using discovered path {resolved!r}"
                 )
 
         if not resolved:
             self._log(
-                f"[scan_filter] WARNING: could not locate {rel_path!r} under "
+                f"WARNING: could not locate {rel_path!r} under "
                 f"{project_root!r}; skipping file"
             )
             return "", ""
@@ -435,7 +448,7 @@ class ScanFilterOrchestrator:
             rel = chosen.strip()
             if rel.startswith(prefix):
                 rel = rel[len(prefix):]
-            self._log(f"[scan_filter] Found harness: {rel} ({len(source)} chars)")
+            self._log(f"Found harness: {rel} ({len(source)} chars)")
             md = f"## Fuzzer Harness (`{rel}`)\n```cpp\n{source}\n```"
             return md, source
         return "", ""
@@ -462,7 +475,7 @@ class ScanFilterOrchestrator:
             check_context = format_check_analysis_context(check_results, unchecked_only=False)
             if check_context:
                 n_unchecked_funcs = sum(1 for r in check_results if r.get("unchecked_params"))
-                self._log(f"  [scan_filter] Check analysis: {n_unchecked_funcs} functions with unchecked params")
+                self._log(f"Check analysis: {n_unchecked_funcs} functions with unchecked params", sub=True)
 
         # Run constraint analysis (call-site args, bounds, harness params)
         constraint_analysis = run_constraint_analysis(
@@ -475,12 +488,13 @@ class ScanFilterOrchestrator:
             n_constraints = len(constraint_analysis.get("constraints", {}))
             n_summaries = len(constraint_analysis.get("summaries", {}))
             self._log(
-                f"  [scan_filter] Constraint analysis: {n_summaries} functions with call-site info, "
-                f"{n_constraints} with bounds constraints"
+                f"Constraint analysis: {n_summaries} functions with call-site info, "
+                f"{n_constraints} with bounds constraints",
+                sub=True,
             )
             check_context = (check_context + "\n\n" + constraint_ctx) if check_context else constraint_ctx
 
-        self._log(f"  [scan_filter] Summarizing {rel_path}...")
+        self._log(f"Summarizing {rel_path}...", sub=True)
         summary, deep_summary, summary_msgs = phase_summarize(
             self.model_name, file_path, source, self.model_kwargs,
             cost_tracker=cost_tracker,
@@ -488,12 +502,12 @@ class ScanFilterOrchestrator:
             harness_context=harness_context,
         )
 
-        self._log(f"  [scan_filter] Parsing functions in {rel_path}...")
+        self._log(f"Parsing functions in {rel_path}...", sub=True)
         functions = parse_functions(file_path, source)
         total_found = len(functions)
         if total_found > self.max_functions:
             functions = functions[:self.max_functions]
-        self._log(f"  [scan_filter] Found {total_found} functions (using {len(functions)})")
+        self._log(f"Found {total_found} functions (using {len(functions)})", sub=True)
 
         batches = make_batches(functions)
 
@@ -503,7 +517,7 @@ class ScanFilterOrchestrator:
             unchecked_pass = build_unchecked_params_pass(check_results)
             if unchecked_pass:
                 focused_passes.append(unchecked_pass)
-                self._log(f"  [scan_filter] Added unchecked-params focused pass")
+                self._log(f"Added unchecked-params focused pass", sub=True)
 
         total_tasks = 1 + len(focused_passes) + len(batches)
         effective_workers = min(self.max_workers, total_tasks)
@@ -542,9 +556,9 @@ class ScanFilterOrchestrator:
                         focused_results[idx] = result
                     else:
                         function_analyses[idx] = result
-                    self._log(f"  [scan_filter] [{completed}/{total_tasks}] {kind} done for {rel_path}")
+                    self._log(f"[{completed}/{total_tasks}] {kind} done for {rel_path}", sub=True)
                 except Exception as e:
-                    self._log(f"  [scan_filter] [{completed}/{total_tasks}] ERROR ({kind}): {e}")
+                    self._log(f"[{completed}/{total_tasks}] ERROR ({kind}): {e}", sub=True)
 
         all_hypotheses = aggregate_hypotheses(wholefile_result, focused_results, function_analyses)
         return all_hypotheses, wholefile_result, focused_results, function_analyses
@@ -562,7 +576,7 @@ class ScanFilterOrchestrator:
         dedup_kwargs = dict(self.model_kwargs)
         dedup_kwargs["temperature"] = 0.0
 
-        self._log(f"  [scan_filter] Classifying {len(all_hypotheses)} hypotheses...")
+        self._log(f"Classifying {len(all_hypotheses)} hypotheses...", sub=True)
 
         classifications: dict[int, dict] = {}
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
@@ -587,8 +601,9 @@ class ScanFilterOrchestrator:
                     else:
                         tag = "NOT"
                     self._log(
-                        f"  [scan_filter] [{done}/{len(all_hypotheses)}] "
-                        f"{tag} — {c['reason'][:70]}"
+                        f"[{done}/{len(all_hypotheses)}] "
+                        f"{tag} — {c['reason'][:70]}",
+                        sub=True,
                     )
                 except Exception as e:
                     classifications[idx] = {
@@ -625,9 +640,10 @@ class ScanFilterOrchestrator:
             and bool(classifications[i].get("sanitizers"))
         ]
         self._log(
-            f"  [scan_filter] Filtered: "
+            f"Filtered: "
             f"{len(all_hypotheses) - len(valid_indices)} not sanitizer-triggerable, "
-            f"{len(valid_indices)} remain"
+            f"{len(valid_indices)} remain",
+            sub=True,
         )
 
         for i, h in enumerate(all_hypotheses):
@@ -665,7 +681,7 @@ class ScanFilterOrchestrator:
             in_scope_hypotheses, cwe_map, self.model_name, dedup_kwargs,
             workers=self.max_workers, cost_tracker=cost_tracker,
         )
-        self._log(f"  [scan_filter] Dedup: {len(in_scope_hypotheses)} -> {len(merged)} (removed {len(removed)})")
+        self._log(f"Dedup: {len(in_scope_hypotheses)} -> {len(merged)} (removed {len(removed)})", sub=True)
 
         dedup_trace = {
             "candidate_pairs": len(comparisons),
@@ -711,7 +727,7 @@ class ScanFilterOrchestrator:
                 h["_fuzz_targets"] = matches
                 reach_counts["true" if matches else "false"] += 1
         self._log(
-            f"  [scan_filter] Reachability ({rel_path}): "
+            f"Reachability ({rel_path}): "
             f"{reach_counts['true']} reachable, {reach_counts['false']} "
             f"unreachable, {reach_counts['unknown']} unknown"
         )
@@ -737,7 +753,7 @@ class ScanFilterOrchestrator:
         returns, so a crash or interrupt mid-stage never loses the work of
         already-completed sub-agents.
         """
-        self._log(f"  [scan_filter] Independent static filtering: {len(kept)} hypotheses with sub-agents...")
+        self._log(f"Independent static filtering: {len(kept)} hypotheses with sub-agents...", sub=True)
 
         filter_results: dict[int, dict] = {}
         # Run filter agents sequentially in the shared container to avoid interference
@@ -750,15 +766,16 @@ class ScanFilterOrchestrator:
                     self.agent_step_limit, self.agent_cost_limit,
                     check_results=check_results,
                     log_fn=self.step_log_fn,
-                    log_prefix=f"  [scan_filter] [{i+1}/{len(kept)}] ",
+                    log_prefix=f"[{i+1}/{len(kept)}] ",
                 )
                 v = filter_results[i]
                 if cost_tracker is not None:
                     cost_tracker.add(v.get("model_cost", 0), v.get("model_calls", 0))
                 self._log(
-                    f"  [scan_filter] [{i+1}/{len(kept)}] {v['verdict']} "
+                    f"[{i+1}/{len(kept)}] {v['verdict']} "
                     f"(conf={v['confidence']:.2f}, ${v.get('model_cost', 0):.3f}) — "
-                    f"{v['reason'][:60]}"
+                    f"{v['reason'][:60]}",
+                    sub=True,
                 )
             except Exception as e:
                 filter_results[i] = {
@@ -788,8 +805,9 @@ class ScanFilterOrchestrator:
                 final_hypotheses.append(h)
 
         self._log(
-            f"  [scan_filter] Sub-agent filter: {len(kept)} -> {len(final_hypotheses)} "
-            f"(removed {len(kept) - len(final_hypotheses)})"
+            f"Sub-agent filter: {len(kept)} -> {len(final_hypotheses)} "
+            f"(removed {len(kept) - len(final_hypotheses)})",
+            sub=True,
         )
         return final_hypotheses, filter_results
 
@@ -804,7 +822,7 @@ class ScanFilterOrchestrator:
         all_vuln_hypotheses.sort(key=hypothesis_priority_key, reverse=True)
         for idx, h in enumerate(all_vuln_hypotheses, start=1):
             h.hypothesis_id = f"SF{idx:02d}"
-        self._log(f"[scan_filter] Ranked {len(all_vuln_hypotheses)} hypotheses for PoC confirmation")
+        self._log(f"Ranked {len(all_vuln_hypotheses)} hypotheses for PoC confirmation")
 
     def run(
         self,
@@ -844,17 +862,17 @@ class ScanFilterOrchestrator:
             files = [target_file]
         else:
             files = self._enumerate_files(project_path)
-        self._log(f"[scan_filter] Found {len(files)} file(s) to scan")
+        self._log(f"Found {len(files)} file(s) to scan")
 
         if not files:
-            self._log("[scan_filter] No matching source files found")
+            self._log("No matching source files found")
             return VulnHypotheses(hypotheses=[], generation_notes="No matching source files found.")
 
         all_vuln_hypotheses: list[VulnHypothesis] = []
         files_completed = 0
 
         for rel_path in files:
-            self._log(f"\n[scan_filter] === Processing {rel_path} ===")
+            self._log(f"\n=== Processing {rel_path} ===")
             files_completed += 1
 
             # Read source from container. The resolver may rewrite rel_path
@@ -862,7 +880,7 @@ class ScanFilterOrchestrator:
             # project lives under a subdirectory of project_path.
             source, resolved_rel = self._read_file_from_container(project_path, rel_path)
             if not source.strip():
-                self._log(f"[scan_filter] Skipping empty/unreadable file: {rel_path}")
+                self._log(f"Skipping empty/unreadable file: {rel_path}")
                 continue
             if resolved_rel and resolved_rel != rel_path:
                 rel_path = resolved_rel
@@ -871,17 +889,18 @@ class ScanFilterOrchestrator:
             safe_name = rel_path.replace("/", "__").replace(".", "_")
 
             # Run static check analysis on the source
-            self._log(f"[scan_filter] Running static check analysis on {rel_path}...")
+            self._log(f"Running static check analysis on {rel_path}...")
             check_results = run_check_analysis(source, rel_path)
             n_funcs_analyzed = len(check_results)
             n_with_unchecked = sum(1 for r in check_results if r.get("unchecked_params"))
             self._log(
-                f"[scan_filter] Check analysis: {n_funcs_analyzed} functions, "
-                f"{n_with_unchecked} with unchecked params"
+                f"Check analysis: {n_funcs_analyzed} functions, "
+                f"{n_with_unchecked} with unchecked params",
+                sub=True,
             )
 
             # Initial Hypothesis Proposal (Figure 3, proposal band)
-            self._log(f"[scan_filter] Initial Hypothesis Proposal for {rel_path}")
+            self._log(f"\nInitial Hypothesis Proposal for {rel_path}")
             cost_before = cost_tracker.snapshot()
             all_hypotheses, wf, fr, fa = self._run_proposal_phase_for_file(
                 rel_path, project_path, source, cost_tracker=cost_tracker,
@@ -893,8 +912,9 @@ class ScanFilterOrchestrator:
             s1_cost -= cost_before[0]
             s1_calls -= cost_before[1]
             self._log(
-                f"[scan_filter] Initial Hypothesis Proposal done: {len(all_hypotheses)} raw hypotheses "
-                f"(${s1_cost:.4f}, {s1_calls} calls)"
+                f"Initial Hypothesis Proposal done: {len(all_hypotheses)} raw hypotheses "
+                f"(${s1_cost:.4f}, {s1_calls} calls)",
+                sub=True,
             )
 
             # Save Initial Hypothesis Proposal trace (on-disk name kept as
@@ -944,12 +964,12 @@ class ScanFilterOrchestrator:
             # Triage + dedup cost/calls are tracked as one combined span (as
             # before) so the on-disk stage2_classify_*.json trace content is
             # unchanged.
-            self._log(f"[scan_filter] Sanitizer-aware triage for {rel_path}")
+            self._log(f"\nSanitizer-aware triage for {rel_path}")
             cost_before = cost_tracker.snapshot()
             in_scope, classify_trace = self._run_sanitizer_aware_triage(
                 all_hypotheses, source, cost_tracker=cost_tracker,
             )
-            self._log(f"[scan_filter] Deduplicate root causes for {rel_path}")
+            self._log(f"Deduplicate root causes for {rel_path}", sub=True)
             merged, dedup_trace = self._run_root_cause_dedup(
                 in_scope, cost_tracker=cost_tracker,
             )
@@ -957,8 +977,9 @@ class ScanFilterOrchestrator:
             s2_cost -= cost_before[0]
             s2_calls -= cost_before[1]
             self._log(
-                f"[scan_filter] Triage + dedup done: {len(merged)} merged "
-                f"(${s2_cost:.4f}, {s2_calls} calls)"
+                f"Triage + dedup done: {len(merged)} merged "
+                f"(${s2_cost:.4f}, {s2_calls} calls)",
+                sub=True,
             )
 
             # Save triage/dedup traces (on-disk names kept as "stage2_*" for
@@ -977,7 +998,7 @@ class ScanFilterOrchestrator:
 
             kept = merged
             if not kept:
-                self._log(f"[scan_filter] No hypotheses survived classification/dedup for {rel_path}")
+                self._log(f"No hypotheses survived classification/dedup for {rel_path}")
                 continue
 
             # Reachability annotation feeding the "Reachability-Annotated
@@ -993,7 +1014,7 @@ class ScanFilterOrchestrator:
             # Docker sub-agent. Traces are persisted per-hypothesis inside
             # _run_independent_static_filtering as each sub-agent returns, so
             # partial progress survives an interrupt.
-            self._log(f"[scan_filter] Independent static filtering for {rel_path}")
+            self._log(f"\nIndependent static filtering for {rel_path}")
             cost_before = cost_tracker.snapshot()
             final, filter_results = self._run_independent_static_filtering(
                 kept, rel_path, cost_tracker=cost_tracker, check_results=check_results,
@@ -1003,8 +1024,9 @@ class ScanFilterOrchestrator:
             s3_cost -= cost_before[0]
             s3_calls -= cost_before[1]
             self._log(
-                f"[scan_filter] Independent static filtering done: {len(final)} final "
-                f"(${s3_cost:.4f}, {s3_calls} calls)"
+                f"Independent static filtering done: {len(final)} final "
+                f"(${s3_cost:.4f}, {s3_calls} calls)",
+                sub=True,
             )
 
             # Convert to VulnHypothesis
@@ -1029,7 +1051,7 @@ class ScanFilterOrchestrator:
 
         total_cost, total_calls = cost_tracker.snapshot()
         self._log(
-            f"[scan_filter] Pipeline complete: {len(all_vuln_hypotheses)} hypotheses "
+            f"Pipeline complete: {len(all_vuln_hypotheses)} hypotheses "
             f"from {len(files)} file(s) — total cost: ${total_cost:.4f}, {total_calls} LLM calls"
         )
 

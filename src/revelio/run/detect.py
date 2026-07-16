@@ -54,6 +54,7 @@ class LoggingConsole:
         self._file_handle = None
         self._last_message: str | None = None
         self._last_message_lock = threading.Lock()
+        self._pending: tuple[str, dict] | None = None
         if log_path:
             self.set_log_file(log_path)
 
@@ -63,8 +64,24 @@ class LoggingConsole:
         self._file_handle = open(path, "a", encoding="utf-8")
 
     def print(self, message: str, **kwargs) -> None:
-        self.console.print(message, **kwargs)
+        """Print a milestone line.
+
+        Held back one step rather than written to the terminal immediately:
+        the live spinner shows it right away (via ``_record``), and it only
+        becomes permanent scrollback once the *next* milestone arrives (or
+        ``flush_pending``/``close`` is called) — so it's never visible in
+        both the spinner and scrollback at the same time.
+        """
+        self.flush_pending()
+        self._pending = (message, kwargs)
         self._record(message)
+
+    def flush_pending(self) -> None:
+        """Write any held-back milestone line to the terminal now."""
+        if self._pending is not None:
+            message, kwargs = self._pending
+            self._pending = None
+            self.console.print(message, **kwargs)
 
     def log_only(self, message: str) -> None:
         """Write a message to log.txt (and update the spinner's last-activity
@@ -112,6 +129,7 @@ class LoggingConsole:
         return clean
 
     def close(self) -> None:
+        self.flush_pending()
         if self._file_handle:
             self._file_handle.close()
             self._file_handle = None
@@ -119,7 +137,8 @@ class LoggingConsole:
 
 @contextmanager
 def heartbeat(log_console: "LoggingConsole", stage: str):
-    """Show a live, in-place-updating spinner + elapsed time while a stage runs.
+    """Show a live, in-place-updating spinner + per-step elapsed time while a
+    stage runs.
 
     A run can go silent for minutes at a time between per-step log lines
     (e.g. a slow model call or Docker exec); this makes "slow but fine"
@@ -127,20 +146,29 @@ def heartbeat(log_console: "LoggingConsole", stage: str):
     state through every orchestrator constructor. Rendered directly through
     the raw rich Console (not log_console.print), so it never writes to
     log.txt — only the real discrete log lines do.
+
+    The elapsed timer resets whenever the current activity (last log line)
+    changes, so it reflects time spent on the current step, not time since
+    the stage started.
     """
-    started_at = time.monotonic()
-    spinner = Spinner("dots", text=f"stage={stage}, elapsed=0s")
+    step_started_at = time.monotonic()
+    last_activity: str | None = None
+    spinner = Spinner("dots", text=f"[bold]stage={stage}, step_elapsed=0s[/bold]", style="bold")
     stop = threading.Event()
 
     def _tick():
-        while not stop.wait(1):
-            elapsed = int(time.monotonic() - started_at)
-            mins, secs = divmod(elapsed, 60)
+        nonlocal step_started_at, last_activity
+        while not stop.wait(0.25):
             activity = log_console.last_activity_text()
+            if activity != last_activity:
+                last_activity = activity
+                step_started_at = time.monotonic()
+            step_elapsed = int(time.monotonic() - step_started_at)
+            mins, secs = divmod(step_elapsed, 60)
             if activity:
-                text = f"stage={stage}, {activity}, elapsed={mins}m{secs:02d}s"
+                text = f"[bold]{activity}, stage={stage}, step_elapsed={mins}m{secs:02d}s[/bold]"
             else:
-                text = f"stage={stage}, elapsed={mins}m{secs:02d}s"
+                text = f"[bold]stage={stage}, step_elapsed={mins}m{secs:02d}s[/bold]"
             spinner.update(text=text)
 
     thread = threading.Thread(target=_tick, daemon=True)
@@ -151,6 +179,7 @@ def heartbeat(log_console: "LoggingConsole", stage: str):
         finally:
             stop.set()
             thread.join(timeout=1)
+    log_console.flush_pending()
 
 
 WORKSPACE_ROOT = Path("/")
