@@ -469,10 +469,6 @@ def main(
             copy_project_into_container(docker_env, project_path, workspace_project, log_console)
 
         docker_env.config.env.update(DEFAULT_DOCKER_ENV)
-        if api_key:
-            docker_env.config.env["OPENROUTER_API_KEY"] = api_key
-            docker_env.config.env["ANTHROPIC_API_KEY"] = api_key
-            docker_env.config.env["MODEL_API_KEY"] = api_key
 
         effective_filter_model = filter_model or model_name
         effective_pov_model = pov_model or model_name
@@ -536,8 +532,8 @@ def main(
             elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
             log_console.print(
                 f"[bold cyan]Scan-filter complete:[/bold cyan] "
-                f"{len(hypotheses.hypotheses)} hypotheses "
-                f"({elapsed:.1f}s) — {hypotheses.generation_notes or ''}"
+                f"[cyan]{len(hypotheses.hypotheses)}[/cyan] hypotheses "
+                f"([cyan]{elapsed:.1f}s[/cyan]) — {hypotheses.generation_notes or ''}"
             )
             store.write_handoff("hypotheses", hypotheses)
             hyp_path = save_hypotheses(hypotheses, run_dir / "hypotheses.json")

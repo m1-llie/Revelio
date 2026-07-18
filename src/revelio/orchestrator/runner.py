@@ -157,13 +157,16 @@ class AgentRunner:
 
         self.store.append_event("agent_start", {"agent": spec.name})
         if self.log_fn:
-            self.log_fn(f"{spec.name}: started")
+            # Dimmed/indented to match ScanFilterOrchestrator/MultiAgentOrchestrator's
+            # convention: this is a sub-step of whichever phase header the caller
+            # already logged (e.g. "Running PoCBuilder for X").
+            self.log_fn(f"  [dim]{spec.name}: started[/dim]")
         exit_status, result = agent.run(spec.task, **extra_vars)
         self.store.append_event("agent_end", {"agent": spec.name, "exit_status": exit_status})
         if self.log_fn:
             self.log_fn(
-                f"{spec.name}: finished with {exit_status} "
-                f"(steps={step_counter['n']}, calls={agent.model.n_calls}, cost=${agent.model.cost:.4f})"
+                f"  [dim]{spec.name}: finished with {exit_status} "
+                f"(steps={step_counter['n']}, calls={agent.model.n_calls}, cost=${agent.model.cost:.4f})[/dim]"
             )
 
         trajectory = {
@@ -266,9 +269,17 @@ class MultiAgentOrchestrator:
         self.hypotheses_override = hypotheses_override
         self.model_config = model_config or {}
 
-    def _log(self, message: str) -> None:
-        if self._log_fn:
-            self._log_fn(message)
+    def _log(self, message: str, *, sub: bool = False) -> None:
+        """Log a message.
+
+        ``sub=True`` marks a line as a sub-step of the most recently logged
+        top-level phase (e.g. "PoCBuilderAgent: started" under "Running
+        PoCBuilder for X") — indented and dimmed, matching the same
+        convention used by ``ScanFilterOrchestrator._log``.
+        """
+        if not self._log_fn:
+            return
+        self._log_fn(f"  [dim]{message}[/dim]" if sub else f"[cyan]▸[/cyan] {message}")
 
     def _report_path(self, hypothesis_id: str) -> str:
         return f"{self.project_path}/final_report_{hypothesis_id}.md"
@@ -413,7 +424,8 @@ class MultiAgentOrchestrator:
         )
         self._log(
             f"HypothesisOrchestrator produced {len(hypotheses.hypotheses)} hypotheses "
-            f"(top {self.top_n}); priority head: {top_preview}"
+            f"(top {self.top_n}); priority head: {top_preview}",
+            sub=True,
         )
 
         # Stages 2-3: PoC building + validation (per hypothesis)
@@ -438,8 +450,9 @@ class MultiAgentOrchestrator:
 
             if matched_targets:
                 self._log(
-                    f"  {item.hypothesis_id}: function '{item.function}' found in "
-                    f"{len(matched_targets)} target(s): {', '.join(matched_targets)}"
+                    f"{item.hypothesis_id}: function '{item.function}' found in "
+                    f"{len(matched_targets)} target(s): {', '.join(matched_targets)}",
+                    sub=True,
                 )
                 self.store.append_event("targets_matched", {
                     "hypothesis_id": item.hypothesis_id,
@@ -472,7 +485,7 @@ class MultiAgentOrchestrator:
                         self.env.execute(f"export DEFAULT_FUZZER={shlex.quote(fuzz_target)}")
 
                     if fuzz_target:
-                        self._log(f"  Trying target: {fuzz_target}")
+                        self._log(f"Trying target: {fuzz_target}", sub=True)
 
                     poc_context = self._context_builder.build(
                         poc_builder.name,
@@ -495,7 +508,7 @@ class MultiAgentOrchestrator:
                     self._record_trajectory(poc_run, hypothesis_id=item.hypothesis_id)
 
                     if self._check_run_status(poc_run, "poc_builder"):
-                        self._log(f"  PoCBuilder failed for target {fuzz_target or 'default'}")
+                        self._log(f"PoCBuilder failed for target {fuzz_target or 'default'}", sub=True)
                         continue
 
                     poc_recipe = parse_poc_recipe(poc_run.result)
@@ -529,7 +542,7 @@ class MultiAgentOrchestrator:
                     "hypothesis_exhausted",
                     {"hypothesis_id": item.hypothesis_id, "stage": "poc_builder", "reason": "no_crash_detected"},
                 )
-                self._log(f"No crash detected for {item.hypothesis_id}, moving to next hypothesis.")
+                self._log(f"No crash detected for {item.hypothesis_id}, moving to next hypothesis.", sub=True)
                 continue
 
             # Stage 3: Report generation
@@ -613,11 +626,11 @@ class MultiAgentOrchestrator:
                     "hypothesis_exhausted",
                     {"hypothesis_id": item.hypothesis_id, "stage": "reporter", "reason": "report_file_missing"},
                 )
-                self._log(f"Hypothesis {item.hypothesis_id}: report file not written")
+                self._log(f"Hypothesis {item.hypothesis_id}: report file not written", sub=True)
                 continue
 
             self.store.append_event("run_success", {"hypothesis_id": item.hypothesis_id})
-            self._log(f"Hypothesis {item.hypothesis_id} confirmed and reported.")
+            self._log(f"Hypothesis {item.hypothesis_id} confirmed and reported.", sub=True)
             if self._on_success:
                 self._on_success(
                     hypothesis_id=item.hypothesis_id,
@@ -643,7 +656,8 @@ class MultiAgentOrchestrator:
             if dedup_report.duplicate_of:
                 self._log(
                     f"Findings dedup: {len(dedup_report.duplicate_of)} duplicate(s) folded into "
-                    f"{success_count - len(dedup_report.duplicate_of)} unique finding(s)."
+                    f"{success_count - len(dedup_report.duplicate_of)} unique finding(s).",
+                    sub=True,
                 )
 
             return OrchestratorResult(
