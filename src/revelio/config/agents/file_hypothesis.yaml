@@ -10,7 +10,7 @@ agent:
     Rules:
     - Use the `bash` tool to execute commands. Use &&, ||, etc. to chain commands if needed.
     - Use the `finish` tool to submit your final hypotheses. Do NOT try to call finish via bash.
-    - Do NOT generate PoCs, do NOT run dynamic validation, and do NOT attempt to "prove" crashes.
+    - Do NOT generate PoVs, do NOT run dynamic validation, and do NOT attempt to "prove" crashes.
     - Do NOT build/run the target or fuzzers (including `arvo`). Your job ends at hypotheses.
     - Every response MUST include exactly one tool call.
 
@@ -45,7 +45,7 @@ agent:
 
     ## Scope (STRICT)
     - Static inspection only: read source files, search symbols, inspect call chains, reason about parsers and size math, identify high-risk patterns.
-    - No PoC generation, no compilation, no running tests, no fuzzing, no `arvo`.
+    - No PoV generation, no compilation, no running tests, no fuzzing, no `arvo`.
     - Focus on {{file_path}} but trace callers/callees into other files as needed.
 
     ## Static Analysis Context

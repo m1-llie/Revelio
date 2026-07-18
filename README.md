@@ -3,10 +3,10 @@
 <img width="354" height="349" alt="D39BDFFF-F4F6-45B1-B69A-AE60A9F6C919_1_201_a" src="https://github.com/user-attachments/assets/80249d46-3f0a-4e17-94a6-8bab5f2b426b" />
 
 
-A trustworthy and precise vulnerability detection AI agent that discovers memory safety related software vulnerabilities and validates them through automated PoC testing.
+A trustworthy and precise vulnerability detection AI agent that discovers memory safety related software vulnerabilities and validates them through automated PoV testing.
 
 - **Discovers vulnerabilities** through code review
-- **Validates findings** by building and running PoC inputs
+- **Validates findings** by building and running PoV inputs
 - **Generates reports** with detailed vulnerability information and reproduction steps
 
 ## Architecture
@@ -14,7 +14,7 @@ A trustworthy and precise vulnerability detection AI agent that discovers memory
 ### Pipeline Stages
 
 1. **ScanFilterOrchestrator** — per-file multi-pass LLM analysis, classification/dedup, and Docker sub-agent filtering to produce ranked hypotheses
-2. **PoCBuilderAgent** — for each hypothesis, discovers which fuzz targets link the relevant function (`arvo targets <sym>`), then generates a PoC for each matching target. The `validate` tool automatically tests the PoC against all available sanitizers (asan, ubsan, msan). Stops on first confirmed crash.
+2. **PoCBuilderAgent** — for each hypothesis, discovers which fuzz targets link the relevant function (`arvo targets <sym>`), then generates a PoV for each matching target. The `validate` tool automatically tests the PoV against all available sanitizers (asan, ubsan, msan). Stops on first confirmed crash.
 3. **ReporterAgent** — writes a final bug report with vulnerability details and reproduction steps
 
 ### Pipeline
@@ -29,7 +29,7 @@ detect.py  --arvo / --project
                       ├── Merged Hypotheses: deduplicate root causes
                       ├── Reachability-Annotated Hypotheses: independent static filtering
                       │   (Docker sub-agent)
-                      ├── Ranked Hypothesis Queue: rank for PoC confirmation
+                      ├── Ranked Hypothesis Queue: rank for PoV confirmation
                       └── MultiAgentOrchestrator
                             ├── PoCBuilderAgent × N (uses validate tool)
                             └── ReporterAgent × N
@@ -38,7 +38,7 @@ detect.py  --arvo / --project
 The pipeline uses three separate model tiers:
 - **`--model`** — cheap/fast model for the proposal + triage/dedup hypothesis generation (e.g., Haiku)
 - **`--filter-model`** — mid-tier model for the independent static filtering sub-agent (e.g., Sonnet)
-- **`--poc-model`** — strongest model for PoC building + validation/report (e.g., Opus)
+- **`--pov-model`** — strongest model for PoV building + validation/report (e.g., Opus)
 
 ## Quick Start
 
@@ -112,7 +112,7 @@ SANITIZER=ubsan arvo         # switch sanitizer
 
 `SANITIZER` env var (default: `asan`) selects which `/out/<sanitizer>/` build to use. `DEFAULT_FUZZER` env var overrides auto-detection when multiple targets exist. Standard ASAN/MSAN/UBSAN env vars are exported automatically.
 
-The orchestrator uses `arvo targets <function>` to match hypotheses to reachable fuzz targets before launching the PoC builder. The validate tool uses `SANITIZER=` to test PoCs against all available sanitizers.
+The orchestrator uses `arvo targets <function>` to match hypotheses to reachable fuzz targets before launching the PoV builder. The validate tool uses `SANITIZER=` to test PoVs against all available sanitizers.
 
 ### Verifying the image
 
@@ -141,7 +141,7 @@ python -m revelio.run.detect \
 ```
 
 > **Note:** `arvo:xxx-vul-clean` images are produced using `python -m revelio.run.clean_arvo`
-> to remove pre-existing PoCs, crashers, and seed corpus from ARVO-vul images.
+> to remove pre-existing PoVs, crashers, and seed corpus from ARVO-vul images.
 
 ### OSS-Fuzz Targets
 
@@ -166,7 +166,7 @@ Use `--docker-image` to specify a custom Docker base image (default: `revelio/me
 
 ### Resuming from saved hypotheses
 
-The scan_filter stage saves hypotheses to `output/<run_id>/hypotheses.json`. You can skip the scan stage and go straight to PoC generation:
+The scan_filter stage saves hypotheses to `output/<run_id>/hypotheses.json`. You can skip the scan stage and go straight to PoV generation:
 
 ```bash
 python -m revelio.run.detect \
@@ -188,7 +188,7 @@ python -m revelio.run.detect \
 | `--agents-config-dir` | built-in | Custom directory for per-agent YAML configs |
 | `--filter-model` | Sonnet 4.6 | Model for the independent static filtering sub-agent |
 | `--filter-workers` | `4` | Parallel workers for sub-agent filtering |
-| `--poc-model` | same as `--model` | Model for PoC builder/reporter agents |
+| `--pov-model` | same as `--model` | Model for PoV builder/reporter agents |
 | `--max-functions` | `50` | Max functions to analyze per file in scan_filter |
 | `--agent-step-limit` | `20` | Max steps per scan_filter sub-agent |
 | `--agent-cost-limit` | `2.0` | Max cost (USD) per scan_filter sub-agent |
@@ -222,7 +222,7 @@ Temperature and other model parameters are configured **per-agent in YAML config
 | Agent | Temperature | Purpose |
 |-------|-------------|---------|
 | `file_hypothesis.yaml` | 0.4 | Balanced hypothesis generation |
-| `poc_builder.yaml` | 1.0 | Creative PoC building + validation |
+| `poc_builder.yaml` | 1.0 | Creative PoV building + validation |
 | `validator.yaml` | 0.0 | Strict crash validation (standalone use) |
 | `reporter.yaml` | 0.2 | Consistent report writing |
 
@@ -272,7 +272,7 @@ output/<run_id>/
 - **`events.jsonl`** — real-time event stream: `run_start`, `agent_start`, `agent_end`, `poc_attempt`, `validation_failed`, `run_success`, etc.
 - **`trajectory.json`** — full conversation history for all agents, keyed by agent name
 - **`handoffs/`** — structured JSON data passed between pipeline stages
-- **`deliverables/`** — the final artifacts: bug report, PoC input file, and PoC generator script (only present when a vulnerability is confirmed)
+- **`deliverables/`** — the final artifacts: bug report, PoV input file, and PoV generator script (only present when a vulnerability is confirmed)
 
 ### Cost Reports
 
@@ -291,9 +291,9 @@ proposal/refinement traces currently only save aggregate `cost`/`calls`, so
 those stages are included in direct API cost but cannot always be split into
 cached/uncached tokens retroactively.
 
-### Validating PoCs
+### Validating PoVs
 
-Validate PoCs against ARVO `-fix` images (patched versions):
+Validate PoVs against ARVO `-fix` images (patched versions):
 
 ```bash
 python tools/validate_poc.py \

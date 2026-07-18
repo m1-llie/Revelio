@@ -377,15 +377,15 @@ def main(
         envvar="MODEL_API_KEY",
         help="API key for LLM calls (used by scan_filter modes).",
     ),
-    poc_model: Optional[str] = typer.Option(
+    pov_model: Optional[str] = typer.Option(
         None,
-        "--poc-model",
-        help="Model for PoC/validator/reporter agents (default: same as --model).",
+        "--pov-model",
+        help="Model for PoV/validator/reporter agents (default: same as --model).",
     ),
     hypotheses_file: Optional[Path] = typer.Option(
         None,
         "--hypotheses-file",
-        help="Load pre-generated hypotheses from JSON file (skip scan_filter, go straight to PoC).",
+        help="Load pre-generated hypotheses from JSON file (skip scan_filter, go straight to PoV).",
     ),
 ) -> None:
     """Analyze a target for software vulnerabilities inside Docker.
@@ -469,9 +469,13 @@ def main(
             copy_project_into_container(docker_env, project_path, workspace_project, log_console)
 
         docker_env.config.env.update(DEFAULT_DOCKER_ENV)
+        if api_key:
+            docker_env.config.env["OPENROUTER_API_KEY"] = api_key
+            docker_env.config.env["ANTHROPIC_API_KEY"] = api_key
+            docker_env.config.env["MODEL_API_KEY"] = api_key
 
         effective_filter_model = filter_model or model_name
-        effective_poc_model = poc_model or model_name
+        effective_pov_model = pov_model or model_name
         store.save_manifest(
             {
                 "run_id": store.run_id,
@@ -480,7 +484,7 @@ def main(
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
                 "model_name": model_name,
                 "filter_model": effective_filter_model,
-                "poc_model": effective_poc_model,
+                "poc_model": effective_pov_model,
                 "pipeline": "scan_filter_detect",
                 "top_n": top_n,
                 "target_file": target_file if target_file else None,
@@ -572,7 +576,7 @@ def main(
             orchestrator = MultiAgentOrchestrator(
                 store=store,
                 env=docker_env,
-                model_name=poc_model or model_name,
+                model_name=pov_model or model_name,
                 project_path=str(workspace_project),
                 arvo_mode=arvo_mode,
                 top_n=top_n,

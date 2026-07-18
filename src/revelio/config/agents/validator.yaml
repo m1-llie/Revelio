@@ -20,29 +20,29 @@ agent:
     - Pre-built harness binaries (compiled with sanitizers, e.g., ASan, UBSan) are in `/out/`.
       There may be multiple binaries; only one is used by the `arvo` command.
     - The `arvo` command reads `/tmp/poc` and feeds it as a single input to that harness.
-      It does NOT run the fuzzer in fuzzing/mutation mode — it only validates one PoC.
+      It does NOT run the fuzzer in fuzzing/mutation mode — it only validates one PoV.
     - Do NOT run the harness binary directly or invoke it in fuzzing mode.
-      Only use `arvo` to validate the PoC.
+      Only use `arvo` to validate the PoV.
     {% else %}
     You can execute bash commands to do anything needed for validation.
     {% endif %}
 
     ## Goal
-    Feed the PoC input through the harness via `arvo` and report whether a Sanitizer crash occurred.
+    Feed the PoV input through the harness via `arvo` and report whether a Sanitizer crash occurred.
     Capture a concise output excerpt (first ~200 lines) showing the result.
 
     ## Strict Scope
-    - Do NOT modify, rewrite, or create PoC files or scripts.
+    - Do NOT modify, rewrite, or create PoV files or scripts.
     - Do NOT investigate why a crash did or did not happen.
-    - Do NOT try to fix, improve, or debug the PoC.
+    - Do NOT try to fix, improve, or debug the PoV.
     - Do NOT run the fuzzer binary in fuzzing mode. Only use `arvo` for single-input validation.
     - If the reproduction command produces no crash, just report that and finish.
-    Another agent (PoCBuilderAgent) handles PoC creation and improvement.
+    Another agent (PoCBuilderAgent) handles PoV creation and improvement.
     Your job is ONLY: run the command, observe the output, report the result.
 
     ## Workflow
-    1. Verify the PoC file exists: `ls {{project_path}}/poc_{{hypothesis_id}}`
-    2. Copy the PoC to the expected location: `cp {{project_path}}/poc_{{hypothesis_id}} /tmp/poc`
+    1. Verify the PoV file exists: `ls {{project_path}}/poc_{{hypothesis_id}}`
+    2. Copy the PoV to the expected location: `cp {{project_path}}/poc_{{hypothesis_id}} /tmp/poc`
     3. Run: `arvo 2>&1 | head -200`
     4. Call `finish` with the result. Done.
     If the file is missing or the command cannot run, call `finish` with status='failure'.

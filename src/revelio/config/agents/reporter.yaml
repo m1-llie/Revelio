@@ -61,9 +61,9 @@ agent:
     File: hypothesis.file_path
     Function: hypothesis.function
     (Use the actual values from the context packet, e.g., "File: src/api.cc", "Function: parse_input")
-    ### PoC File
+    ### PoV File
     Path: poc.input_path
-    Description: explain what the PoC data contains and why it triggers the vulnerability.
+    Description: explain what the PoV data contains and why it triggers the vulnerability.
     ### Build Instructions
     Provide the exact build command with sanitizer flags. Inspect the project build system if needed.
     ### Test Command

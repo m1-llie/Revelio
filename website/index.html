@@ -366,7 +366,7 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
    custom dropdown instead — same look as .filter-bar select, but the open menu
    caps at ~10 rows and scrolls beyond that. */
 .custom-select{position:relative}
-.custom-select-btn{box-sizing:border-box;-webkit-appearance:none;appearance:none;background:var(--rv-tint);border:none;border-radius:var(--radius);padding:.45rem 1.7rem .45rem .8rem;margin:0;line-height:1.2;color:var(--text-bright);font-size:.82rem;cursor:pointer;transition:box-shadow .15s;font-family:inherit;white-space:nowrap;max-width:11rem;overflow:hidden;text-overflow:ellipsis;text-align:left;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23A8A6B8'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .6rem center}
+.custom-select-btn{box-sizing:border-box;-webkit-appearance:none;appearance:none;background:var(--rv-tint);border:none;border-radius:var(--radius);padding:.45rem 1.7rem .45rem .8rem;margin:0;line-height:1.2;color:var(--text-bright);font-size:.82rem;cursor:pointer;transition:box-shadow .15s;font-family:inherit;white-space:nowrap;width:11rem;overflow:hidden;text-overflow:ellipsis;text-align:left;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23A8A6B8'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .6rem center}
 .custom-select-btn:focus{box-shadow:0 0 0 1px var(--rv-gold);outline:none}
 .custom-select-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:50;min-width:100%;max-width:20rem;max-height:19.5rem;overflow-y:auto;background:var(--bg-card);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,.35);padding:.25rem;scrollbar-width:thin;scrollbar-color:rgba(110,109,128,.5) transparent}
 .custom-select-option{padding:.35rem .6rem;border-radius:6px;font-size:.8rem;color:var(--text);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -555,13 +555,13 @@ nav .breadcrumb .sep{color:var(--rv-text-faint)}
    should never get its own inner scrollbar — click the role header to
    reveal it in full instead of scrolling a nested box. */
 .traj-step-msgs .cmd-block .cmd-output{max-height:none!important;overflow:visible!important}
-.traj-step-msgs .traj-msg.collapsible .role{cursor:pointer;user-select:none}
-.traj-step-msgs .traj-msg.collapsible .role::before{content:'▶';display:inline-block;font-size:.6em;margin-right:.4em;transition:transform .12s}
-.traj-step-msgs .traj-msg.collapsible.expanded .role::before{transform:rotate(90deg)}
-.traj-step-msgs .traj-msg.collapsible .msg-body{display:none}
-.traj-step-msgs .traj-msg.collapsible.expanded .msg-body{display:block;margin-top:.5rem}
-.traj-step-msgs .traj-msg.collapsible .role::after{content:'— click to expand';font-weight:400;text-transform:none;color:var(--rv-text-faint);letter-spacing:normal;margin-left:.3rem}
-.traj-step-msgs .traj-msg.collapsible.expanded .role::after{content:'— click to collapse'}
+.traj-msg.collapsible .role{cursor:pointer;user-select:none}
+.traj-msg.collapsible .role::before{content:'▶';display:inline-block;font-size:.6em;margin-right:.4em;transition:transform .12s}
+.traj-msg.collapsible.expanded .role::before{transform:rotate(90deg)}
+.traj-msg.collapsible .msg-body{display:none}
+.traj-msg.collapsible.expanded .msg-body{display:block;margin-top:.5rem}
+.traj-msg.collapsible .role::after{content:'— click to expand';font-weight:400;text-transform:none;color:var(--rv-text-faint);letter-spacing:normal;margin-left:.3rem}
+.traj-msg.collapsible.expanded .role::after{content:'— click to collapse'}
 .search-hit{background:rgba(239,159,39,.25);border-radius:2px}
 .action-link,.hyp-detail-pane a{user-select:none;text-decoration:none}
 .action-link:hover{color:var(--rv-text)}
@@ -809,7 +809,7 @@ window.addEventListener('resize', () => {
 
 // Reserves as much height for a trace body as the sidebar list next to it
 // takes up, so a short trace (few steps) doesn't leave the right column
-// looking stubby next to a tall hypothesis/PoC list on the left.
+// looking stubby next to a tall hypothesis/PoV list on the left.
 let currentHypTraceBodyId = null;
 let currentPocTraceBodyId = null;
 function applyTraceMinHeight(id) {
@@ -979,7 +979,7 @@ function renderCardsPagerHtml(page, totalPages, prevClick, nextClick, count, lab
     + `<button type="button" ${page >= totalPages - 1 ? 'disabled' : ''} onclick="${nextClick}">Next →</button>`
     + `</div>`;
 }
-let pendingPocNav = null; // {runId, hid} — jump to a PoC after loadRunDetail resolves
+let pendingPocNav = null; // {runId, hid} — jump to a PoV after loadRunDetail resolves
 
 // ── Custom scrollable dropdown ───────────────────────────────────
 // A plain <select>'s popup can't be capped at N rows via CSS in any browser,
@@ -1173,7 +1173,7 @@ function renderRunsList() {
       <div class="runs-meta-group">
         ${runSortHeader('Status', 'status', false)}
         ${runSortHeader('Hypothesis Model', 'cost_scan', true)}
-        ${runSortHeader('PoC Model', 'cost_poc', true)}
+        ${runSortHeader('PoV Model', 'cost_poc', true)}
         ${runSortHeader('Started', 'date', true)}
         ${runSortHeader('Confirmed', 'confirmed', true)}
       </div>
@@ -1673,7 +1673,7 @@ function renderRevelioFunnel(funnel) {
     { key: 'after_rank', label: 'Ranked queue' },
   ];
   const pocSteps = [
-    { key: 'poc_attempted', label: 'PoC tried' },
+    { key: 'poc_attempted', label: 'PoV tried' },
     { key: 'confirmed', label: 'Confirmed' },
   ];
   let bar = '';
@@ -1702,7 +1702,7 @@ function renderRevelioFunnel(funnel) {
     if (i) bar += '<span class="funnel-arrow">→</span>';
     renderStep(st);
   });
-  return `<div class="section-title funnel-title">Hypothesis Funnel</div><div class="funnel-subtitle">Hypothesis refinement · then PoC validation</div><div class="funnel-wrap"><div class="funnel-bar">${bar}</div></div>`;
+  return `<div class="section-title funnel-title">Hypothesis Funnel</div><div class="funnel-subtitle">Hypothesis refinement · then PoV validation</div><div class="funnel-wrap"><div class="funnel-bar">${bar}</div></div>`;
 }
 
 function cleanStageLabel(label) {
@@ -1731,9 +1731,9 @@ function revelioEventLabel(event) {
     file_hypothesis_completed: 'File scanned',
     filter_agent_completed: 'Hypothesis verified',
     no_hypotheses: 'No hypotheses survived',
-    poc_start: 'PoC started',
-    run_success: 'PoC confirmed',
-    run_success_all: 'All PoC confirmed',
+    poc_start: 'PoV started',
+    run_success: 'PoV confirmed',
+    run_success_all: 'All PoV confirmed',
     run_failure: 'Run failed',
   };
   return labels[event] || (event || '').replace(/_/g, ' ');
@@ -1793,19 +1793,19 @@ function buildRevelioTimelineMilestones(events, funnel) {
   const pocCount = count('poc_start');
   if (pocCount) {
     const confirmed = funnel.confirmed ?? count('run_success');
-    add(`PoC tried (${pocCount})`, `${confirmed} confirmed`, first('poc_start'), 'attempt');
+    add(`PoV tried (${pocCount})`, `${confirmed} confirmed`, first('poc_start'), 'attempt');
   }
 
   if (first('run_success_all')) {
     const p = first('run_success_all').payload || {};
-    add('All PoC confirmed', p.count != null ? `count: ${p.count}` : '', first('run_success_all'), 'success');
+    add('All PoV confirmed', p.count != null ? `count: ${p.count}` : '', first('run_success_all'), 'success');
   } else {
     const successCount = count('run_success');
     if (successCount === 1) {
       const hid = first('run_success')?.payload?.hypothesis_id;
-      add('PoC confirmed', hid ? String(hid) : '', first('run_success'), 'success');
+      add('PoV confirmed', hid ? String(hid) : '', first('run_success'), 'success');
     } else if (successCount > 1) {
-      add(`PoC confirmed (${successCount})`, '', last('run_success'), 'success');
+      add(`PoV confirmed (${successCount})`, '', last('run_success'), 'success');
     }
   }
   if (first('run_failure')) add('Run failed', '', first('run_failure'), 'attempt');
@@ -1868,10 +1868,10 @@ function pipelineFinalBadge(row) {
 function pipelineHid(row) {
   // row.hid is a synthetic per-file display number (classify index based) —
   // it is NOT globally unique and can collide with a real hid from a totally
-  // different hypothesis/PoC (every file's first hypothesis is "SF01"). Only
-  // global_hid is a reliable identity for matching against PoC stages; never
+  // different hypothesis/PoV (every file's first hypothesis is "SF01"). Only
+  // global_hid is a reliable identity for matching against PoV stages; never
   // fall back to row.hid here or a dropped/unresolved row can end up linked
-  // to an unrelated hypothesis's PoC.
+  // to an unrelated hypothesis's PoV.
   return row.global_hid || '';
 }
 
@@ -2206,7 +2206,7 @@ function hypGateDefs(row) {
     { key: 'inscope', label: 'In-scope', badge: pipelineStatusBadge(row.classify), notReached: gateNotReached(row.classify), hasPanel: true },
     { key: 'merged', label: 'Merged', badge: pipelineStatusBadge(row.dedup), notReached: gateNotReached(row.dedup), hasPanel: true },
     { key: 'filter', label: 'Static filter', badge: pipelineStatusBadge(row.filter), notReached: gateNotReached(row.filter), hasPanel: true },
-    { key: 'poc', label: 'PoC', badge: renderPocStatusBadge(row.poc), notReached: pocNotReached(row.poc), hasPanel: true },
+    { key: 'poc', label: 'PoV', badge: renderPocStatusBadge(row.poc), notReached: pocNotReached(row.poc), hasPanel: true },
     { key: 'final', label: 'Final', badge: pipelineFinalBadge(row), notReached: !row.final?.confirmed && !row.final?.survived && !row.dropped_at, hasPanel: true },
   ];
 }
@@ -2215,7 +2215,7 @@ function hypGateDefs(row) {
 // confirmed hypothesis lands on "Final" and a dropped one lands on wherever
 // it was dropped, instead of always forcing a click to see what matters.
 function pickDefaultHypGate(gates, row) {
-  // If it was dropped somewhere before PoC, jump straight to that gate —
+  // If it was dropped somewhere before PoV, jump straight to that gate —
   // "Final" technically isn't marked not-reached for dropped rows (it's
   // just "not confirmed"), so without this a dropped-at-triage hypothesis
   // would default to the least useful, empty-looking "Final" panel.
@@ -2281,7 +2281,7 @@ function renderHypGatePanelContent(ctx, key) {
     const hid = pipelineHid(row);
     let html = `<div class="hyp-detail-meta">${renderPocStatusBadge(row.poc)} ${pipelineFinalBadge(row)}</div>`;
     if (hid && findPocStageByHid(hid)) html += `<div class="hyp-detail-actions">${viewPocButton(hid)}</div>`;
-    else if (hid) html += stageNotReachedNotice('PoC not run.');
+    else if (hid) html += stageNotReachedNotice('PoV not run.');
     if (row.dropped_at) html += `<p class="hyp-detail-body">Dropped at ${esc(pipelineDropStageLabel(row.dropped_at))}.</p>`;
     return html;
   }
@@ -2352,8 +2352,8 @@ function loadAlwaysOpenGateTrace(ctx) {
 }
 
 function renderPocStatusBadge(poc) {
-  // "CONFIRMED" is reserved for the Final gate — the PoC gate only ever
-  // reports whether a PoC attempt ran, not the overall verdict.
+  // "CONFIRMED" is reserved for the Final gate — the PoV gate only ever
+  // reports whether a PoV attempt ran, not the overall verdict.
   if (pocNotReached(poc)) return pipelineNotReachedBadge('Not run');
   if (poc.status === 'confirmed' || poc.status === 'attempted') return '<span class="pipeline-badge kept">TRIED</span>';
   return pipelineNotReachedBadge('Not run');
@@ -2572,7 +2572,7 @@ function refreshPocList() {
   const stages = getFilteredPocStages();
   list.innerHTML = stages.length
     ? stages.map(renderPocListItem).join('')
-    : '<div class="hyp-detail-empty" style="min-height:8rem"><p>No PoCs match your filters.</p></div>';
+    : '<div class="hyp-detail-empty" style="min-height:8rem"><p>No PoVs match your filters.</p></div>';
 }
 
 function updatePocFilterButtons() {
@@ -2595,7 +2595,7 @@ function refreshPocTab() {
   } else {
     selectedPocKey = null;
     const detail = document.getElementById('revelio-poc-detail');
-    if (detail) detail.innerHTML = '<div class="hyp-detail-empty"><p>No PoCs match your filters.</p></div>';
+    if (detail) detail.innerHTML = '<div class="hyp-detail-empty"><p>No PoVs match your filters.</p></div>';
   }
 }
 
@@ -2661,7 +2661,7 @@ function selectPoc(stageKey, scrollList) {
   const detail = document.getElementById('revelio-poc-detail');
   if (!detail) return;
   if (!stage) {
-    detail.innerHTML = '<div class="hyp-detail-empty"><p>Select a PoC to view details.</p></div>';
+    detail.innerHTML = '<div class="hyp-detail-empty"><p>Select a PoV to view details.</p></div>';
     return;
   }
   detail.innerHTML = renderPocDetail(stage);
@@ -2905,9 +2905,9 @@ function renderConfirmedPocCard(item) {
 function renderRevelioConfirmedPocs(d) {
   revelioConfirmedItems = getConfirmedPocItems(d);
   let html = `<div class="confirmed-poc-panel" id="confirmed-poc-panel">`;
-  html += `<div class="section-title">PoCs confirmed</div>`;
+  html += `<div class="section-title">PoVs confirmed</div>`;
   if (!revelioConfirmedItems.length) {
-    html += '<div class="callout callout-warn" style="margin-top:0">No confirmed PoCs yet.</div></div>';
+    html += '<div class="callout callout-warn" style="margin-top:0">No confirmed PoVs yet.</div></div>';
     return html;
   }
   html += `<div class="confirmed-poc-wrap" id="confirmed-poc-wrap"><div id="confirmed-poc-body"></div></div>`;
@@ -2983,7 +2983,7 @@ function renderRevelioOverview(d, m) {
   html += '<div class="overview-grid">';
   html += statCardTarget(m.target_ref);
   html += statCardStage('Hypothesis Model', m.model_name, sm.cost_scan);
-  html += statCardStage('PoC Model', m.poc_model || m.model_name, sm.cost_poc);
+  html += statCardStage('PoV Model', m.poc_model || m.model_name, sm.cost_poc);
   html += statCard(sm.duration_seconds != null ? fmtDuration(sm.duration_seconds) : '—', 'Duration');
   html += statCard(funnel.confirmed || 0, 'Confirmed');
   html += '</div>';
@@ -3113,9 +3113,13 @@ function renderRevelioStepMessages(messages, idPrefix, query) {
     // Short output that would never have needed scrolling anyway is left
     // fully visible with no collapse affordance at all.
     const longOutput = hasCmd && (msg.command_output || '').length > 800;
-    const isCollapsible = role === 'system' || longOutput;
+    // Every tool section gets the collapse/expand toggle, not just long ones —
+    // but the default visibility below is unchanged from before this was added.
+    const isCollapsible = role === 'system' || hasCmd;
     // A lone tool section has nothing else competing for space, so open it by default.
-    const autoExpand = longOutput && toolMsgCount === 1;
+    // Short output was always shown in full before collapsibility existed, so it
+    // still defaults open; only long output (with siblings) defaults collapsed.
+    const autoExpand = hasCmd && (!longOutput || toolMsgCount === 1);
     html += `<div class="traj-msg ${role}${isCollapsible ? ' collapsible' : ''}${autoExpand ? ' expanded' : ''}">`;
     html += `<div class="role"${isCollapsible ? ' onclick="toggleTrajMsg(this.closest(\'.traj-msg\'))"' : ''}>${role}</div>`;
     html += '<div class="msg-body">';
@@ -3138,7 +3142,7 @@ function renderRevelioStepMessages(messages, idPrefix, query) {
 function viewPocButton(hid, extraClass) {
   if (!hid || !findPocStageByHid(hid)) return '';
   const cls = ['view-poc-btn', extraClass || ''].filter(Boolean).join(' ');
-  return `<a href="#" class="${cls}" onclick="revelioGoToPoc('${jsStr(hid)}');return false">View PoC →</a>`;
+  return `<a href="#" class="${cls}" onclick="revelioGoToPoc('${jsStr(hid)}');return false">View PoV →</a>`;
 }
 
 function revelioPocLink(hid, pStages) {
@@ -3162,7 +3166,7 @@ function renderRevelioDetail(d, m) {
   const pocBuilders = getPocBuilderStages();
   const pipeline = revelioPipeline;
 
-  const tabs = ['Overview', 'Hypothesis', 'PoC', 'Log'];
+  const tabs = ['Overview', 'Hypothesis', 'PoV', 'Log'];
   let html = `<div class="tabs" id="detail-tabs">`;
   tabs.forEach((t, i) => {
     html += `<div class="tab ${i === 0 ? 'active' : ''}" onclick="switchTab(${i},'detail')">${esc(t)}</div>`;
@@ -3181,14 +3185,14 @@ function renderRevelioDetail(d, m) {
   html += '</div>';
 
   html += `<div class="tab-panel poc-tab-panel" id="detail-tab-2">`;
-  html += `<div class="filter-bar"><input type="text" id="revelio-poc-search" placeholder="Search PoCs..." oninput="revelioApplySearch('poc')"></div>`;
+  html += `<div class="filter-bar"><input type="text" id="revelio-poc-search" placeholder="Search PoVs..." oninput="revelioApplySearch('poc')"></div>`;
   if (pocBuilders.length) {
     html += renderPocTabShell(pocBuilders);
   } else {
     const sm = d.revelio_summary || {};
-    let msg = 'No PoC-stage trajectories found (trajectory.json agents).';
-    if (sm.poc_status === 'skipped_no_hypotheses') msg = 'PoC stage did not run — no hypotheses survived filtering.';
-    else if (sm.poc_status === 'skipped_or_incomplete') msg = 'PoC stage did not run or did not finish.';
+    let msg = 'No PoV-stage trajectories found (trajectory.json agents).';
+    if (sm.poc_status === 'skipped_no_hypotheses') msg = 'PoV stage did not run — no hypotheses survived filtering.';
+    else if (sm.poc_status === 'skipped_or_incomplete') msg = 'PoV stage did not run or did not finish.';
     html += `<div class="empty"><p>${esc(msg)}</p></div>`;
   }
   html += '</div>';
@@ -3322,10 +3326,10 @@ function renderRevelioPocArtifacts(s, idKey, opts) {
   }
 
   const sub = [];
-  if (poc) sub.push('PoC Recipe');
+  if (poc) sub.push('PoV Recipe');
   if (val) sub.push('Validation');
   if (rep) sub.push('Report');
-  if (includeTrace) sub.push('PoC Builder Trace');
+  if (includeTrace) sub.push('PoV Builder Trace');
   if (sub.length) {
     const stId = `${idKey}-art`;
     html += `<div class="tabs" id="${stId}" style="margin-top:.6rem;margin-bottom:.6rem;gap:.5rem">`;
@@ -3346,7 +3350,7 @@ function renderRevelioPocArtifacts(s, idKey, opts) {
       }
       if (data.expected_signal) html += `<div style="font-size:.8rem;margin-top:.3rem"><span style="color:var(--text-dim)">Expected signal:</span> <span class="badge badge-red">${esc(data.expected_signal)}</span></div>`;
       if (data.reproduction_command) html += `<div style="font-size:.8rem;margin-top:.3rem"><span style="color:var(--text-dim)">Repro:</span> <code>${esc(data.reproduction_command)}</code></div>`;
-      html += `<details style="margin-top:.6rem"><summary style="cursor:pointer;color:var(--text-dim);font-size:.76rem">Full PoC recipe JSON</summary><pre style="margin-top:.3rem">${esc(JSON.stringify(data, null, 2))}</pre></details>`;
+      html += `<details style="margin-top:.6rem"><summary style="cursor:pointer;color:var(--text-dim);font-size:.76rem">Full PoV recipe JSON</summary><pre style="margin-top:.3rem">${esc(JSON.stringify(data, null, 2))}</pre></details>`;
       html += `</div>`;
       si++;
     }
@@ -3464,10 +3468,10 @@ function renderHypotheses(d) {
         html += `</div>`;
       }
 
-      // ── Sub-sections: Validation, PoC, Report ──
+      // ── Sub-sections: Validation, PoV, Report ──
       const subTabs = [];
       if (val) subTabs.push('Validation');
-      if (poc) subTabs.push('PoC');
+      if (poc) subTabs.push('PoV');
       if (hypOut.report_md) subTabs.push('Report');
       if (hypOut.script_py) subTabs.push('Script');
 
@@ -3499,7 +3503,7 @@ function renderHypotheses(d) {
           si++;
         }
 
-        // PoC panel
+        // PoV panel
         if (poc) {
           html += `<div class="tab-panel ${si===0?'active':''}" id="${stId}-tab-${si}">`;
           if (poc.generation_steps && poc.generation_steps.length) {
@@ -3510,7 +3514,7 @@ function renderHypotheses(d) {
           if (poc.expected_signal) html += `<div style="margin-bottom:.5rem;font-size:.82rem"><span style="color:var(--text-dim)">Expected Signal:</span> <span class="badge badge-red">${esc(poc.expected_signal)}</span></div>`;
           if (poc.reproduction_command) html += `<div style="margin-bottom:.5rem;font-size:.82rem"><span style="color:var(--text-dim)">Repro:</span> <code>${esc(poc.reproduction_command)}</code></div>`;
           if (hypOut.poc_hex) {
-            html += `<div style="margin-top:.8rem"><strong style="font-size:.82rem;color:var(--text-bright)">PoC Binary (${hypOut.poc_size} bytes):</strong>`;
+            html += `<div style="margin-top:.8rem"><strong style="font-size:.82rem;color:var(--text-bright)">PoV Binary (${hypOut.poc_size} bytes):</strong>`;
             html += `<pre style="margin-top:.4rem">${formatHex(hypOut.poc_hex)}</pre>`;
             html += `</div>`;
           }
@@ -3581,8 +3585,11 @@ async function loadTrajectory(runId, path, agentName) {
       const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2);
       const hasCmd = msg.command != null;
       const msgId = `msg-${agentName}-${i}`;
-      html += `<div class="traj-msg ${role}">`;
-      html += `<div class="role">${role}${msg.timestamp ? ` <span style="font-weight:400;color:var(--text-dim)">${new Date(msg.timestamp).toLocaleTimeString()}</span>` : ''}</div>`;
+      // Tool sections always defaulted to fully visible before collapsibility
+      // existed, so autoExpand stays true — this only adds the toggle.
+      html += `<div class="traj-msg ${role}${hasCmd ? ' collapsible expanded' : ''}">`;
+      html += `<div class="role"${hasCmd ? ` onclick="toggleTrajMsg(this.closest('.traj-msg'))"` : ''}>${role}${msg.timestamp ? ` <span style="font-weight:400;color:var(--text-dim)">${new Date(msg.timestamp).toLocaleTimeString()}</span>` : ''}</div>`;
+      html += `<div class="msg-body">`;
 
       if (hasCmd) {
         // Structured command + output display
@@ -3604,6 +3611,7 @@ async function loadTrajectory(runId, path, agentName) {
         html += `<div class="content ${isLong ? 'collapsed' : ''}" id="${msgId}">${esc(content)}</div>`;
         if (isLong) html += `<span class="msg-toggle" onclick="toggleMsg('${msgId}',this)">Show more</span>`;
       }
+      html += `</div>`;
 
       html += `</div>`;
     }
@@ -3697,9 +3705,9 @@ function switchTab(idx, prefix) {
   if (shownPanel) {
     repackPagedListsIn(shownPanel);
     // The scroll-into-view correction (and list-scroll resets below) only
-    // make sense for the primary Overview/Hypothesis/PoC/Log tab bar — this
+    // make sense for the primary Overview/Hypothesis/PoV/Log tab bar — this
     // same switchTab() is reused for many small nested sub-tab groups
-    // (artifact PoC Recipe/Validation/Report, stage1 pass details, etc.),
+    // (artifact PoV Recipe/Validation/Report, stage1 pass details, etc.),
     // and scrolling the page for those is jarring/unwanted.
     if (prefix === 'detail') {
       const tabsBar = document.getElementById('detail-tabs');
@@ -3720,7 +3728,7 @@ function switchTab(idx, prefix) {
       document.querySelector('#revelio-poc-tab .hyp-list-scroll')?.scrollTo(0, 0);
       document.getElementById('revelio-poc-detail')?.scrollTo(0, 0);
     }
-    // Trace min-height sizing can run while the Hypothesis/PoC tab is still
+    // Trace min-height sizing can run while the Hypothesis/PoV tab is still
     // hidden (display:none), which measures the sidebar at 0px — re-sync
     // once the tab is actually the one being shown.
     if (prefix === 'detail' && idx === 1) {
@@ -3781,8 +3789,11 @@ function renderInlineTrajectory(messages, idPrefix, opts) {
     const hasCmd = msg.command != null;
     const msgId = `${prefix}-msg-${i}`;
 
-    html += `<div class="traj-msg ${role}">`;
-    html += `<div class="role">${role}${msg.timestamp ? ` <span style="font-weight:400;color:var(--text-dim)">${new Date(msg.timestamp).toLocaleTimeString()}</span>` : ''}</div>`;
+    // Tool sections always defaulted to fully visible before collapsibility
+    // existed, so autoExpand stays true — this only adds the toggle.
+    html += `<div class="traj-msg ${role}${hasCmd ? ' collapsible expanded' : ''}">`;
+    html += `<div class="role"${hasCmd ? ` onclick="toggleTrajMsg(this.closest('.traj-msg'))"` : ''}>${role}${msg.timestamp ? ` <span style="font-weight:400;color:var(--text-dim)">${new Date(msg.timestamp).toLocaleTimeString()}</span>` : ''}</div>`;
+    html += `<div class="msg-body">`;
 
     if (hasCmd) {
       const rc = msg.command_returncode;
@@ -3800,12 +3811,13 @@ function renderInlineTrajectory(messages, idPrefix, opts) {
       html += `</div>`;
     } else {
       const content = msg.content || '';
-      if (!content.trim()) { html += `</div>`; continue; }
+      if (!content.trim()) { html += `</div></div>`; continue; }
       const isLong = content.length > 600;
       html += `<div class="content ${isLong ? 'collapsed' : ''}" id="${msgId}">${esc(content)}</div>`;
       if (isLong) html += `<span class="msg-toggle" onclick="toggleMsg('${msgId}',this)">Show more</span>`;
     }
 
+    html += `</div>`;
     html += `</div>`;
   }
   return html;
@@ -4037,7 +4049,7 @@ function revelioModelsUsed(m) {
   const roles = [];
   if (scan) roles.push({ role: 'Scan', model: scan });
   if (filter && filter !== scan) roles.push({ role: 'Filter', model: filter });
-  if (poc && poc !== scan && poc !== filter) roles.push({ role: 'PoC', model: poc });
+  if (poc && poc !== scan && poc !== filter) roles.push({ role: 'PoV', model: poc });
   return roles;
 }
 
