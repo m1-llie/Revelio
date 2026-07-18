@@ -279,7 +279,12 @@ class MultiAgentOrchestrator:
         """
         if not self._log_fn:
             return
-        self._log_fn(f"  [dim]{message}[/dim]" if sub else f"[cyan]▸[/cyan] {message}")
+        leading_blank = ""
+        if message.startswith("\n"):
+            leading_blank, message = "\n", message[1:]
+        self._log_fn(
+            f"{leading_blank}  [dim]{message}[/dim]" if sub else f"{leading_blank}[cyan]▸[/cyan] {message}"
+        )
 
     def _report_path(self, hypothesis_id: str) -> str:
         return f"{self.project_path}/final_report_{hypothesis_id}.md"
@@ -436,7 +441,7 @@ class MultiAgentOrchestrator:
 
         for item in hypotheses.hypotheses:
             hypothesis_dict = item.to_dict()
-            self._log(f"Running PoCBuilder for {item.hypothesis_id} ({item.title})...")
+            self._log(f"\nRunning PoCBuilder for {item.hypothesis_id} ({item.title})...")
             self.store.append_event("poc_start", {"hypothesis_id": item.hypothesis_id})
 
             # Discover which fuzz targets can reach the hypothesis function.
@@ -542,11 +547,11 @@ class MultiAgentOrchestrator:
                     "hypothesis_exhausted",
                     {"hypothesis_id": item.hypothesis_id, "stage": "poc_builder", "reason": "no_crash_detected"},
                 )
-                self._log(f"No crash detected for {item.hypothesis_id}, moving to next hypothesis.", sub=True)
+                self._log(f"No crash detected for {item.hypothesis_id}, moving to next hypothesis.")
                 continue
 
             # Stage 3: Report generation
-            self._log(f"Crash confirmed for {item.hypothesis_id}. Generating report...")
+            self._log(f"\nCrash confirmed for {item.hypothesis_id}. Generating report...")
             # Crash signature for post-confirmation dedup, extracted from the raw
             # (untruncated) output of the validate() call that actually crashed —
             # not poc_section's LLM-reported output_excerpt, which can be
@@ -646,7 +651,7 @@ class MultiAgentOrchestrator:
 
         if success_count > 0:
             self.store.append_event("run_success_all", {"count": success_count})
-            self._log(f"Run finished: {success_count} hypothesis confirmed.")
+            self._log(f"\nRun finished: {success_count} hypothesis confirmed.")
 
             # Post-confirmation findings dedup: group confirmed hypotheses by
             # crash signature. Purely a post-hoc comparison of already-written

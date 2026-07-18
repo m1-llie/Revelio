@@ -505,6 +505,8 @@ def main(
                 scan_model_kwargs["base_url"] = base_url
             if api_key:
                 scan_model_kwargs["api_key"] = api_key
+                os.environ.setdefault("OPENROUTER_API_KEY", api_key)
+                os.environ.setdefault("MODEL_API_KEY", api_key)
 
             scan_orch = ScanFilterOrchestrator(
                 env=docker_env,
@@ -521,7 +523,7 @@ def main(
                 model_kwargs=scan_model_kwargs,
             )
 
-            log_console.print(f"[bold green]Starting scan_filter...[/bold green]\n")
+            log_console.print(f"\n[bold green]Starting scan_filter...[/bold green]")
             started_at = datetime.now(timezone.utc)
             with heartbeat(log_console, "scan_filter"):
                 hypotheses = scan_orch.run(
@@ -584,6 +586,7 @@ def main(
                 hypotheses_override=hypotheses,
                 model_config=model_config,
             )
+            log_console.print(f"\n[bold green]Starting PoV builder...[/bold green]")
             with heartbeat(log_console, "poc_build"):
                 result = orchestrator.run(
                     poc_builder=specs["poc_builder"],
