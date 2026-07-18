@@ -342,9 +342,9 @@ def main(
         help="Number of hypotheses to generate in the first (hypothesis) stage of multi-agent mode.",
     ),
     filter_model: Optional[str] = typer.Option(
-        "litellm_proxy/vertex_ai/claude-sonnet-4-6",
+        None,
         "--filter-model",
-        help="Model for scan_filter Stage 3 sub-agent verification (default: Sonnet 4.6).",
+        help="Model for scan_filter Stage 3 sub-agent verification (default: same as --model).",
     ),
     filter_workers: int = typer.Option(
         4,

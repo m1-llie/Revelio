@@ -1615,10 +1615,7 @@ def run_filter_agent(
             check_context_for_hyp = format_function_check_context(check_results, hyp_func_names)
 
     try:
-        import sys
-        print(f"DEBUG filter_agent: model_name={model_name!r} model_config={model_config!r}", file=sys.stderr, flush=True)
         model = get_model(model_name, model_config)
-        print(f"DEBUG filter_agent: model.config.model_kwargs={model.config.model_kwargs!r}", file=sys.stderr, flush=True)
         agent = DefaultAgent(
             model, env,
             system_template=FILTER_AGENT_SYSTEM,
