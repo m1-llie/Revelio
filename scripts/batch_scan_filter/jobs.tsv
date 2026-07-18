@@ -1,6 +1,6 @@
 # Tab-separated job list for scripts/batch_scan_filter.sh
 # Columns (TAB-separated):
-#   name  image  model  api_key_env  files_file  [filter_model]  [extra_args]
+#   name  image  model  api_key_env  files_file  [extra_args]
 #
 # - `api_key_env` is the NAME of an env var holding the key, NOT the key itself.
 #   Multiple rows can reuse the SAME env var name; that's how you map many
@@ -8,8 +8,7 @@
 #   will compete for that key's rate limit if they run concurrently, so set
 #   PROJECT_CONCURRENCY to (#distinct keys) for clean throughput.
 # - `files_file` is resolved relative to this TSV's directory if not absolute.
-# - `filter_model` / `extra_args` are optional; keep empty trailing tabs if
-#   you only need the first 5 columns.
+# - `extra_args` is optional; passed verbatim to detect.py.
 #
 # This template uses Claude Haiku 4.5 for everything:
 #   - 2 Anthropic keys: ANTHROPIC_KEY_1, ANTHROPIC_KEY_2
@@ -18,7 +17,7 @@
 #   PROJECT_CONCURRENCY=3 ENV_FILE=scripts/batch_scan_filter/.env \
 #     scripts/batch_scan_filter.sh scripts/batch_scan_filter/jobs.tsv
 #
-# name	image	model	api_key_env	files_file	filter_model	extra_args
+# name	image	model	api_key_env	files_file	extra_args
 openssl	revelio/openssl:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_1	files.openssl.txt
 dnsmasq	revelio/dnsmasq:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_1	files.dnsmasq.txt
 poppler	revelio/poppler:latest	anthropic/claude-haiku-4-5	ANTHROPIC_KEY_1	files.poppler.txt

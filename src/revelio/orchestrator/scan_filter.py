@@ -113,9 +113,6 @@ class ScanFilterOrchestrator:
         step_log_fn: Any | None = None,
         file_extensions: list[str] | None = None,
         max_workers: int = 4,
-        filter_model: str | None = None,
-        filter_model_config: dict[str, Any] | None = None,
-        filter_workers: int = 4,
         max_functions: int = 50,
         agent_step_limit: int = 20,
         agent_cost_limit: float = 2.0,
@@ -129,21 +126,15 @@ class ScanFilterOrchestrator:
         self.step_log_fn = step_log_fn or log_fn
         self.file_extensions = file_extensions or DEFAULT_FILE_EXTENSIONS
         self.max_workers = max_workers
-        self.filter_model = filter_model or model_name
-        # Build filter model config for get_model() (used by DefaultAgent in
-        # independent static filtering)
-        if filter_model_config:
-            self.filter_model_config = filter_model_config
-        else:
-            # Derive from model_kwargs so api_key/base_url are passed through
-            fmc: dict[str, Any] = {}
-            mkw = model_kwargs or {}
-            if mkw.get("api_key"):
-                fmc.setdefault("model_kwargs", {})["api_key"] = mkw["api_key"]
-            if mkw.get("base_url"):
-                fmc.setdefault("model_kwargs", {})["base_url"] = mkw["base_url"]
-            self.filter_model_config = fmc
-        self.filter_workers = filter_workers
+        self.filter_model = model_name
+        # Derive filter model config from model_kwargs so api_key/base_url are passed through
+        fmc: dict[str, Any] = {}
+        mkw = model_kwargs or {}
+        if mkw.get("api_key"):
+            fmc.setdefault("model_kwargs", {})["api_key"] = mkw["api_key"]
+        if mkw.get("base_url"):
+            fmc.setdefault("model_kwargs", {})["base_url"] = mkw["base_url"]
+        self.filter_model_config = fmc
         self.max_functions = max_functions
         self.agent_step_limit = agent_step_limit
         self.agent_cost_limit = agent_cost_limit

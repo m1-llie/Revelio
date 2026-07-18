@@ -295,9 +295,9 @@ def main(
     ),
     model: Optional[str] = typer.Option(
         None,
-        "--model",
+        "--hypothesis-model",
         envvar="MODEL_NAME",
-        help="Model name (set via --model or MODEL_NAME env var).",
+        help="Model for hypothesis generation and filtering (set via --hypothesis-model or MODEL_NAME env var).",
     ),
     docker_image: Optional[str] = typer.Option(
         None,
@@ -340,16 +340,6 @@ def main(
         10,
         "--top-n",
         help="Number of hypotheses to generate in the first (hypothesis) stage of multi-agent mode.",
-    ),
-    filter_model: Optional[str] = typer.Option(
-        None,
-        "--filter-model",
-        help="Model for scan_filter Stage 3 sub-agent verification (default: same as --model).",
-    ),
-    filter_workers: int = typer.Option(
-        4,
-        "--filter-workers",
-        help="Parallel workers for scan_filter sub-agent filtering.",
     ),
     max_functions: int = typer.Option(
         50,
@@ -428,7 +418,7 @@ def main(
 
     model_name = model or os.getenv("MODEL_NAME")
     if not model_name:
-        console.print("[bold red]No model specified.[/bold red] Set MODEL_NAME or use --model.")
+        console.print("[bold red]No model specified.[/bold red] Set MODEL_NAME or use --hypothesis-model.")
         raise typer.Exit(1)
 
     console.print(f"[bold green]Model:[/bold green] {model_name}")
@@ -470,7 +460,6 @@ def main(
 
         docker_env.config.env.update(DEFAULT_DOCKER_ENV)
 
-        effective_filter_model = filter_model or model_name
         effective_pov_model = pov_model or model_name
         store.save_manifest(
             {
@@ -479,7 +468,6 @@ def main(
                 "target_ref": arvo if arvo_mode else str(project_path),
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
                 "model_name": model_name,
-                "filter_model": effective_filter_model,
                 "poc_model": effective_pov_model,
                 "pipeline": "scan_filter_detect",
                 "top_n": top_n,
@@ -515,8 +503,6 @@ def main(
                 log_fn=log_console.print,
                 step_log_fn=log_console.log_only,
                 max_workers=max_workers,
-                filter_model=filter_model,
-                filter_workers=filter_workers,
                 max_functions=max_functions,
                 agent_step_limit=agent_step_limit,
                 agent_cost_limit=agent_cost_limit,

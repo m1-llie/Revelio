@@ -18,24 +18,22 @@
 #
 # ---- inputs -----------------------------------------------------------------
 # jobs.tsv is tab-separated with columns:
-#   name  image  model  api_key_env  files_file  [filter_model]  [extra_args]
+#   name  image  model  api_key_env  files_file  [extra_args]
 #
 #   name          short tag used in logs (e.g. openssl)
 #   image         Docker image (e.g. revelio/openssl:latest)
-#   model         --model value (e.g. anthropic/claude-haiku-4-5)
+#   model         --hypothesis-model value (e.g. anthropic/claude-haiku-4-5)
 #   api_key_env   name of the env var that holds the API key (NOT the key
 #                 itself). The script reads ${!api_key_env} at runtime.
 #   files_file    path to a text file with one target file per line; '#'
 #                 comments and blank lines are ignored. Relative paths are
 #                 resolved against the jobs.tsv's directory.
-#   filter_model  optional, overrides --filter-model for this project
 #   extra_args    optional, passed verbatim to detect.py (put at end)
 #
 # ---- env knobs --------------------------------------------------------------
 #   PROJECT_CONCURRENCY  max projects running at once         (default: 8)
 #   FILES_CONCURRENCY    files per project running at once    (default: 1)
 #   MAX_WORKERS          --max-workers passed to detect.py    (default: 4)
-#   FILTER_WORKERS       --filter-workers passed to detect.py (default: 4)
 #   TOP_N                --top-n passed to detect.py          (default: 10)
 #   BATCH_DIR            base output dir                      (default: batch/batch_<ts>)
 #   RESUME               if "1", skip pairs already marked done  (default: 0)
@@ -98,7 +96,6 @@ DRIVER_LOG="$BATCH_DIR/batch.log"
 PROJECT_CONCURRENCY="${PROJECT_CONCURRENCY:-8}"
 FILES_CONCURRENCY="${FILES_CONCURRENCY:-1}"
 MAX_WORKERS="${MAX_WORKERS:-4}"
-FILTER_WORKERS="${FILTER_WORKERS:-4}"
 TOP_N="${TOP_N:-10}"
 RESUME="${RESUME:-0}"
 DRY_RUN="${DRY_RUN:-0}"
@@ -288,7 +285,7 @@ heartbeat_loop() {
 # Run one (project, file) pair. Never exits the script on failure.
 run_one_file() {
     local name="$1" image="$2" model="$3" api_key_env="$4"
-    local filter_model="$5" extra_args="$6" rel_file="$7"
+    local extra_args="$5" rel_file="$6"
 
     local key
     key="$(safe_name "$name")__$(safe_name "$rel_file")"
@@ -315,17 +312,15 @@ run_one_file() {
 
     local -a cmd=(
         python -m revelio.run.detect
-        --arvo       "$image"
-        --model      "$model"
-        --pipeline   scan_filter
-        --target-file "$rel_file"
-        --max-workers    "$MAX_WORKERS"
-        --filter-workers "$FILTER_WORKERS"
-        --top-n          "$TOP_N"
+        --arvo             "$image"
+        --hypothesis-model "$model"
+        --pipeline         scan_filter
+        --target-file      "$rel_file"
+        --max-workers      "$MAX_WORKERS"
+        --top-n            "$TOP_N"
     )
-    [[ -n "$filter_model" ]] && cmd+=(--filter-model "$filter_model")
     # shellcheck disable=SC2206
-    [[ -n "$extra_args"   ]] && cmd+=( $extra_args )
+    [[ -n "$extra_args" ]] && cmd+=( $extra_args )
 
     log "[$name :: $rel_file] starting (model=$model, log=$log_file)"
     if [[ "$DRY_RUN" == "1" ]]; then
@@ -409,7 +404,7 @@ run_one_file() {
 # Run all files for one project (backgrounded from the main loop).
 run_one_project() {
     local name="$1" image="$2" model="$3" api_key_env="$4"
-    local filter_model="$5" extra_args="$6" files_file="$7"
+    local extra_args="$5" files_file="$6"
 
     if [[ ! -f "$files_file" ]]; then
         # resolve relative to the jobs.tsv dir
@@ -445,7 +440,7 @@ run_one_project() {
                 continue
             fi
             run_one_file "$name" "$image" "$model" "$api_key_env" \
-                         "$filter_model" "$extra_args" "$f"
+                         "$extra_args" "$f"
         done
     else
         local active=0
@@ -456,7 +451,7 @@ run_one_project() {
                 continue
             fi
             run_one_file "$name" "$image" "$model" "$api_key_env" \
-                         "$filter_model" "$extra_args" "$f" &
+                         "$extra_args" "$f" &
             active=$(( active + 1 ))
             if (( active >= FILES_CONCURRENCY )); then
                 wait -n 2>/dev/null || true
@@ -476,7 +471,7 @@ log "=== batch scan_filter starting ==="
 log "jobs        : $JOBS_TSV"
 log "batch dir   : $BATCH_DIR"
 log "PROJECT_CONCURRENCY=$PROJECT_CONCURRENCY FILES_CONCURRENCY=$FILES_CONCURRENCY"
-log "MAX_WORKERS=$MAX_WORKERS FILTER_WORKERS=$FILTER_WORKERS TOP_N=$TOP_N"
+log "MAX_WORKERS=$MAX_WORKERS TOP_N=$TOP_N"
 log "RESUME=$RESUME DRY_RUN=$DRY_RUN"
 log "MAX_RETRIES=$MAX_RETRIES RETRY_BACKOFF='$RETRY_BACKOFF' HEARTBEAT_INTERVAL=$HEARTBEAT_INTERVAL"
 
@@ -498,11 +493,11 @@ while IFS= read -r rawline || [[ -n "$rawline" ]]; do
     [[ -z "$rawline" || "$rawline" =~ ^[[:space:]]*# ]] && continue
 
     # split on tabs; up to 7 columns
-    IFS=$'\t' read -r name image model api_key_env files_file filter_model extra_args <<<"$rawline"
+    IFS=$'\t' read -r name image model api_key_env files_file extra_args <<<"$rawline"
 
     name="${name:-}"; image="${image:-}"; model="${model:-}"
     api_key_env="${api_key_env:-}"; files_file="${files_file:-}"
-    filter_model="${filter_model:-}"; extra_args="${extra_args:-}"
+    extra_args="${extra_args:-}"
 
     if [[ -z "$name" || -z "$image" || -z "$model" || -z "$api_key_env" || -z "$files_file" ]]; then
         log "WARN: bad row (need 5+ tab-separated columns): $rawline"
@@ -516,7 +511,7 @@ while IFS= read -r rawline || [[ -n "$rawline" ]]; do
     done
 
     run_one_project "$name" "$image" "$model" "$api_key_env" \
-                    "$filter_model" "$extra_args" "$files_file" &
+                    "$extra_args" "$files_file" &
     PIDS+=($!)
     active_projects=$(( active_projects + 1 ))
 done < "$JOBS_TSV"

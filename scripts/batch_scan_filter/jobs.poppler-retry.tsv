@@ -2,5 +2,5 @@
 # ANTHROPIC_KEY_1 hit its Anthropic workspace usage cap (resets 2026-05-01).
 # Invoke with RESUME=1 + same BATCH_DIR so already-OK rows are skipped.
 #
-# name	image	model	api_key_env	files_file	filter_model	extra_args
+# name	image	model	api_key_env	files_file	extra_args
 poppler	revelio/poppler:latest	openrouter/anthropic/claude-haiku-4.5	OPENROUTER_KEY	files.poppler.txt
