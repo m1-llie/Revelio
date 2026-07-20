@@ -233,7 +233,7 @@ revelio \
 
 | Variable | Description |
 |----------|-------------|
-| `MODEL_NAME` | Default model name, e.g. `anthropic/claude-haiku-4-5`, `gemini/gemini-2.5-pro`. Always include the provider prefix. Can be overridden with `--model`. |
+| `MODEL_NAME` | Default model name, e.g. `anthropic/claude-haiku-4-5`, `gemini/gemini-2.5-pro`. Always include the provider prefix. Can be overridden with `--hypothesis-model`. |
 
 ### API Keys
 
