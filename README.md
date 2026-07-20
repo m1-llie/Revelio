@@ -30,12 +30,14 @@ Revelio's key insight is to **separate speculative reasoning from executable con
 
 Scans every source file to build a broad pool of candidate hypotheses, then funnels it down through triage, dedup, filtering, and ranking. Organized as two bands:
 
-**Proposal band — high-recall expansion** (per file):
+*Proposal band — high-recall expansion (per file):*
+
 1. **Static preprocessing** — parse with tree-sitter, extract function boundaries, and run a lightweight intraprocedural check analyzer that flags which parameters lack NULL/bounds/validation guards.
 2. **Summarize file content** — one LLM pass builds a functional summary used as context (no hypotheses yet).
 3. **Synthesize hypotheses** — multiple LLM passes from different angles (whole-file, focused passes, per-function batches) emit candidate hypotheses as structured JSON → **Raw Hypothesis Pool**.
 
-**Refinement band — precision and ranking**:
+*Refinement band — precision and ranking:*
+
 4. **Sanitizer-aware triage** — one LLM call per hypothesis hints whether it is a real, sanitizer-triggerable memory-safety bug (asan/ubsan/msan) and tags suggested severity/primitive/CWE → **In-scope Hypotheses**.
 5. **Deduplicate root causes** — line/CWE-overlap prefilter + pairwise LLM judgement + union-find merge → **Merged Hypotheses**.
 6. **Reachability annotation** — `arvo targets <symbol>` (deterministic `nm` lookup) records which test-harness (entry-point) binaries link each hotspot function. Advisory ranking signal, not a hard filter.
@@ -60,9 +62,8 @@ Revelio assigns different model tiers to different tasks:
 
 | Flag | Stage | Role | Paper default |
 |------|-------|------|---------------|
-| `--model` | Stage 1 generation | Cheap/fast model for summarize + synthesize + triage + dedup | Haiku 4.5 |
-| `--filter-model` | Stage 1 filtering | Mid-tier model for the independent static-filtering sub-agent | Haiku 4.5 |
-| `--pov-model` | Stage 2 confirmation | Strongest model for PoV building + validation + report (defaults to `--model`) | Sonnet 4.6 |
+| `--hypothesis-model` | Stage 1 | Cheap/fast model for summarize + synthesize + triage + dedup + filtering | Haiku 4.5 |
+| `--pov-model` | Stage 2 | Strongest model for PoV building + validation + report (defaults to `--hypothesis-model`) | Sonnet 4.6 |
 
 ## Quick Start
 
@@ -160,12 +161,12 @@ docker run --rm -v /path/to/pov:/tmp/poc:ro -e SANITIZER=ubsan revelio/openssl:l
 ```bash
 revelio \
     --arvo n132/arvo:42470801-vul \
-    --model anthropic/claude-haiku-4-5
+    --hypothesis-model anthropic/claude-haiku-4-5
 
 # Scan a specific file only
 revelio \
     --arvo n132/arvo:42470801-vul \
-    --model anthropic/claude-haiku-4-5 \
+    --hypothesis-model anthropic/claude-haiku-4-5 \
     --target-file ffmpeg/tools/target_dec_fuzzer.c
 ```
 
@@ -179,7 +180,7 @@ For OSS-Fuzz Docker images built with the steps above:
 ```bash
 revelio \
     --arvo revelio/assimp:latest \
-    --model anthropic/claude-haiku-4-5
+    --hypothesis-model anthropic/claude-haiku-4-5
 ```
 
 ### Custom Projects
@@ -187,7 +188,7 @@ revelio \
 ```bash
 revelio \
     --project ./my-project \
-    --model anthropic/claude-haiku-4-5 \
+    --hypothesis-model anthropic/claude-haiku-4-5 \
     --target-file src/parser.c
 ```
 
@@ -210,7 +211,7 @@ revelio \
 |------|---------|-------------|
 | `--arvo`, `-a` | — | ARVO / OSS-Fuzz Docker image to analyze (mutually exclusive with `--project`) |
 | `--project`, `-p` | — | Path to a local project to analyze (copied into a container) |
-| `--model` | `MODEL_NAME` | Model for Stage 1 hypothesis generation (see [Model tiers](#model-tiers)) |
+| `--hypothesis-model` | `MODEL_NAME` | Model for Stage 1 hypothesis generation and filtering (see [Model tiers](#model-tiers)) |
 | `--target-file`, `-t` | — | Restrict scan to a single file |
 | `--max-workers` | `4` | Parallel workers for hypothesis generation |
 | `--top-n` | `5` | Number of top hypotheses to pursue |
@@ -218,9 +219,7 @@ revelio \
 | `--keep-container` | `false` | Keep Docker container after run (for debugging) |
 | `--verbose`, `-v` | `false` | Show DEBUG-level logs (raw Docker commands, per-file cleanup steps, etc.) |
 | `--agents-config-dir` | built-in | Custom directory for per-agent YAML configs |
-| `--filter-model` | Sonnet 4.6 | Model for the independent static filtering sub-agent |
-| `--filter-workers` | `4` | Parallel workers for sub-agent filtering |
-| `--pov-model` | same as `--model` | Model for PoV builder/reporter agents |
+| `--pov-model` | same as `--hypothesis-model` | Model for PoV builder/reporter agents |
 | `--max-functions` | `50` | Max functions to analyze per file in scan_filter |
 | `--agent-step-limit` | `20` | Max steps per scan_filter sub-agent |
 | `--agent-cost-limit` | `2.0` | Max cost (USD) per scan_filter sub-agent |
