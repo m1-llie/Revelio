@@ -2479,7 +2479,7 @@ function renderHypothesisDetail(row) {
 }
 
 function getPocBuilderStages() {
-  return (revelioPocStages || []).filter(s => (s.agent || '').includes('PoCBuilder'));
+  return (revelioPocStages || []).filter(s => (s.agent || '').includes('PoVBuilder') || (s.agent || '').includes('PoCBuilder'));
 }
 
 function findPocStage(stageKey) {
@@ -2847,7 +2847,7 @@ function revelioPipelineFilter(tableId, mode, btn) {
 
 function getConfirmedPocItems(d) {
   const pipeline = d.revelio_hypothesis_pipeline || [];
-  const pStages = d.revelio_poc_stages || [];
+  const pStages = d.revelio_pov_stages || [];
   const byHid = new Map();
   for (const row of pipeline) {
     const ghid = pipelineHid(row);
@@ -3155,7 +3155,7 @@ function renderRevelioDetail(d, m) {
   revelioSearchQuery = '';
   pipelinePageState = {};
   revelioPipeline = d.revelio_hypothesis_pipeline || [];
-  revelioPocStages = d.revelio_poc_stages || [];
+  revelioPocStages = d.revelio_pov_stages || [];
   revelioStage2Classify = d.revelio_stage2_classify || [];
   revelioHypothesisStages = d.revelio_hypothesis_stages || [];
   selectedHypothesisKey = null;
@@ -3675,7 +3675,7 @@ function renderLog(logText) {
     if (parts.length === 2) {
       const ts = parts[0];
       let msg = prettifyRevelioLog(parts[1]);
-      msg = msg.replace(/(RepoReviewerAgent|HypothesisGeneratorAgent|PoCBuilderAgent|ValidatorAgent|ReporterAgent)/g, '<span class="log-agent">$1</span>');
+      msg = msg.replace(/(RepoReviewerAgent|HypothesisGeneratorAgent|PoVBuilderAgent|PoCBuilderAgent|ValidatorAgent|ReporterAgent)/g, '<span class="log-agent">$1</span>');
       msg = msg.replace(/(\$[\d.]+)/g, '<span style="color:var(--yellow)">$1</span>');
       html += `<span class="${cls}"><span class="log-ts">${esc(ts)}</span> | ${msg}\n</span>`;
     } else {
