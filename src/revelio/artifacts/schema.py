@@ -120,7 +120,7 @@ class VulnHypotheses:
 
 
 @dataclass
-class PoCRecipe:
+class PoVRecipe:
     hypothesis_id: str
     script_path: str
     input_path: str

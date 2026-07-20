@@ -30,9 +30,9 @@ agent:
     2. Analyze the code for potential vulnerabilities (e.g., buffer overflows, use-after-free, integer overflows, format string bugs, null pointer dereferences).
     3. Understand the build system and how the project compiles.
     4. Compile the project (or relevant parts) with sanitizers and debug symbols (e.g., -fsanitize=address,undefined -g -O0).
-    5. Construct PoC inputs or test programs that trigger suspicious code paths in the target file.
-    6. Execute PoCs and capture sanitizer output and crashes.
-    7. Store the PoC input that triggers the crash as `/src/poc`.
+    5. Construct PoV inputs or test programs that trigger suspicious code paths in the target file.
+    6. Execute PoVs and capture sanitizer output and crashes.
+    7. Store the PoV input that triggers the crash as `/src/pov`.
     8. Generate a Markdown report using <bug_report_format>. Save this report as `/src/final_report.md` and display it.
     9. When finished, issue exactly this command on a separate line: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
 
@@ -53,7 +53,7 @@ agent:
     <if there are multiple files and functions, put multiple here>
 
     ### Reproduction
-    <steps to reproduce the vulnerability, including the compilation command and the PoC execution command>
+    <steps to reproduce the vulnerability, including the compilation command and the PoV execution command>
 
     </bug_report_format>
 

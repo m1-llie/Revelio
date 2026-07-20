@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify post-confirmation dedup without re-running scan_filter or LLM PoC.
+"""Verify post-confirmation dedup without re-running scan_filter or LLM PoV.
 
 Uses Docker + the same validation capture / signature extraction path as
 ``MultiAgentOrchestrator``, then writes ``dedup_findings.json`` like a real

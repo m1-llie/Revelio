@@ -47,7 +47,7 @@ class AgentEntry:
 
 
 def _parse_agent_key(key: str) -> tuple[str, str | None, int | None]:
-    """Parse 'PoCBuilderAgent_H01_attempt2' into ('PoCBuilderAgent', 'H01', 2)."""
+    """Parse 'PoVBuilderAgent_H01_attempt2' into ('PoVBuilderAgent', 'H01', 2)."""
     attempt = None
     m = re.search(r"_attempt(\d+)$", key)
     if m:

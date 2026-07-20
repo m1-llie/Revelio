@@ -1,75 +1,104 @@
-# Revelio
+<div align="center">
 
-<img width="354" height="349" alt="D39BDFFF-F4F6-45B1-B69A-AE60A9F6C919_1_201_a" src="https://github.com/user-attachments/assets/80249d46-3f0a-4e17-94a6-8bab5f2b426b" />
+<img width="420" alt="Revelio logo" src="website/revelio-logo-full.png" />
 
+**Cost-efficient agentic memory-safety vulnerability detection for repository-scale codebases.**
 
-A trustworthy and precise vulnerability detection AI agent that discovers memory safety related software vulnerabilities and validates them through automated PoV testing.
+📄 [Paper (arXiv)](https://arxiv.org/abs/2606.22263) · UC Berkeley
 
-- **Discovers vulnerabilities** through code review
-- **Validates findings** by building and running PoV inputs
-- **Generates reports** with detailed vulnerability information and reproduction steps
+</div>
+
+Revelio is an end-to-end AI agent that discovers memory-safety vulnerabilities in large C/C++ codebases, and only reports a finding once it has reproduced it with a sanitizer. Because every discovery is backed by an executable Proof-of-Vulnerability (PoV), Revelio avoids the hallucinated, unverifiable reports that plague naive LLM-based bug hunting.
+
+- **Discovers** candidate vulnerabilities through broad, high-recall code review with cheap models.
+- **Confirms** each candidate by building a PoV input and running the program under AddressSanitizer / UBSan / MSan.
+- **Reports** only sanitizer-confirmed bugs, with a full write-up and reproduction steps.
+
+> In the evaluation, Revelio uncovered **19 previously unknown memory-safety vulnerabilities** (7 CVEs assigned/requested) across seven mature OSS-Fuzz projects that had already been continuously fuzzed for 5–8 years, at roughly **$42 and ~1 hour per project** with **zero false positives**. On the CyberGym/ARVO benchmark it substantially outperformed frontier coding agents (Claude Code, Codex, etc.) at comparable cost.
 
 ## Architecture
 
-### Pipeline Stages
-
-1. **ScanFilterOrchestrator** — per-file multi-pass LLM analysis, classification/dedup, and Docker sub-agent filtering to produce ranked hypotheses
-2. **PoCBuilderAgent** — for each hypothesis, discovers which fuzz targets link the relevant function (`arvo targets <sym>`), then generates a PoV for each matching target. The `validate` tool automatically tests the PoV against all available sanitizers (asan, ubsan, msan). Stops on first confirmed crash.
-3. **ReporterAgent** — writes a final bug report with vulnerability details and reproduction steps
-
-### Pipeline
+Revelio's key insight is to **separate speculative reasoning from executable confirmation**. Detection is decomposed into two stages: a cheap, high-*recall* Generation Stage and a high-*precision* Confirmation Stage. Cheap models cast a wide net (a false hypothesis can be filtered later); stronger models plus a deterministic sanitizer serve as the trustworthy verifier.
 
 ```
-detect.py  --arvo / --project
-                │
-                └── ScanFilterOrchestrator (per file)
-                      ├── Initial Hypothesis Proposal: extract functions (tree-sitter),
-                      │   summarize file content, synthesize hypotheses (focused passes)
-                      ├── In-scope Hypotheses: sanitizer-aware triage (LLM classification)
-                      ├── Merged Hypotheses: deduplicate root causes
-                      ├── Reachability-Annotated Hypotheses: independent static filtering
-                      │   (Docker sub-agent)
-                      ├── Ranked Hypothesis Queue: rank for PoV confirmation
-                      └── MultiAgentOrchestrator
-                            ├── PoCBuilderAgent × N (uses validate tool)
-                            └── ReporterAgent × N
+ repository ──► Stage 1: Hypothesis Generation ──► Stage 2: Hypothesis Confirmation ──► bug reports
+ source code       (cheap, high recall)                (stronger, high precision)          + PoV files
+                ScanFilterOrchestrator                MultiAgentOrchestrator
 ```
 
-The pipeline uses three separate model tiers:
-- **`--model`** — cheap/fast model for the proposal + triage/dedup hypothesis generation (e.g., Haiku)
-- **`--filter-model`** — mid-tier model for the independent static filtering sub-agent (e.g., Sonnet)
-- **`--pov-model`** — strongest model for PoV building + validation/report (e.g., Opus)
+### Stage 1 — Hypothesis Generation
+
+Scans every source file to build a broad pool of candidate hypotheses, then funnels it down through triage, dedup, filtering, and ranking. Organized as two bands:
+
+**Proposal band — high-recall expansion** (per file):
+1. **Static preprocessing** — parse with tree-sitter, extract function boundaries, and run a lightweight intraprocedural check analyzer that flags which parameters lack NULL/bounds/validation guards.
+2. **Summarize file content** — one LLM pass builds a functional summary used as context (no hypotheses yet).
+3. **Synthesize hypotheses** — multiple LLM passes from different angles (whole-file, focused passes, per-function batches) emit candidate hypotheses as structured JSON → **Raw Hypothesis Pool**.
+
+**Refinement band — precision and ranking**:
+4. **Sanitizer-aware triage** — one LLM call per hypothesis hints whether it is a real, sanitizer-triggerable memory-safety bug (asan/ubsan/msan) and tags suggested severity/primitive/CWE → **In-scope Hypotheses**.
+5. **Deduplicate root causes** — line/CWE-overlap prefilter + pairwise LLM judgement + union-find merge → **Merged Hypotheses**.
+6. **Reachability annotation** — `arvo targets <symbol>` (deterministic `nm` lookup) records which test-harness (entry-point) binaries link each hotspot function. Advisory ranking signal, not a hard filter.
+7. **Independent static filtering** — a real Docker **sub-agent** (`DefaultAgent` + unrestricted `bash`) traces callers/callees repo-wide and votes VALID/INVALID on each hypothesis.
+8. **Rank for PoV confirmation** — deterministic sort by `(reachable, severity, confidence)` → **Ranked Hypothesis Queue**.
+
+The queue is saved to `hypotheses.json` (reusable via `--hypotheses-file`).
+
+### Stage 2 — Hypothesis Confirmation by PoV Construction
+
+For each of the top `--top-n` hypotheses:
+
+1. **Iterative PoV construction** (`PoVBuilderAgent`) — a stronger model receives a *context packet* (hypothesis, code references, selected harness, etc.) and iterates with three tools: `bash` (inspect code / write files), `validate` (test a candidate PoV), and `finish` (submit results). It writes a Python script that emits raw PoV input bytes and refines it based on validation feedback, up to `--max-pov-attempts` times.
+2. **Sanitizer-backed confirmation** — the `validate` tool runs the harness against **all available sanitizers** (asan, ubsan, msan) and parses crash signatures. A hypothesis is confirmed only when a sanitizer reproducibly crashes; the orchestrator independently re-executes the input to guard against fabricated success.
+3. **Reporting** (`ReporterAgent`) — writes the final developer-facing bug report with vulnerability details, triggering input, sanitizer output, and reproduction steps.
+
+Deliverables (report, PoV input, PoV generator script) are copied out of the container only on a confirmed crash.
+
+### Model tiers
+
+Revelio assigns different model tiers to different tasks:
+
+| Flag | Stage | Role | Paper default |
+|------|-------|------|---------------|
+| `--model` | Stage 1 generation | Cheap/fast model for summarize + synthesize + triage + dedup | Haiku 4.5 |
+| `--filter-model` | Stage 1 filtering | Mid-tier model for the independent static-filtering sub-agent | Haiku 4.5 |
+| `--pov-model` | Stage 2 confirmation | Strongest model for PoV building + validation + report (defaults to `--model`) | Sonnet 4.6 |
 
 ## Quick Start
+
+### Requirements
+
+- Python ≥ 3.10 (3.12 recommended)
+- Docker (or Podman) — every codebase-under-test runs inside a container for isolation and reproducibility
 
 ### Installation
 
 ```bash
-git clone <repo-url>
-cd revelio
-```
+git clone https://github.com/m1-llie/Revelio.git
+cd Revelio
 
-**conda env**
-
-```bash
 conda create -n revelio python=3.12 -y
 conda activate revelio
 pip install -e .
 ```
 
+Installing the package also exposes a `revelio` console command (equivalent to `python -m revelio.run.detect`), used throughout this README.
+
 ### Configuration
 
-Create a `.env` file in the project root (or set environment variables):
+Create a `.env` file in the project root (or export the equivalent environment variables):
 
 ```bash
-# Required: at least one model + its API key
-MODEL_NAME=anthropic/claude-opus-4-6
+# Required: a default model + its API key
+MODEL_NAME=anthropic/claude-haiku-4-5
 ANTHROPIC_API_KEY=sk-ant-...
 
 # Or use Gemini
 # MODEL_NAME=gemini/gemini-2.5-pro
 # GEMINI_API_KEY=AIza...
 ```
+
+`MODEL_NAME` is the default for `--model`; the provider prefix (`anthropic/`, `gemini/`, …) is required. See [Environment Variables](#environment-variables) for the full list.
 
 ## Building OSS-Fuzz Docker Images
 
@@ -78,7 +107,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ```bash
 scripts/prepare_ossfuzz_project.sh openssl                           # single project
 scripts/prepare_ossfuzz_project.sh openssl assimp curl               # multiple projects
-scripts/prepare_ossfuzz_project.sh --sanitizers asan,ubsan openssl   # skip MSan
+scripts/prepare_ossfuzz_project.sh --sanitizers asan,ubsan openssl   # if skip MSan
 scripts/prepare_ossfuzz_project.sh --oss-fuzz-dir /data/oss-fuzz openssl
 ```
 
@@ -104,7 +133,7 @@ Re-run the script to pick up upstream source code changes.
 arvo                         # run default fuzzer with /tmp/poc (SANITIZER=asan)
 arvo list                    # list fuzz targets for current SANITIZER
 arvo list --all              # list fuzz targets across all sanitizers
-arvo run <fuzzer> [poc]      # run a specific fuzzer (default poc: /tmp/poc)
+arvo run <fuzzer> [poc]      # run a specific fuzzer (default input: /tmp/poc)
 arvo targets <symbol>        # find which fuzz targets link a given function (nm lookup)
 arvo compile                 # recompile the project
 SANITIZER=ubsan arvo         # switch sanitizer
@@ -118,8 +147,8 @@ The orchestrator uses `arvo targets <function>` to match hypotheses to reachable
 
 ```bash
 docker run --rm revelio/openssl:latest arvo list --all
-docker run --rm -v /path/to/poc:/tmp/poc:ro revelio/openssl:latest arvo run openssl_fuzzer
-docker run --rm -v /path/to/poc:/tmp/poc:ro -e SANITIZER=ubsan revelio/openssl:latest arvo run openssl_fuzzer
+docker run --rm -v /path/to/pov:/tmp/poc:ro revelio/openssl:latest arvo run openssl_fuzzer
+docker run --rm -v /path/to/pov:/tmp/poc:ro -e SANITIZER=ubsan revelio/openssl:latest arvo run openssl_fuzzer
 ```
 
 ## Revelio for Vulnerability Detection
@@ -129,14 +158,14 @@ docker run --rm -v /path/to/poc:/tmp/poc:ro -e SANITIZER=ubsan revelio/openssl:l
 [ARVO](https://github.com/n132/ARVO) provides pre-built Docker images with fuzzing infrastructure.
 
 ```bash
-python -m revelio.run.detect \
+revelio \
     --arvo n132/arvo:42470801-vul \
-    --model anthropic/claude-opus-4-6
+    --model anthropic/claude-haiku-4-5
 
 # Scan a specific file only
-python -m revelio.run.detect \
+revelio \
     --arvo n132/arvo:42470801-vul \
-    --model anthropic/claude-opus-4-6 \
+    --model anthropic/claude-haiku-4-5 \
     --target-file ffmpeg/tools/target_dec_fuzzer.c
 ```
 
@@ -148,17 +177,17 @@ python -m revelio.run.detect \
 For OSS-Fuzz Docker images built with the steps above:
 
 ```bash
-python -m revelio.run.detect \
+revelio \
     --arvo revelio/assimp:latest \
-    --model anthropic/claude-opus-4-6
+    --model anthropic/claude-haiku-4-5
 ```
 
 ### Custom Projects
 
 ```bash
-python -m revelio.run.detect \
+revelio \
     --project ./my-project \
-    --model anthropic/claude-opus-4-6 \
+    --model anthropic/claude-haiku-4-5 \
     --target-file src/parser.c
 ```
 
@@ -166,23 +195,26 @@ Use `--docker-image` to specify a custom Docker base image (default: `revelio/me
 
 ### Resuming from saved hypotheses
 
-The scan_filter stage saves hypotheses to `output/<run_id>/hypotheses.json`. You can skip the scan stage and go straight to PoV generation:
+Stage 1 saves its ranked queue to `output/<run_id>/hypotheses.json`. You can skip the hypothesis generation stage and go straight to Stage 2 PoV construction:
 
 ```bash
-python -m revelio.run.detect \
+revelio \
     --arvo revelio/assimp:latest \
     --hypotheses-file output/<run_id>/hypotheses.json \
-    --model anthropic/claude-opus-4-6
+    --pov-model anthropic/claude-sonnet-4-6
 ```
 
 ### Key Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--arvo`, `-a` | — | ARVO / OSS-Fuzz Docker image to analyze (mutually exclusive with `--project`) |
+| `--project`, `-p` | — | Path to a local project to analyze (copied into a container) |
+| `--model` | `MODEL_NAME` | Model for Stage 1 hypothesis generation (see [Model tiers](#model-tiers)) |
 | `--target-file`, `-t` | — | Restrict scan to a single file |
 | `--max-workers` | `4` | Parallel workers for hypothesis generation |
-| `--top-n` | `10` | Number of top hypotheses to pursue |
-| `--max-poc-attempts` | `3` | Max validation attempts per hypothesis (PoCBuilder's `validate` tool calls) |
+| `--top-n` | `5` | Number of top hypotheses to pursue |
+| `--max-pov-attempts` | `5` | Max validation attempts per hypothesis (PoVBuilder's `validate` tool calls) |
 | `--keep-container` | `false` | Keep Docker container after run (for debugging) |
 | `--verbose`, `-v` | `false` | Show DEBUG-level logs (raw Docker commands, per-file cleanup steps, etc.) |
 | `--agents-config-dir` | built-in | Custom directory for per-agent YAML configs |
@@ -202,7 +234,7 @@ python -m revelio.run.detect \
 
 | Variable | Description |
 |----------|-------------|
-| `MODEL_NAME` | Default model name, e.g. `anthropic/claude-opus-4-6`, `gemini/gemini-2.5-pro`. Always include the provider prefix. Can be overridden with `--model`. |
+| `MODEL_NAME` | Default model name, e.g. `anthropic/claude-haiku-4-5`, `gemini/gemini-2.5-pro`. Always include the provider prefix. Can be overridden with `--model`. |
 
 ### API Keys
 
@@ -215,19 +247,6 @@ python -m revelio.run.detect \
 
 > **Tip:** You only need the provider-specific key for your chosen model. `MODEL_API_KEY` is an alternative that works across providers via litellm.
 
-### Model Behavior
-
-Temperature and other model parameters are configured **per-agent in YAML configs** (`src/revelio/config/agents/`), not via environment variables:
-
-| Agent | Temperature | Purpose |
-|-------|-------------|---------|
-| `file_hypothesis.yaml` | 0.4 | Balanced hypothesis generation |
-| `poc_builder.yaml` | 1.0 | Creative PoV building + validation |
-| `validator.yaml` | 0.0 | Strict crash validation (standalone use) |
-| `reporter.yaml` | 0.2 | Consistent report writing |
-
-Above temperatures work for GPT and Claude model series.
-For Gemini-3 series there's a community report of using temperature=1.0.
 
 ### Cost and Rate Limits
 
@@ -259,17 +278,17 @@ output/<run_id>/
 └── artifacts/
     ├── handoffs/          # Inter-agent data (one JSON per stage + hypothesis)
     │   ├── hypotheses.json
-    │   ├── poc_recipe_H01.json
+    │   ├── pov_recipe_H01.json
     │   ├── validation_H01.json
     │   └── report_H01.json
     └── deliverables/      # Final outputs (copied from container on success)
         ├── final_report_H01.md
-        ├── poc_H01
+        ├── pov_H01
         └── result_script_H01.py
 ```
 
 - **`manifest.json`** — records run_id, target, model, pipeline mode, top_n, max_workers
-- **`events.jsonl`** — real-time event stream: `run_start`, `agent_start`, `agent_end`, `poc_attempt`, `validation_failed`, `run_success`, etc.
+- **`events.jsonl`** — real-time event stream: `run_start`, `agent_start`, `agent_end`, `pov_attempt`, `validation_failed`, `run_success`, etc.
 - **`trajectory.json`** — full conversation history for all agents, keyed by agent name
 - **`handoffs/`** — structured JSON data passed between pipeline stages
 - **`deliverables/`** — the final artifacts: bug report, PoV input file, and PoV generator script (only present when a vulnerability is confirmed)
@@ -284,38 +303,39 @@ SILENT_STARTUP=1 python tools/cost_report.py output/<run_id>
 SILENT_STARTUP=1 python tools/cost_report.py output/<run_id> --write
 ```
 
-The report reads saved `trajectory.json` and `traces/*.json`. For agent
-trajectories it can split cost into cached input, uncached input, and output
-when Anthropic/LiteLLM usage fields are present. Some scan_filter
-proposal/refinement traces currently only save aggregate `cost`/`calls`, so
-those stages are included in direct API cost but cannot always be split into
-cached/uncached tokens retroactively.
+The report reads saved `trajectory.json` and `traces/*.json`. For agent trajectories it can split cost into cached input, uncached input, and output when Anthropic/LiteLLM usage fields are present. Some scan_filter proposal/refinement traces currently only save aggregate `cost`/`calls`, so those stages are included in direct API cost but cannot always be split into cached/uncached tokens retroactively.
 
 ### Validating PoVs
 
-Validate PoVs against ARVO `-fix` images (patched versions):
+Validate PoVs against ARVO `-fix` images:
 
 ```bash
-python tools/validate_poc.py \
+python tools/validate_pov.py \
     --run-dir output/<run_id> \
-    --poc output/<run_id>/artifacts/deliverables/poc_H01
+    --pov output/<run_id>/artifacts/deliverables/pov_H01
 ```
 
 ## Project Structure
 
 ```
-revelio/
-├── agents/          # Agent implementations (DefaultAgent)
-├── analysis/        # Static C/C++ check analyzer (tree-sitter)
-├── artifacts/       # Artifact store (typed, append-only, thread-safe)
-├── config/          # YAML configs: agents/, arvo_targets.json
-├── environments/    # Execution environments (Docker)
-├── models/          # LLM interfaces (LiteLLM, Anthropic)
-├── orchestrator/    # Multi-agent pipeline + scan-filter orchestration
-├── run/             # CLI entry point (detect.py)
-├── tools/           # Agent tools (finish, validate)
-└── utils/           # Utility functions
+Revelio/
+├── src/revelio/
+│   ├── agents/          # Agent implementations (DefaultAgent)
+│   ├── analysis/        # Static C/C++ check analyzer (tree-sitter)
+│   ├── artifacts/       # Artifact store (typed, append-only, thread-safe)
+│   ├── config/          # YAML configs: agents/, arvo_targets.json
+│   ├── environments/    # Execution environments (Docker)
+│   ├── models/          # LLM interfaces (LiteLLM, Anthropic)
+│   ├── orchestrator/    # ScanFilterOrchestrator (Stage 1) + MultiAgentOrchestrator (Stage 2)
+│   ├── run/             # CLI entry point (detect.py) + clean_arvo
+│   ├── tools/           # Agent tools (bash/validate/finish)
+│   └── utils/           # Utility functions
+├── tools/               # Standalone CLIs: cost_report, inspector, validate_pov
+├── scripts/             # OSS-Fuzz image builder, arvo runner, batch helpers
+├── docker/              # Base image Dockerfiles
+└── website/             # Web trace viewer
 ```
+
 
 ## Check Agent Running Trajectories
 

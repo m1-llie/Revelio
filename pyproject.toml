@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "revelio"
-version = "0.0.1"
+version = "0.1.0"
 description = "A trustworthy and precise vulnerability detection AI agent"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,4 +1,4 @@
-"""Validate tool for feeding a PoC to the ARVO harness and checking for crashes."""
+"""Validate tool for feeding a PoV to the ARVO harness and checking for crashes."""
 
 from __future__ import annotations
 
@@ -62,17 +62,17 @@ def make_validate_tool(env: Any, capture: list[dict] | None = None, log_fn: Call
 
     sanitizers = _discover_sanitizers(env)
 
-    def validate(poc_path: str) -> str:
-        """Copy a PoC file to /tmp/poc and run arvo to check for a sanitizer crash.
+    def validate(pov_path: str) -> str:
+        """Copy a PoV file to /tmp/poc and run arvo to check for a sanitizer crash.
 
-        For multi-sanitizer images (OSS-Fuzz), the PoC is tested against
+        For multi-sanitizer images (OSS-Fuzz), the PoV is tested against
         every available sanitizer.  For single-sanitizer images (ARVO),
         it runs once with the default configuration.
 
         Args:
-            poc_path: Absolute path to the PoC file inside the container.
+            pov_path: Absolute path to the PoV file inside the container.
         """
-        env.execute(f"cp {poc_path} /tmp/poc")
+        env.execute(f"cp {pov_path} /tmp/poc")
 
         if not sanitizers:
             # Flat /out/ layout (original ARVO images) — single run

@@ -91,12 +91,12 @@ def _is_run_dir(path):
     return False
 
 
-def _sum_log_poc_cost(log_text):
+def _sum_log_pov_cost(log_text):
     """Sum every "cost=$N" occurrence in a Revelio run's log.txt.
 
-    This is the only place the true PoC-builder spend survives when a
+    This is the only place the true PoV-builder spend survives when a
     hypothesis gets retried: trajectory.json's `agents` dict is keyed by
-    agent name (e.g. "PoCBuilderAgent_SF01"), so a retried hypothesis
+    agent name (e.g. "PoVBuilderAgent_SF01"), so a retried hypothesis
     overwrites its own entry and silently drops every earlier attempt's
     cost. The log line is written once per attempt (including ones that hit
     LimitsExceeded and never called finish()), so summing it captures every
@@ -113,10 +113,10 @@ def _sum_log_poc_cost(log_text):
     return total
 
 
-def _poc_model_from_trajectory(run_dir):
-    """Best-effort real PoC-stage model, read from trajectory.json.
+def _pov_model_from_trajectory(run_dir):
+    """Best-effort real PoV-stage model, read from trajectory.json.
 
-    manifest.json's "poc_model" is absent on older runs (the field was added
+    manifest.json's "pov_model" is absent on older runs (the field was added
     later), so callers must not assume it reflects the actual model used —
     the true value is recorded per-agent in trajectory.json regardless of
     manifest schema version.
@@ -128,7 +128,8 @@ def _poc_model_from_trajectory(run_dir):
         traj = _read_json(traj_path)
         agents = traj.get("agents", {}) if isinstance(traj, dict) else {}
         for agent_name, agent_data in agents.items():
-            if "PoCBuilder" not in agent_name or not isinstance(agent_data, dict):
+            # Accept both the current "PoVBuilder" and legacy "PoCBuilder" names.
+            if not ("PoVBuilder" in agent_name or "PoCBuilder" in agent_name) or not isinstance(agent_data, dict):
                 continue
             info = agent_data.get("info") or {}
             model_name = ((info.get("config") or {}).get("model") or {}).get("model_name")
@@ -393,7 +394,7 @@ def _traj_to_detail(run_dir, run_id=None):
         "index": {"counters": {}},
         "events": [],
         "log": "",
-        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "poc", "validation", "reports"]},
+        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "pov", "validation", "reports"]},
         "hypothesis_outputs": {},
         "trajectory_summaries": traj_summaries,
         "trajectory_only": True,
@@ -747,7 +748,7 @@ def _cc_traj_to_detail(run_dir, run_id=None):
         "index": {"counters": {}},
         "events": [],
         "log": "",
-        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "poc", "validation", "reports"]},
+        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "pov", "validation", "reports"]},
         "hypothesis_outputs": {},
         "trajectory_summaries": traj_summaries,
         "trajectory_only": True,
@@ -952,7 +953,7 @@ def _build_revelio_hypothesis_pipeline(
     stage2_dedup,
     hypothesis_stages,
     hypotheses,
-    poc_stages,
+    pov_stages,
     val_by_hid,
     rep_by_hid,
     stage1_locations=None,
@@ -998,13 +999,13 @@ def _build_revelio_hypothesis_pipeline(
                     return ghid
         return None
 
-    poc_hids = {
+    pov_hids = {
         ps.get("hid")
-        for ps in poc_stages
-        if ps.get("hid") and "PoCBuilder" in (ps.get("agent") or "")
+        for ps in pov_stages
+        if ps.get("hid") and ("PoVBuilder" in (ps.get("agent") or "") or "PoCBuilder" in (ps.get("agent") or ""))
     }
     confirmed_hids = set()
-    for ghid in all_ghids | poc_hids:
+    for ghid in all_ghids | pov_hids:
         if not ghid:
             continue
         # val_by_hid/rep_by_hid store the raw handoff wrapper
@@ -1088,9 +1089,9 @@ def _build_revelio_hypothesis_pipeline(
                 if global_hid else None
             )
 
-            poc_status = "skipped"
-            if global_hid and global_hid in poc_hids:
-                poc_status = "confirmed" if confirmed else "attempted"
+            pov_status = "skipped"
+            if global_hid and global_hid in pov_hids:
+                pov_status = "confirmed" if confirmed else "attempted"
 
             pipeline.append({
                 "index": idx,
@@ -1101,7 +1102,7 @@ def _build_revelio_hypothesis_pipeline(
                 "classify": classify,
                 "dedup": dedup,
                 "filter": filt,
-                "poc": {"status": poc_status},
+                "pov": {"status": pov_status},
                 "final": {
                     "survived": survived,
                     "confirmed": confirmed,
@@ -1137,9 +1138,9 @@ def _compute_revelio_funnel(*, pipeline, confirmed, ranked_count=None):
             r["global_hid"] for r in pipeline
             if r["final"]["survived"] and r.get("global_hid")
         })
-    poc_attempted = len({
+    pov_attempted = len({
         r["global_hid"] for r in pipeline
-        if r["poc"]["status"] in ("attempted", "confirmed") and r.get("global_hid")
+        if r["pov"]["status"] in ("attempted", "confirmed") and r.get("global_hid")
     })
 
     return {
@@ -1148,12 +1149,12 @@ def _compute_revelio_funnel(*, pipeline, confirmed, ranked_count=None):
         "after_dedup": after_dedup,
         "after_static_filter": after_static_filter,
         "after_rank": after_rank,
-        "poc_attempted": poc_attempted,
+        "pov_attempted": pov_attempted,
         "confirmed": confirmed,
     }
 
 
-def _compute_revelio_cost(*, stage2_classify, hypothesis_stages, poc_stages, events, log_text=""):
+def _compute_revelio_cost(*, stage2_classify, hypothesis_stages, pov_stages, events, log_text=""):
     scan_cost = 0.0
     for ev in events:
         payload = ev.get("payload") or {}
@@ -1168,23 +1169,23 @@ def _compute_revelio_cost(*, stage2_classify, hypothesis_stages, poc_stages, eve
             info = s.get("info") or {}
             if info.get("model_cost"):
                 scan_cost += float(info["model_cost"])
-    # Prefer log.txt's "cost=$" lines over trajectory.json's poc_stages: the
-    # latter is keyed by agent name (e.g. "PoCBuilderAgent_SF01"), so a
+    # Prefer log.txt's "cost=$" lines over trajectory.json's pov_stages: the
+    # latter is keyed by agent name (e.g. "PoVBuilderAgent_SF01"), so a
     # hypothesis retried after LimitsExceeded overwrites its own trajectory
     # entry and silently drops every earlier attempt's cost. The log line is
     # written once per attempt regardless of outcome, so it's the only place
     # the true total spend survives.
-    poc_cost = _sum_log_poc_cost(log_text) if log_text else 0.0
-    if poc_cost == 0.0:
-        for ps in poc_stages:
+    pov_cost = _sum_log_pov_cost(log_text) if log_text else 0.0
+    if pov_cost == 0.0:
+        for ps in pov_stages:
             info = ps.get("info") or {}
             stats = info.get("model_stats") or {}
             if stats.get("instance_cost"):
-                poc_cost += float(stats["instance_cost"])
+                pov_cost += float(stats["instance_cost"])
     return {
         "scan": round(scan_cost, 4),
-        "poc": round(poc_cost, 4),
-        "total": round(scan_cost + poc_cost, 4),
+        "pov": round(pov_cost, 4),
+        "total": round(scan_cost + pov_cost, 4),
     }
 
 
@@ -1192,8 +1193,8 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
     """Detail builder for Revelio's `scan_filter_detect` pipeline.
 
     Bundles each hypothesis (from hypotheses.json) with its handoff artifacts
-    (poc_recipe_*.json, validation_*.json, report_*.json) and parses the
-    per-hypothesis PoCBuilderAgent trajectory into inline messages.
+    (pov_recipe_*.json, validation_*.json, report_*.json) and parses the
+    per-hypothesis PoVBuilderAgent trajectory into inline messages.
     """
     manifest = _read_json(run_dir / "manifest.json") if (run_dir / "manifest.json").exists() else {}
     events = _read_jsonl(run_dir / "events.jsonl") if (run_dir / "events.jsonl").exists() else []
@@ -1220,14 +1221,15 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
         except Exception:
             return None
 
-    poc_by_hid = {}
+    pov_by_hid = {}
     val_by_hid = {}
     rep_by_hid = {}
     duplicate_of = {}
     if handoff_dir.is_dir():
-        for f in handoff_dir.glob("poc_recipe_*.json"):
-            hid = f.stem.replace("poc_recipe_", "")
-            poc_by_hid[hid] = _maybe_json(f)
+        # Read both the current "pov_recipe_*" and legacy "poc_recipe_*" handoffs.
+        for f in list(handoff_dir.glob("pov_recipe_*.json")) + list(handoff_dir.glob("poc_recipe_*.json")):
+            hid = f.stem.replace("pov_recipe_", "").replace("poc_recipe_", "")
+            pov_by_hid[hid] = _maybe_json(f)
         for f in handoff_dir.glob("validation_*.json"):
             hid = f.stem.replace("validation_", "")
             val_by_hid[hid] = _maybe_json(f)
@@ -1237,11 +1239,11 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
         dedup_wrapper = _maybe_json(handoff_dir / "dedup_findings.json")
         duplicate_of = ((dedup_wrapper or {}).get("data") or {}).get("duplicate_of") or {}
 
-    # PoC-stage trajectories live in trajectory.json under `agents`
-    # (PoCBuilderAgent_SFNN, ReporterAgent_SFNN_attempt*, …)
-    poc_stages = []
+    # PoV-stage trajectories live in trajectory.json under `agents`
+    # (PoVBuilderAgent_SFNN, ReporterAgent_SFNN_attempt*, …)
+    pov_stages = []
     traj_path = run_dir / "trajectory.json"
-    poc_idx = 0
+    pov_idx = 0
     if traj_path.exists():
         try:
             traj_raw = _read_json(traj_path)
@@ -1253,8 +1255,8 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
                 parsed = _parse_tool_calls_messages(msgs) if include_messages else []
                 hm = re.search(r"_(SF\d+)(?:_|$)", agent_name)
                 hid = hm.group(1) if hm else None
-                poc_stages.append({
-                    "stage_key": f"poc-{poc_idx}",
+                pov_stages.append({
+                    "stage_key": f"pov-{pov_idx}",
                     "label": agent_name,
                     "hid": hid,
                     "agent": agent_name,
@@ -1263,17 +1265,21 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
                     "raw_count": len(msgs),
                     "message_count": len(msgs),
                 })
-                poc_idx += 1
+                pov_idx += 1
         except Exception:
             pass
 
-    if not manifest.get("poc_model"):
-        for ps in poc_stages:
-            info = ps.get("info") or {}
-            model_name = ((info.get("config") or {}).get("model") or {}).get("model_name")
-            if model_name:
-                manifest = {**manifest, "poc_model": model_name}
-                break
+    if not manifest.get("pov_model"):
+        # Older manifests recorded this under "poc_model".
+        if manifest.get("poc_model"):
+            manifest = {**manifest, "pov_model": manifest["poc_model"]}
+        else:
+            for ps in pov_stages:
+                info = ps.get("info") or {}
+                model_name = ((info.get("config") or {}).get("model") or {}).get("model_name")
+                if model_name:
+                    manifest = {**manifest, "pov_model": model_name}
+                    break
 
     # Hypothesis-stage trajectories live under traces/{stage1,stage2,stage3_filter}.
     hypothesis_stages = []
@@ -1408,8 +1414,8 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
                 })
                 stage3_idx += 1
 
-    # Hypothesis metadata for each PoC stage (so the frontend can show what
-    # hypothesis the PoC builder was working on).
+    # Hypothesis metadata for each PoV stage (so the frontend can show what
+    # hypothesis the PoV builder was working on).
     hyp_by_hid = {}
     for h in hypotheses:
         if isinstance(h, dict):
@@ -1417,16 +1423,16 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
             if hid:
                 hyp_by_hid[hid] = h
 
-    # Attach artifact summaries to each PoC stage for inline context.
-    for ps in poc_stages:
+    # Attach artifact summaries to each PoV stage for inline context.
+    for ps in pov_stages:
         hid = ps.get("hid")
         ps["hypothesis"] = hyp_by_hid.get(hid) if hid else None
-        ps["poc"] = poc_by_hid.get(hid) if hid else None
+        ps["pov"] = pov_by_hid.get(hid) if hid else None
         ps["validation"] = val_by_hid.get(hid) if hid else None
         ps["report"] = rep_by_hid.get(hid) if hid else None
 
     # Confirmed count derived from validation/report artifacts. Hids folded
-    # into a canonical duplicate by the post-PoC findings dedup pass are
+    # into a canonical duplicate by the post-PoV findings dedup pass are
     # excluded so the same real bug isn't counted once per duplicate hid.
     confirmed = 0
     for hid in hyp_by_hid:
@@ -1443,7 +1449,7 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
         stage2_dedup=stage2_dedup,
         hypothesis_stages=hypothesis_stages,
         hypotheses=hypotheses,
-        poc_stages=poc_stages,
+        pov_stages=pov_stages,
         val_by_hid=val_by_hid,
         rep_by_hid=rep_by_hid,
         stage1_locations=_load_stage1_hypothesis_locations(traces_dir),
@@ -1462,7 +1468,7 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
     cost = _compute_revelio_cost(
         stage2_classify=stage2_classify,
         hypothesis_stages=hypothesis_stages,
-        poc_stages=poc_stages,
+        pov_stages=pov_stages,
         events=events,
         log_text=log_text,
     )
@@ -1481,15 +1487,15 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
             pass
 
     hyp_msg_total = sum(s.get("raw_count", 0) for s in hypothesis_stages)
-    poc_msg_total = sum(s.get("raw_count", 0) for s in poc_stages)
+    pov_msg_total = sum(s.get("raw_count", 0) for s in pov_stages)
 
-    poc_status = "not_run"
-    if poc_stages:
-        poc_status = "ran"
+    pov_status = "not_run"
+    if pov_stages:
+        pov_status = "ran"
     elif funnel.get("after_rank", 0) == 0:
-        poc_status = "skipped_no_hypotheses"
+        pov_status = "skipped_no_hypotheses"
     elif not traj_path.exists():
-        poc_status = "skipped_or_incomplete"
+        pov_status = "skipped_or_incomplete"
 
     return {
         "manifest": manifest,
@@ -1497,7 +1503,7 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
         "log": log_text,
         "revelio": True,
         "revelio_hypothesis_stages": hypothesis_stages,
-        "revelio_poc_stages": poc_stages,
+        "revelio_pov_stages": pov_stages,
         "revelio_stage2_classify": stage2_classify,
         "revelio_stage2_dedup": stage2_dedup,
         "revelio_hypothesis_pipeline": hypothesis_pipeline,
@@ -1505,20 +1511,20 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
             "hypothesis_count": len(hyp_by_hid),
             "confirmed": confirmed,
             "hypothesis_steps": len(hypothesis_stages),
-            "poc_steps": len(poc_stages),
+            "pov_steps": len(pov_stages),
             "hypothesis_msgs": hyp_msg_total,
-            "poc_msgs": poc_msg_total,
+            "pov_msgs": pov_msg_total,
             "cost_total": cost["total"],
             "cost_scan": cost["scan"],
-            "cost_poc": cost["poc"],
+            "cost_pov": cost["pov"],
             "duration_seconds": duration_seconds,
             "funnel": funnel,
-            "poc_status": poc_status,
+            "pov_status": pov_status,
             "has_trajectory": traj_path.exists(),
         },
         # Legacy fields kept empty so the existing frontend doesn't choke
         "index": {"counters": {}},
-        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "poc", "validation", "reports"]},
+        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "pov", "validation", "reports"]},
         "hypothesis_outputs": {},
         "trajectory_summaries": [],
     }
@@ -1527,7 +1533,7 @@ def _revelio_to_detail(run_dir, run_id=None, *, include_messages=True):
 def _revelio_get_stage(run_dir, stage_key, offset=0, limit=None):
     """Load messages for a single Revelio stage (lazy-load API)."""
     detail = _revelio_to_detail(run_dir, include_messages=True)
-    for collection in (detail.get("revelio_hypothesis_stages") or [], detail.get("revelio_poc_stages") or []):
+    for collection in (detail.get("revelio_hypothesis_stages") or [], detail.get("revelio_pov_stages") or []):
         for stage in collection:
             if stage.get("stage_key") == stage_key:
                 messages = stage.get("messages") or []
@@ -1743,7 +1749,7 @@ def _cc_msg_to_detail(run_dir, run_id=None):
         "index": {"counters": {}},
         "events": [],
         "log": "",
-        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "poc", "validation", "reports"]},
+        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "pov", "validation", "reports"]},
         "hypothesis_outputs": {},
         "trajectory_summaries": traj_summaries,
         "trajectory_only": True,
@@ -1861,7 +1867,7 @@ def _codex_msg_to_detail(run_dir, run_id=None):
         "index": {"counters": {}},
         "events": [],
         "log": "",
-        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "poc", "validation", "reports"]},
+        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "pov", "validation", "reports"]},
         "hypothesis_outputs": {},
         "trajectory_summaries": traj_summaries,
         "trajectory_only": True,
@@ -2005,7 +2011,7 @@ def _kiss_to_detail(run_dir, run_id=None):
         "index": {"counters": {}},
         "events": [],
         "log": "",
-        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "poc", "validation", "reports"]},
+        "artifacts": {cat: [] for cat in ["code_review", "hypotheses", "pov", "validation", "reports"]},
         "hypothesis_outputs": {},
         "trajectory_summaries": traj_summaries,
         "trajectory_only": True,
@@ -2414,9 +2420,9 @@ def make_handler(output_dirs):
                     if index_path.exists():
                         idx = _read_json(index_path)
                         counters = idx.get("counters", {})
-                    # parse log for PoC-builder cost (every attempt, including retries)
+                    # parse log for PoV-builder cost (every attempt, including retries)
                     log_path = run_dir / "log.txt"
-                    poc_cost = _sum_log_poc_cost(log_path.read_text(errors="replace")) if log_path.exists() else 0.0
+                    pov_cost = _sum_log_pov_cost(log_path.read_text(errors="replace")) if log_path.exists() else 0.0
                     # check success from events; scan_filter_end carries the
                     # hypothesis-generation phase's cost, which log.txt's "cost=$"
                     # lines don't include (that summary line uses "cost: $", no "=").
@@ -2437,7 +2443,7 @@ def make_handler(output_dirs):
                                 if ev.get("event") == "run_success":
                                     status = "partial"
                                     hypotheses_confirmed += 1
-                        # run_success_all's count is emitted before the post-PoC
+                        # run_success_all's count is emitted before the post-PoV
                         # findings dedup runs, so it can count the same real bug
                         # once per duplicate hid — subtract those out here.
                         dedup_path = run_dir / "artifacts" / "handoffs" / "dedup_findings.json"
@@ -2454,13 +2460,13 @@ def make_handler(output_dirs):
                         "target_type": manifest.get("target_type"),
                         "model_name": manifest.get("model_name"),
                         "filter_model": manifest.get("filter_model"),
-                        "poc_model": manifest.get("poc_model") or _poc_model_from_trajectory(run_dir),
+                        "pov_model": manifest.get("pov_model") or manifest.get("poc_model") or _pov_model_from_trajectory(run_dir),
                         "pipeline": manifest.get("pipeline"),
                         "created_at": manifest.get("created_at_utc"),
                         "counters": counters,
-                        "total_cost": round(scan_cost + poc_cost, 4),
+                        "total_cost": round(scan_cost + pov_cost, 4),
                         "scan_cost": round(scan_cost, 4),
-                        "poc_cost": round(poc_cost, 4),
+                        "pov_cost": round(pov_cost, 4),
                         "status": status,
                         "hypotheses_confirmed": hypotheses_confirmed,
                         "source_dir": str(out_dir.name),
@@ -2550,7 +2556,7 @@ def make_handler(output_dirs):
 
             # Load all key artifacts inline
             artifacts = {}
-            for category in ["code_review", "hypotheses", "poc", "validation", "reports"]:
+            for category in ["code_review", "hypotheses", "pov", "validation", "reports"]:
                 artifacts[category] = []
                 for entry in index.get("artifacts", {}).get(category, []):
                     art_path = run_dir / entry.get("path", "")
@@ -2573,14 +2579,14 @@ def make_handler(output_dirs):
                             files["report_md"] = f.read_text()
                         elif f.suffix == ".py":
                             files["script_py"] = f.read_text()
-                        elif f.name.startswith("poc_"):
+                        elif f.name.startswith("pov_"):
                             # Binary — show hex
                             raw = f.read_bytes()
-                            files["poc_hex"] = raw.hex()
-                            files["poc_size"] = len(raw)
+                            files["pov_hex"] = raw.hex()
+                            files["pov_size"] = len(raw)
                             # Try to show printable portion
                             try:
-                                files["poc_ascii"] = raw.decode("ascii", errors="replace")
+                                files["pov_ascii"] = raw.decode("ascii", errors="replace")
                             except Exception:
                                 pass
                     hyp_outputs[hid] = files

@@ -195,7 +195,7 @@ def build_submission(result_text: str, payload: list[dict] | None) -> str:
         "status": status,
         "analysis": analysis,
         "result_script": "none",
-        "poc": "none",
+        "pov": "none",
         "report": "none",
     }
     if payload is not None:

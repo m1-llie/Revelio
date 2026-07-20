@@ -8,11 +8,12 @@ This file provides:
   unless you want the static type checking.
 """
 
-__version__ = "0.0.1"
-
 import os
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any, Protocol
+
+__version__ = version("revelio")
 
 import dotenv
 from platformdirs import user_config_dir

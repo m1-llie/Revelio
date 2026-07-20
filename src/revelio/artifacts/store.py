@@ -8,7 +8,7 @@ Layout (per run_id):
     trajectory.json      # aggregated per-agent trajectories
     artifacts/
       handoffs/          # deterministic inter-agent handoff records
-      deliverables/      # final outputs: reports, PoC scripts, PoC inputs
+      deliverables/      # final outputs: reports, PoV scripts, PoV inputs
 """
 
 from __future__ import annotations
@@ -141,7 +141,7 @@ class ArtifactStore:
             return None
         return json.loads(path.read_text())
 
-    # ── deliverables (reports, PoC scripts, PoC inputs) ──
+    # ── deliverables (reports, PoV scripts, PoV inputs) ──
 
     def save_deliverable(self, src: Path, *, filename: str | None = None) -> Path:
         """Copy or move a file into the deliverables folder."""

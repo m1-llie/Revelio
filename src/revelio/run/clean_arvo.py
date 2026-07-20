@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Clean ARVO Docker images for zero-day vulnerability detection.
 
-Removes pre-existing PoCs, crashers, seed corpus, and VCS metadata from ARVO images
+Removes pre-existing PoVs, crashers, seed corpus, and VCS metadata from ARVO images
 so the agent must find vulnerabilities from scratch.
 
 This creates a new Docker image tagged with '-clean' suffix.
@@ -31,7 +31,7 @@ app = typer.Typer(rich_markup_mode="rich")
 
 # Files/directories to remove for zero-day detection
 CLEANUP_COMMANDS = [
-    # Remove pre-existing PoC
+    # Remove pre-existing PoV
     "rm -f /tmp/poc",
     # Remove seed corpora (zips and directories) from /out and /src
     "find /out -maxdepth 2 -type f -name '*seed_corpus*.zip' -delete 2>/dev/null || true",
@@ -137,7 +137,7 @@ def main(
             
             # Check each cleanup target
             check_commands = [
-                ("Pre-existing PoC", "ls -la /tmp/poc 2>/dev/null || echo 'Not found'"),
+                ("Pre-existing PoV", "ls -la /tmp/poc 2>/dev/null || echo 'Not found'"),
                 ("Seed corpus", "find /out -maxdepth 2 -type f -name '*seed_corpus*.zip' 2>/dev/null | head -10 || echo 'None'"),
                 ("Crashers", "find /src -name 'crash-*' 2>/dev/null | head -10 || echo 'None'"),
                 ("Seeds dirs", "find /src -type d -name 'seeds' 2>/dev/null | head -10 || echo 'None'"),
