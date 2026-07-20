@@ -1077,7 +1077,7 @@ function runSortValue(r, field) {
   if (field === 'status') return r.status === 'success' ? 1 : 0;
   if (field === 'cost') return r.total_cost || 0;
   if (field === 'cost_scan') return r.scan_cost || 0;
-  if (field === 'cost_poc') return r.poc_cost || 0;
+  if (field === 'cost_pov') return r.pov_cost || 0;
   if (field === 'date') return r.created_at || '';
   if (field === 'model') return (r.model_name ? r.model_name.split('/').pop() : '').toLowerCase();
   if (field === 'confirmed') return r.hypotheses_confirmed || 0;
@@ -1098,7 +1098,7 @@ function runSortHeader(label, field, numeric) {
 }
 
 function toggleRunSort(field) {
-  const defaults = { name: 'asc', status: 'desc', model: 'asc', cost: 'desc', cost_scan: 'desc', cost_poc: 'desc', date: 'desc', confirmed: 'desc' };
+  const defaults = { name: 'asc', status: 'desc', model: 'asc', cost: 'desc', cost_scan: 'desc', cost_pov: 'desc', date: 'desc', confirmed: 'desc' };
   if (listSort.field === field) listSort.dir = listSort.dir === 'asc' ? 'desc' : 'asc';
   else listSort = { field, dir: defaults[field] || 'asc' };
   listPage = 0;
@@ -1173,7 +1173,7 @@ function renderRunsList() {
       <div class="runs-meta-group">
         ${runSortHeader('Status', 'status', false)}
         ${runSortHeader('Hypothesis Model', 'cost_scan', true)}
-        ${runSortHeader('PoV Model', 'cost_poc', true)}
+        ${runSortHeader('PoV Model', 'cost_pov', true)}
         ${runSortHeader('Started', 'date', true)}
         ${runSortHeader('Confirmed', 'confirmed', true)}
       </div>
@@ -1189,7 +1189,7 @@ function renderRunsList() {
       <div class="runs-meta-group">
       <div class="run-col-status">${runStatusPill(r.status)}</div>
       ${runStageCell(r.model_name, r.scan_cost)}
-      ${runStageCell(r.poc_model || r.model_name, r.poc_cost)}
+      ${runStageCell(r.pov_model || r.model_name, r.pov_cost)}
       <div class="run-col-started">${esc(runStartedDisplay(r))}</div>
       <div class="run-col-confirmed">${runConfirmedCell(r)}</div>
       </div>
@@ -1673,7 +1673,7 @@ function renderRevelioFunnel(funnel) {
     { key: 'after_rank', label: 'Ranked queue' },
   ];
   const pocSteps = [
-    { key: 'poc_attempted', label: 'PoV tried' },
+    { key: 'pov_attempted', label: 'PoV tried' },
     { key: 'confirmed', label: 'Confirmed' },
   ];
   let bar = '';
@@ -2983,7 +2983,7 @@ function renderRevelioOverview(d, m) {
   html += '<div class="overview-grid">';
   html += statCardTarget(m.target_ref);
   html += statCardStage('Hypothesis Model', m.model_name, sm.cost_scan);
-  html += statCardStage('PoV Model', m.poc_model || m.model_name, sm.cost_poc);
+  html += statCardStage('PoV Model', m.pov_model || m.model_name, sm.cost_pov);
   html += statCard(sm.duration_seconds != null ? fmtDuration(sm.duration_seconds) : '—', 'Duration');
   html += statCard(funnel.confirmed || 0, 'Confirmed');
   html += '</div>';
@@ -3191,8 +3191,8 @@ function renderRevelioDetail(d, m) {
   } else {
     const sm = d.revelio_summary || {};
     let msg = 'No PoV-stage trajectories found (trajectory.json agents).';
-    if (sm.poc_status === 'skipped_no_hypotheses') msg = 'PoV stage did not run — no hypotheses survived filtering.';
-    else if (sm.poc_status === 'skipped_or_incomplete') msg = 'PoV stage did not run or did not finish.';
+    if (sm.pov_status === 'skipped_no_hypotheses') msg = 'PoV stage did not run — no hypotheses survived filtering.';
+    else if (sm.pov_status === 'skipped_or_incomplete') msg = 'PoV stage did not run or did not finish.';
     html += `<div class="empty"><p>${esc(msg)}</p></div>`;
   }
   html += '</div>';
@@ -4045,7 +4045,7 @@ function shortModel(name) {
 function revelioModelsUsed(m) {
   const scan = m.model_name;
   const filter = m.filter_model || scan;
-  const poc = m.poc_model || scan;
+  const poc = m.pov_model || scan;
   const roles = [];
   if (scan) roles.push({ role: 'Scan', model: scan });
   if (filter && filter !== scan) roles.push({ role: 'Filter', model: filter });
