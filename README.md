@@ -16,6 +16,8 @@ Revelio is an end-to-end AI agent that discovers memory-safety vulnerabilities i
 
 > In the evaluation, Revelio uncovered **19 previously unknown memory-safety vulnerabilities** (7 CVEs assigned/requested) across mature OSS-Fuzz projects that had already been continuously fuzzed for 5–8 years, at roughly **$42 and ~1 hour per project** with **zero false positives**. On the CyberGym/ARVO benchmark it substantially outperformed frontier coding agents (Claude Code, Codex, etc.) at comparable cost.
 
+> CVE Credit: CVE-2026-42216, CVE-2026-42217, CVE-2026-41071, CVE-2026-47254, CVE-2026-12725
+
 ## Architecture
 
 Revelio's key insight is to **separate speculative reasoning from executable confirmation**. Detection is decomposed into two stages: a cheap, high-*recall* Generation Stage and a high-*precision* Confirmation Stage. Cheap models cast a wide net (a false hypothesis can be filtered later); stronger models plus a deterministic sanitizer serve as the trustworthy verifier.
